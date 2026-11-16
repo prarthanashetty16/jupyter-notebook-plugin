@@ -74,6 +74,14 @@ ruff check .                # Check for lint issues
 ruff format .               # Auto-format code
 ```
 
+### Benchmarks
+```bash
+python -m benchmarks small    # ~3 min, resumable; writes benchmarks/results/small/report.md
+python -m benchmarks full     # 1e4..1e7 rows, long, needs several GB free RAM
+pip install -e ".[dev,bench]"   # matplotlib for figures
+```
+Do not run tests or other heavy work while a benchmark runs (it distorts memory measurements).
+
 ### Commit message style
 - First line: imperative, ~50 chars. Example: "Add Tier 0 estimator for DataFrame.sum()"
 - Body (if needed): explain WHY, not WHAT. Keep lines ≤72 chars

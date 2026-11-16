@@ -16,6 +16,10 @@ from nexus.analyzer import DetectedOp
 from nexus.state import Inspection
 
 
+class NoEstimateError(Exception):
+    """A model cannot responsibly estimate this op (unknown inputs, unsupported tier...)."""
+
+
 @dataclass(frozen=True, kw_only=True)
 class Estimate:
     """Peak RAM (bytes) and wall time (seconds) as a range, with confidence in [0, 1]."""

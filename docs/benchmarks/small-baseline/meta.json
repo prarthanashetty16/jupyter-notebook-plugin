@@ -1,0 +1,13 @@
+{
+  "suite": "small",
+  "started": "2026-11-16 22:29:16",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python": "3.12.5",
+  "pandas": "3.1.1",
+  "numpy": "2.5.5",
+  "cpu_count": 16,
+  "total_ram": 16791150592,
+  "available_ram_at_start": 3637903360,
+  "cap_bytes": 1458890342,
+  "git_commit": "6f87884"
+}

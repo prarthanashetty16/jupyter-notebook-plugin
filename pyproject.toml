@@ -39,6 +39,9 @@ dev = [
     "ruff>=0.1.0",
 ]
 bench = [
+    "matplotlib>=3.9",
+]
+learn = [
     "scikit-learn>=1.0.0",
 ]
 
@@ -47,6 +50,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 addopts = "-v"
 python_files = ["test_*.py"]
 python_classes = ["Test*"]

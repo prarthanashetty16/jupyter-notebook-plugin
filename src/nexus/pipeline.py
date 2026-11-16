@@ -10,7 +10,8 @@ from typing import Any
 
 from nexus.analyzer import DetectedOp, analyze_cell
 from nexus.failsafe import Deadline
-from nexus.models.base import Estimate
+from nexus.models.base import Estimate, NoEstimateError
+from nexus.models.builtin import load_builtin_models
 from nexus.registry import ModelRegistry, default_registry
 from nexus.state import Inspection, ResourceProbe, ResourceSnapshot, StateInspector, candidate_paths
 
@@ -22,6 +23,7 @@ class OpEstimate:
     op: DetectedOp
     model: str
     estimate: Estimate
+    features: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -43,7 +45,10 @@ class Pipeline:
         probe: ResourceProbe | None = None,
         tier: int = 0,
     ) -> None:
-        self.registry = default_registry if registry is None else registry
+        if registry is None:
+            load_builtin_models()
+            registry = default_registry
+        self.registry = registry
         self._inspector = inspector or StateInspector()
         self._probe = probe or ResourceProbe()
         self._tier = tier
@@ -66,13 +71,19 @@ class Pipeline:
                 deadline.check()
             for model in self.registry.find(op):
                 try:
-                    estimate = model.estimate(model.features(op, inspection), self._tier)
+                    features = model.features(op, inspection)
+                    estimate = model.estimate(features, self._tier)
                     if not isinstance(estimate, Estimate):
                         raise TypeError(f"{model.name} returned {type(estimate).__name__}")
+                except NoEstimateError as why:
+                    log.debug("nexus: no estimate from %s for %s: %s", model.name, op.name, why)
+                    continue
                 except Exception:
                     log.debug("nexus: model %s failed on %s", model.name, op.name, exc_info=True)
                     continue
-                estimates.append(OpEstimate(op=op, model=model.name, estimate=estimate))
+                estimates.append(
+                    OpEstimate(op=op, model=model.name, estimate=estimate, features=features)
+                )
         try:
             resources = self._probe.snapshot()
         except Exception:
