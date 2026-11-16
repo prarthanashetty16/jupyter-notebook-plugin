@@ -47,12 +47,9 @@ ENV/
 
 # Benchmarks and results
 benchmarks/results/
-*.json
-*.csv
 
 # Jupyter
 .ipynb_checkpoints/
-*.ipynb
 
 # OS
 .DS_Store

@@ -38,6 +38,10 @@ Each cell follows a pipeline hooked on `pre_run_cell` / `post_run_cell`:
 
 Operation models are plug-ins with a common interface (`matches` / `features` / `estimate`) in a registry. Adding an operation = one new file. Each model's docstring explains its cost drivers empirically validated in the benchmark.
 
+## Module layout (`src/nexus/`)
+
+`extension.py` (load/unload) -> `session.py` (hooks, fail-safe, re-entrancy) -> `pipeline.py` (analyze -> inspect -> models). Supporting: `analyzer.py`, `state.py` (StateInspector, ResourceProbe), `registry.py`, `models/base.py` (`Estimate`, `OperationModel`), `models/noop.py` (tests only), `failsafe.py`, `render.py`, `magics.py` (`%nexus`).
+
 ## Quality bar
 
 - Type hints and docstrings throughout
@@ -74,10 +78,7 @@ ruff format .               # Auto-format code
 - First line: imperative, ~50 chars. Example: "Add Tier 0 estimator for DataFrame.sum()"
 - Body (if needed): explain WHY, not WHAT. Keep lines ≤72 chars
 - Reference issues/PRs if relevant: "Closes #42" or "See #123"
-- End with:
-  ```
-  Co-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>
-  ```
+- End with the Co-Authored-By trailer configured for the session (do not hardcode a model name here)
 
 ### Project workflow
 - Update `docs/PROGRESS.md` at the end of every phase with:

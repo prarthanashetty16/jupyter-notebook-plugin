@@ -42,9 +42,8 @@ bench = [
     "scikit-learn>=1.0.0",
 ]
 
-[tool.setuptools]
-packages = ["nexus"]
-package-dir = {"" = "src"}
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -71,6 +70,9 @@ select = [
 ignore = [
     "E501",  # line too long (handled by formatter)
 ]
+
+[tool.ruff.lint.pep8-naming]
+extend-ignore-names = ["visit_*"]
 
 [tool.ruff.format]
 quote-style = "double"
