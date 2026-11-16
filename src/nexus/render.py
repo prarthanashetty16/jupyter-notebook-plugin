@@ -30,7 +30,8 @@ def _describe(desc: Descriptor) -> str:
     approx = " (sampled)" if desc.sampled else ""
     size = f"{human_bytes(desc.nbytes)}{approx}"
     if isinstance(desc, FrameDescriptor):
-        return f"DataFrame shape={desc.shape} {size} index={desc.index_kind} dtypes={desc.dtype_counts}"
+        blocks = "" if desc.n_blocks is None else f" blocks={desc.n_blocks}"
+        return f"DataFrame shape={desc.shape} {size} index={desc.index_kind}{blocks} dtypes={desc.dtype_counts}"
     if isinstance(desc, SeriesDescriptor):
         return f"Series shape={desc.shape} dtype={desc.dtype} {size} index={desc.index_kind}"
     if isinstance(desc, ArrayDescriptor):

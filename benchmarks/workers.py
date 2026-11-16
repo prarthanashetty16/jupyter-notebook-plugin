@@ -43,7 +43,12 @@ def build_state(payload: dict[str, Any]) -> State:
     for spec in payload["inputs"]:
         ns.update(spec.load(payload["cache_dir"]))
     code = compile(payload["source"], "<bench>", "eval")
+    from nexus.state import frame_block_info
+
     info = {
+        "input_blocks": {
+            k: frame_block_info(v)[0] for k, v in ns.items() if isinstance(v, pd.DataFrame)
+        },
         "input_bytes": sum(_nbytes(v) for v in ns.values()),
         "input_resident_bytes": max(0, read_memory().rss - rss_before),
     }

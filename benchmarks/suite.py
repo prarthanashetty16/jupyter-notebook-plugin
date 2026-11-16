@@ -19,8 +19,11 @@ import numpy as np
 
 from benchmarks import store
 from benchmarks.datasets import DatasetConfig, estimate_frame_bytes, make_frame, make_join_pair
+from benchmarks.split import load_split
 
 BASE = DatasetConfig(n_rows=1, n_int=2, n_float=2, n_object=2, n_category=1, n_datetime=1)
+NP_SORT_SIZES = (5_000_000, 10_000_000, 30_000_000, 100_000_000)
+MATMUL_FULL_DIMS = (2000, 3000, 4000, 6000, 8000)
 NUMERIC = {"n_int": 3, "n_float": 3, "n_object": 0, "n_category": 0, "n_datetime": 0}
 STRINGS = {"n_int": 0, "n_float": 0, "n_object": 4, "n_category": 0, "n_datetime": 0, "str_len": 24}
 
@@ -90,21 +93,27 @@ class JoinInput(_Stored):
 
 @dataclass(frozen=True)
 class ArrayInput(_Stored):
-    """A float64 array bound to ``var``: random ('random') or already sorted ('sorted')."""
+    """A 1-D/2-D array bound to ``var``: pattern 'random', 'sorted' or 'reverse'."""
 
     shape: tuple[int, ...]
     var: str = "a"
     pattern: str = "random"
     seed: int = 0
+    dtype: str = "float64"
 
     def generate(self) -> dict[str, Any]:
         rng = np.random.default_rng(self.seed)
         size = int(np.prod(self.shape))
-        arr = np.arange(size, dtype=np.float64) if self.pattern == "sorted" else rng.random(size)
-        return {self.var: arr.reshape(self.shape)}
+        if self.pattern == "sorted":
+            arr = np.arange(size, dtype=np.float64)
+        elif self.pattern == "reverse":
+            arr = np.arange(size, 0, -1, dtype=np.float64)
+        else:
+            arr = rng.random(size)
+        return {self.var: arr.astype(self.dtype).reshape(self.shape)}
 
     def est_bytes(self) -> int:
-        return int(np.prod(self.shape)) * 8
+        return int(np.prod(self.shape)) * np.dtype(self.dtype).itemsize
 
 
 @dataclass(frozen=True)
@@ -146,6 +155,7 @@ class GridPoint:
     repeats: int
     footprint_factor: float  # worst-case child RSS as a multiple of estimated input bytes
     meta: dict[str, Any] = field(default_factory=dict, compare=False, hash=False)
+    split: str = "dev"
 
     def est_input_bytes(self) -> int:
         return sum(spec.est_bytes() for spec in self.inputs)
@@ -167,6 +177,7 @@ class Case:
     size_kind: str = "rows"  # "rows" or "dim" (square matrix side)
     max_size: int | None = None
     meta: dict[str, Any] = field(default_factory=dict)
+    full_sizes: tuple[int, ...] | None = None  # overrides the suite sizes for the full suite
 
 
 def _frame(n: int, **kw: Any) -> tuple[InputSpec, ...]:
@@ -186,6 +197,14 @@ def _concat(n: int, **kw: Any) -> tuple[InputSpec, ...]:
     return (
         FrameInput(BASE.with_(n_rows=half, seed=0, **kw), "df"),
         FrameInput(BASE.with_(n_rows=half, seed=1, **kw), "df2"),
+    )
+
+
+def _concat3(n: int, **kw: Any) -> tuple[InputSpec, ...]:
+    third = max(1, n // 3)
+    return tuple(
+        FrameInput(BASE.with_(n_rows=third, seed=i, **kw), v)
+        for i, v in enumerate(("df", "df2", "df3"))
     )
 
 
@@ -319,9 +338,19 @@ def _cases() -> list[Case]:
             lambda d: (ArrayInput((d, d), "a", seed=0), ArrayInput((d, d), "b", seed=1)),
             4.0,
             size_kind="dim",
+            full_sizes=MATMUL_FULL_DIMS,
         )
     )
-    add(Case("np_sort/random", "numpy.sort", "np.sort(a)", lambda n: (ArrayInput((n,)),), 3.0))
+    add(
+        Case(
+            "np_sort/random",
+            "numpy.sort",
+            "np.sort(a)",
+            lambda n: (ArrayInput((n,)),),
+            3.0,
+            full_sizes=NP_SORT_SIZES,
+        )
+    )
     add(
         Case(
             "np_sort/sorted",
@@ -329,6 +358,170 @@ def _cases() -> list[Case]:
             "np.sort(a)",
             lambda n: (ArrayInput((n,), pattern="sorted"),),
             3.0,
+            full_sizes=NP_SORT_SIZES,
+        )
+    )
+    # ---- configurations added at the dev/test split (never measured before the freeze) ----
+    real = {"distribution": "real_like", "null_rate": 0.05, "str_len": 20}
+    add(
+        Case(
+            "drop_duplicates/realistic_nulls_dup30",
+            "drop_duplicates",
+            "df.drop_duplicates()",
+            lambda n: _frame(n, dup_rate=0.3, cardinality=0.2, **real),
+            3.0,
+            meta=real,
+        )
+    )
+    add(
+        Case(
+            "drop_duplicates/subset_i0_s0_lowcard",
+            "drop_duplicates",
+            'df.drop_duplicates(subset=["i0", "s0"])',
+            lambda n: _frame(n, cardinality=0.002),
+            3.0,
+        )
+    )
+    add(
+        Case(
+            "merge/outer_overlap50_realistic",
+            "merge",
+            'df.merge(right, on="k", how="outer")',
+            lambda n: _join(n, overlap=0.5, fanout=2.0, **real),
+            5.0,
+        )
+    )
+    add(
+        Case(
+            "merge/right_fanout4_strings",
+            "merge",
+            'df.merge(right, on="k", how="right")',
+            lambda n: _join(n, fanout=4.0, **STRINGS),
+            5.0,
+        )
+    )
+    add(
+        Case(
+            "groupby/two_keys_mean_realistic",
+            "groupby",
+            'df.groupby(["s0", "i0"])["f0"].mean()',
+            lambda n: _frame(n, cardinality=0.01, **real),
+            3.0,
+        )
+    )
+    add(
+        Case(
+            "groupby/cat_key_zipf_sum",
+            "groupby",
+            'df.groupby("c0")["f0"].sum()',
+            lambda n: _frame(n, cardinality=100, distribution="real_like"),
+            3.0,
+        )
+    )
+    add(
+        Case(
+            "sort_values/by_datetime",
+            "sort_values",
+            'df.sort_values("d0")',
+            lambda n: _frame(n),
+            3.0,
+        )
+    )
+    add(
+        Case(
+            "sort_values/by_str_desc_nulls",
+            "sort_values",
+            'df.sort_values("s0", ascending=False)',
+            lambda n: _frame(n, null_rate=0.1, str_len=24),
+            3.0,
+        )
+    )
+    add(
+        Case(
+            "read_csv/realistic_nulls",
+            "pandas.read_csv",
+            "pd.read_csv({csv!r})",
+            lambda n: (
+                CsvInput(BASE.with_(n_rows=n, null_rate=0.1, distribution="real_like", str_len=16)),
+            ),
+            4.0,
+            max_size=3_000_000,
+        )
+    )
+    add(
+        Case(
+            "read_csv/wide_numeric",
+            "pandas.read_csv",
+            "pd.read_csv({csv!r})",
+            lambda n: (
+                CsvInput(
+                    BASE.with_(
+                        n_rows=n, n_int=4, n_float=12, n_object=0, n_category=0, n_datetime=0
+                    )
+                ),
+            ),
+            4.0,
+            max_size=3_000_000,
+        )
+    )
+    add(
+        Case(
+            "astype/str_to_category_zipf",
+            "astype",
+            'df["s0"].astype("category")',
+            lambda n: _frame(n, cardinality=0.01, distribution="real_like"),
+            3.0,
+        )
+    )
+    add(Case("astype/int_to_int32", "astype", 'df["i0"].astype("int32")', lambda n: _frame(n), 3.0))
+    add(Case("astype/datetime_to_str", "astype", 'df["d0"].astype(str)', lambda n: _frame(n), 3.0))
+    add(
+        Case(
+            "concat/realistic_nulls",
+            "pandas.concat",
+            "pd.concat([df, df2])",
+            lambda n: _concat(n, **real),
+            3.0,
+        )
+    )
+    add(
+        Case(
+            "concat/three_frames",
+            "pandas.concat",
+            "pd.concat([df, df2, df3])",
+            lambda n: _concat3(n),
+            3.0,
+        )
+    )
+    add(
+        Case(
+            "matmul/rect_f64",
+            "operator.matmul",
+            "a @ b",
+            lambda d: (ArrayInput((d, d // 2), "a", seed=0), ArrayInput((d // 2, d), "b", seed=1)),
+            4.0,
+            size_kind="dim",
+            full_sizes=MATMUL_FULL_DIMS,
+        )
+    )
+    add(
+        Case(
+            "np_sort/reverse",
+            "numpy.sort",
+            "np.sort(a)",
+            lambda n: (ArrayInput((n,), pattern="reverse"),),
+            3.0,
+            full_sizes=NP_SORT_SIZES,
+        )
+    )
+    add(
+        Case(
+            "np_sort/float32_random",
+            "numpy.sort",
+            "np.sort(a)",
+            lambda n: (ArrayInput((n,), dtype="float32"),),
+            3.0,
+            full_sizes=NP_SORT_SIZES,
         )
     )
     return c
@@ -351,7 +544,7 @@ SUITES: dict[str, SuiteSpec] = {
     "small": SuiteSpec("small", (300_000, 1_000_000, 3_000_000), (1000, 2000, 3000), repeats=3),
     "full": SuiteSpec(
         "full",
-        (100_000, 1_000_000, 3_000_000, 10_000_000),
+        (1_000_000, 3_000_000, 10_000_000, 30_000_000),
         (2000, 3000, 4000, 6000),
         repeats=3,
         large_repeats=3,
@@ -359,16 +552,33 @@ SUITES: dict[str, SuiteSpec] = {
 }
 
 
-def build_grid(suite: str = "small", *, ops: set[str] | None = None) -> list[GridPoint]:
-    """All grid points of ``suite`` (optionally only cases whose op or case name is in ``ops``)."""
+def build_grid(
+    suite: str = "small",
+    *,
+    ops: set[str] | None = None,
+    splits: tuple[str, ...] = ("dev", "test"),
+    max_size: int | None = None,
+) -> list[GridPoint]:
+    """All grid points of ``suite``, dev split first, then test.
+
+    ``ops`` keeps cases whose op or case-group name is in it; ``max_size`` drops larger points.
+    """
     spec = SUITES[suite]
+    sp = load_split()
     points: list[GridPoint] = []
     for case in CASES:
         if ops and case.op not in ops and case.name.split("/")[0] not in ops:
             continue
+        which = sp.of(case.name)
+        if which not in splits:
+            continue
         sizes = spec.dim_sizes if case.size_kind == "dim" else spec.row_sizes
+        if suite == "full" and case.full_sizes:
+            sizes = case.full_sizes
         for size in sizes:
             if case.max_size is not None and size > case.max_size:
+                continue
+            if max_size is not None and size > max_size:
                 continue
             repeats = spec.large_repeats if size >= spec.large_rows else spec.repeats
             points.append(
@@ -382,6 +592,7 @@ def build_grid(suite: str = "small", *, ops: set[str] | None = None) -> list[Gri
                     repeats=repeats,
                     footprint_factor=case.footprint_factor,
                     meta=dict(case.meta),
+                    split=which,
                 )
             )
-    return points
+    return sorted(points, key=lambda pt: pt.split != "dev")  # stable: dev first, then test

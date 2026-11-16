@@ -27,6 +27,7 @@ import pandas as pd
 import psutil
 
 from benchmarks import workers
+from benchmarks.split import SEALED_DIR
 from benchmarks.suite import CsvInput, GridPoint, build_grid
 from nexus.calibrate import ensure_profile
 from nexus.machine import MachineProfile
@@ -50,13 +51,14 @@ ACTUAL_FIELDS = [
     "point_id", "suite", "case", "op", "size", "source", "status", "error", "repeats_ok",
     "ram_delta_all", "ram_bound_bytes", "ram_censored_runs", "peak_reset", "poll_delta_all",
     "time_s_all", "baseline_bytes", "setup_peak_bytes", "input_bytes", "input_resident_bytes",
-    "out_rows", "out_bytes", "est_footprint_bytes", "cap_bytes", "meta", *ENV_FIELDS,
+    "out_rows", "out_bytes", "input_blocks", "est_footprint_bytes", "cap_bytes", "meta",
+    "split", *ENV_FIELDS,
 ]  # fmt: skip
 PREDICTION_FIELDS = [
     "point_id", "tier", "status", "error", "has_estimate", "model", "ram_low", "ram_expected",
     "ram_high", "time_low", "time_expected", "time_high", "confidence", "drivers", "features",
     "overhead_cold_s", "overhead_warm_s", "analysis_peak_bytes", "inspected_bytes", "skipped",
-    "other_ops", *ENV_FIELDS,
+    "other_ops", "split", *ENV_FIELDS,
 ]  # fmt: skip
 SKIPPED_CAP = "skipped_cap"
 
@@ -178,6 +180,7 @@ def run_actual(
         setup_peak_bytes=ok_runs[0].setup_peak_bytes if ok_runs else "",
         input_bytes=m.info.get("input_bytes", ""),
         input_resident_bytes=m.info.get("input_resident_bytes", ""),
+        input_blocks=json.dumps(m.info.get("input_blocks", {})), split=point.split,
         out_rows=m.info.get("out_rows", ""), out_bytes=m.info.get("out_bytes", ""),
     )  # fmt: skip
     return row, m
@@ -195,7 +198,7 @@ def run_prediction(
         max_rss_bytes=cap,
     )
     row: dict[str, Any] = {"point_id": point.id, "tier": tier, "status": m.status,
-                           "error": (m.error or "")[:500], "has_estimate": False, **env}  # fmt: skip
+                           "error": (m.error or "")[:500], "has_estimate": False, "split": point.split, **env}  # fmt: skip
     if m.status != OK:
         return row
     info = m.info
@@ -225,12 +228,13 @@ class RunConfig:
     ops: set[str] | None = None
     retry_failed: bool = False
     max_points: int | None = None
+    max_size: int | None = None
+    splits: tuple[str, ...] = ("dev", "test")
     calibrate: bool = True  # False: use the uncalibrated default throughputs (ablation)
 
 
 def _summary(m: Measurement) -> str:
-    ram = classify([r.delta_bytes for r in m.runs if r.status == OK],
-                   floor=DEFAULT_RAM_FLOOR_BYTES)  # fmt: skip
+    ram = classify([r.delta_bytes for r in m.runs if r.status == OK], floor=DEFAULT_RAM_FLOOR_BYTES)
     t = classify([r.time_s for r in m.runs if r.status == OK], floor=DEFAULT_TIME_FLOOR_S)
     ram_txt = "n/a" if ram.value is None else f"{ram.value / 2**20:.1f} MB"
     if ram.klass != "valid":
@@ -239,75 +243,140 @@ def _summary(m: Measurement) -> str:
     return f"ram={ram_txt} t={time_txt}"
 
 
+class Stores:
+    """Dev results in ``out/``; test-split results in ``out/sealed/`` (never read by dev tools)."""
+
+    def __init__(self, out: Path) -> None:
+        (out / SEALED_DIR).mkdir(parents=True, exist_ok=True)
+        sealed = out / SEALED_DIR
+        self.actuals = {
+            "dev": ResultStore(out / "actuals.csv", ACTUAL_FIELDS, ("point_id",)),
+            "test": ResultStore(sealed / "actuals.csv", ACTUAL_FIELDS, ("point_id",)),
+        }
+        self.preds = {
+            "dev": ResultStore(out / "predictions.csv", PREDICTION_FIELDS, ("point_id", "tier")),
+            "test": ResultStore(
+                sealed / "predictions.csv", PREDICTION_FIELDS, ("point_id", "tier")
+            ),
+        }
+
+
+def write_progress(out: Path, state: dict[str, Any]) -> None:
+    """Atomically write ``progress.json`` so ``python -m benchmarks status`` can read it."""
+    tmp = out / "progress.json.tmp"
+    tmp.write_text(json.dumps(state, indent=2, default=str))
+    tmp.replace(out / "progress.json")
+
+
+def _point_line(point: GridPoint, prow: dict[str, Any], tier: int) -> str:
+    if prow["has_estimate"]:
+        ram, secs = int(prow["ram_expected"]) / 2**20, float(prow["time_expected"])
+        return f" | tier{tier} pred={ram:.1f} MB t={secs:.3f} s"
+    return f" | tier{tier} no estimate ({prow['status']})"
+
+
 def run_suite(cfg: RunConfig, points: Iterable[GridPoint] | None = None) -> tuple[Path, Path]:
-    """Run (or resume) a suite; returns the paths of actuals.csv and predictions.csv."""
+    """Run (or resume) a suite; returns the paths of the dev actuals.csv and predictions.csv.
+
+    Re-running the same command resumes: finished actuals are kept and only missing predictions
+    or unfinished points run. Ctrl+C is safe (results are appended per point).
+    """
     out = cfg.out_dir
     cache_dir = out.parent.parent / ".cache"
     out.mkdir(parents=True, exist_ok=True)
     cache_dir.mkdir(parents=True, exist_ok=True)
     cap = cfg.mem_limit_bytes or default_mem_limit_bytes()
-    grid = list(points) if points is not None else build_grid(cfg.suite, ops=cfg.ops)
+    grid = (
+        list(points)
+        if points is not None
+        else build_grid(cfg.suite, ops=cfg.ops, splits=cfg.splits, max_size=cfg.max_size)
+    )
     if cfg.max_points:
         grid = grid[: cfg.max_points]
-    actuals = ResultStore(out / "actuals.csv", ACTUAL_FIELDS, ("point_id",))
-    preds = ResultStore(out / "predictions.csv", PREDICTION_FIELDS, ("point_id", "tier"))
+    stores = Stores(out)
 
     profile = ensure_profile() if cfg.calibrate else MachineProfile()
     env = env_info()
-    (out / "meta.json").write_text(
-        json.dumps(
-            {
-                **env,
-                "suite": cfg.suite,
-                "started": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "cap_bytes": cap,
-                "machine_profile": asdict(profile),
-            },
-            indent=2,
-            default=str,
-        )  # fmt: skip
-    )
-    log.info("suite=%s points=%d memory cap=%.0f MB -> %s", cfg.suite, len(grid), cap / 2**20, out)
+    meta = {**env, "suite": cfg.suite, "started": time.strftime("%Y-%m-%d %H:%M:%S")}
+    meta.update(cap_bytes=cap, machine_profile=asdict(profile))
+    (out / "meta.json").write_text(json.dumps(meta, indent=2, default=str))
+    runnable = [p for p in grid if p.est_footprint_bytes() <= cap]
+    log.info(
+        "suite=%s points=%d (runnable %d under the %.0f MB cap) -> %s",
+        cfg.suite, len(grid), len(runnable), cap / 2**20, out,
+    )  # fmt: skip
     log.info("machine profile calibrated=%s", profile.calibrated)
 
     t_start = time.monotonic()
-    for i, point in enumerate(grid, 1):
-        prefix = f"[{i}/{len(grid)}] {point.id}"
-        previous = actuals.has(point_id=point.id)
-        retry = cfg.retry_failed and previous is not None and previous["status"] == "error"
-        missing = [t for t in cfg.tiers if preds.has(point_id=point.id, tier=t) is None or retry]
-        if (
-            previous is not None
-            and not retry
-            and (not missing or previous["status"] == SKIPPED_CAP)
-        ):
-            log.info("%s: already done (%s)", prefix, previous["status"])
-            continue
-        try:
-            if previous is None or retry:
-                if point.est_footprint_bytes() > cap:
-                    row = _actual_row(point, cfg.suite, point.source, cap, env, status=SKIPPED_CAP,
-                                      error=f"estimated footprint {point.est_footprint_bytes()} B > cap")  # fmt: skip
+    session_times: list[float] = []
+    counts = {"measured": 0, "skipped_cap": 0, "resumed": 0, "errors": 0}
+    progress: dict[str, Any] = {
+        "suite": cfg.suite, "total": len(grid), "runnable": len(runnable),
+        "cap_bytes": cap, "state": "running", "current": None,
+    }  # fmt: skip
+
+    def publish(i: int, current: str | None, state: str = "running") -> None:
+        left = len([p for p in grid[i:] if p.est_footprint_bytes() <= cap])
+        avg = sum(session_times) / len(session_times) if session_times else None
+        progress.update(
+            index=i, current=current, state=state, counts=counts, updated=time.strftime("%H:%M:%S"),
+            elapsed_s=round(time.monotonic() - t_start), avg_s_per_point=avg,
+            eta_s=round(avg * left) if avg is not None else None,
+        )  # fmt: skip
+        write_progress(out, progress)
+
+    i = 0
+    try:
+        for i, point in enumerate(grid, 1):
+            prefix = f"[{i}/{len(grid)}] {point.id}"
+            publish(i - 1, point.id)
+            t_point = time.monotonic()
+            actuals, preds = stores.actuals[point.split], stores.preds[point.split]
+            previous = actuals.has(point_id=point.id)
+            retry = cfg.retry_failed and previous is not None and previous["status"] == "error"
+            missing = [
+                t for t in cfg.tiers if preds.has(point_id=point.id, tier=t) is None or retry
+            ]
+            done = previous is not None and not retry
+            if done and (not missing or previous["status"] == SKIPPED_CAP):
+                counts["resumed"] += 1
+                log.info("%s: already done (%s)", prefix, previous["status"])
+                continue
+            try:
+                if previous is None or retry:
+                    if point.est_footprint_bytes() > cap:
+                        why = f"estimated footprint {point.est_footprint_bytes()} B > cap"
+                        row = _actual_row(point, cfg.suite, point.source, cap, env,
+                                          status=SKIPPED_CAP, split=point.split, error=why)  # fmt: skip
+                        actuals.add(row)
+                        counts["skipped_cap"] += 1
+                        log.info("%s: skipped (estimated footprint above memory cap)", prefix)
+                        continue
+                    path = _prepare(point, cache_dir)
+                    source = (
+                        point.source.format(csv=path) if "{csv" in point.source else point.source
+                    )
+                    row, m = run_actual(point, cfg.suite, source, cache_dir, cap, env)
                     actuals.add(row)
-                    log.info("%s: skipped (estimated footprint above memory cap)", prefix)
-                    continue
-                path = _prepare(point, cache_dir)
-                source = point.source.format(csv=path) if "{csv" in point.source else point.source
-                row, m = run_actual(point, cfg.suite, source, cache_dir, cap, env)
-                actuals.add(row)
-                line = f"{prefix}: {row['status']} {_summary(m)}"
-            else:  # actual already measured: only the missing predictions run
-                _prepare(point, cache_dir)
-                source = previous["source"]
-                line = f"{prefix}: actual kept ({previous['status']})"
-            for tier in missing:
-                prow = run_prediction(point, tier, source, cache_dir, cap, env)
-                preds.add(prow)
-                if prow["has_estimate"]:
-                    line += f" | tier{tier} pred={int(prow['ram_expected']) / 2**20:.1f} MB t={float(prow['time_expected']):.3f} s"
-                else:
-                    line += f" | tier{tier} no estimate ({prow['status']})"
-            log.info("%s  [%.0fs elapsed]", line, time.monotonic() - t_start)
-        except Exception:
-            log.exception("%s: harness error (point skipped, will retry on resume)", prefix)
-    return actuals.path, preds.path
+                    counts["measured"] += 1
+                    line = f"{prefix}: {row['status']} {_summary(m)}"
+                else:  # actual already measured: only the missing predictions run
+                    _prepare(point, cache_dir)
+                    source = previous["source"]
+                    line = f"{prefix}: actual kept ({previous['status']})"
+                for tier in missing:
+                    prow = run_prediction(point, tier, source, cache_dir, cap, env)
+                    preds.add(prow)
+                    line += _point_line(point, prow, tier)
+                session_times.append(time.monotonic() - t_point)
+                publish(i, None)
+                log.info("%s  [%.0fs elapsed]", line, time.monotonic() - t_start)
+            except Exception:
+                counts["errors"] += 1
+                log.exception("%s: harness error (point skipped, will retry on resume)", prefix)
+    except KeyboardInterrupt:
+        publish(i, None, "interrupted")
+        log.warning("interrupted: finished points are saved; re-run the same command to resume")
+        raise
+    publish(len(grid), None, "finished")
+    return stores.actuals["dev"].path, stores.preds["dev"].path

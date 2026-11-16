@@ -197,3 +197,48 @@ def test_cgroup_garbage_is_ignored(tmp_path, bad):
     _write(tmp_path / "memory.max", bad)
     _write(tmp_path / "memory.current", bad)
     assert read_cgroup_memory(tmp_path, tmp_path / "none") is None
+
+
+# -- memory blocks (informational feature) ---------------------------------------------------------
+def test_block_info_single_multi_and_consolidated():
+    from nexus.state import frame_block_info
+
+    arrays = {f"f{i}": np.arange(100.0) for i in range(3)}
+    multi = pd.DataFrame(arrays, copy=False)
+    n_blocks, consolidated = frame_block_info(multi)
+    assert n_blocks == 3 and consolidated is False
+    merged = multi.copy()
+    assert frame_block_info(merged) == (1, True)
+    mixed = pd.DataFrame({"i": np.arange(10), "f": np.arange(10.0)})
+    assert frame_block_info(mixed) == (2, True)
+
+
+def test_descriptor_carries_blocks_and_inspection_does_not_mutate():
+    from nexus.state import frame_block_info
+
+    df = pd.DataFrame({f"f{i}": np.arange(50.0) for i in range(4)}, copy=False)
+    before = frame_block_info(df)
+    desc = inspect(df).variables["x"]
+    assert (desc.n_blocks, desc.consolidated) == before == (4, False)
+    assert frame_block_info(df) == before  # no consolidation as a side effect
+
+
+def test_block_info_degrades_gracefully(monkeypatch):
+    import types
+
+    from nexus import state
+    from nexus.state import frame_block_info
+
+    assert frame_block_info(object()) == (None, None)
+    assert frame_block_info(types.SimpleNamespace(_mgr=types.SimpleNamespace())) == (None, None)
+
+    class Boom:
+        @property
+        def _mgr(self):
+            raise RuntimeError("pandas internals changed")
+
+    assert frame_block_info(Boom()) == (None, None)
+    monkeypatch.setattr(state, "frame_block_info", lambda df: (None, None))
+    df = pd.DataFrame({"a": [1, 2, 3]})
+    desc = inspect(df).variables["x"]
+    assert desc.n_blocks is None and desc.consolidated is None and desc.shape == (3, 1)

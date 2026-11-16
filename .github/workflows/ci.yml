@@ -2,41 +2,43 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
   pull_request:
-    branches: [ main, develop ]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   lint:
     runs-on: ubuntu-latest
-    name: Lint (Python 3.10)
+    name: Lint
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.12"
       - run: pip install -e ".[dev,bench]"
       - run: ruff check .
       - run: ruff format . --check
 
-  test-ubuntu:
-    runs-on: ubuntu-latest
-    name: Tests (Ubuntu, Python 3.10)
+  test:
+    name: Tests (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.10", "3.12"]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: ${{ matrix.python }}
       - run: pip install -e ".[dev,bench]"
-      - run: pytest
-
-  test-windows:
-    runs-on: windows-latest
-    name: Tests (Windows, Python 3.10)
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v4
-        with:
-          python-version: "3.10"
-      - run: pip install -e ".[dev,bench]"
-      - run: pytest
+      - name: Machine info
+        run: python -c "import platform, psutil, numpy, pandas; print(platform.platform(), psutil.cpu_count(), psutil.virtual_memory().total >> 20, 'MiB', numpy.__version__, pandas.__version__)"
+      - name: Instrument validation (known allocations within +/-10%)
+        run: pytest tests/test_measure_validation.py -v
+      - name: Remaining tests
+        run: pytest --ignore=tests/test_measure_validation.py

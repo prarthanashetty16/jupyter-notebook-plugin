@@ -28,6 +28,14 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from benchmarks.split import (
+    PROGRESS_PATH,
+    SEALED_DIR,
+    SealedAccessError,
+    load_split,
+    open_test_split,
+    require_token,
+)
 from nexus.measure import (
     DEFAULT_MAX_SPREAD,
     DEFAULT_RAM_FLOOR_BYTES,
@@ -88,21 +96,16 @@ def classify_points(df: pd.DataFrame, floors: Floors) -> pd.DataFrame:
     return out
 
 
-def load_joined(results_dir: Path, floors: Floors | None = None) -> pd.DataFrame:
-    """One row per (grid point, tier); points with no prediction run have tier NaN."""
-    floors = floors or Floors()
-    actuals = _read_last(results_dir / "actuals.csv", ["point_id"])
-    preds_path = results_dir / "predictions.csv"
+def _read_split(directory: Path, floors: Floors) -> pd.DataFrame:
+    actuals = _read_last(directory / "actuals.csv", ["point_id"])
+    preds_path = directory / "predictions.csv"
     preds = (
         _read_last(preds_path, ["point_id", "tier"])
         if preds_path.exists()
         else pd.DataFrame(columns=["point_id", "tier"])
     )
-    env_cols = [
-        c
-        for c in preds.columns
-        if c in actuals.columns and c not in ("point_id", "status", "error")
-    ]
+    keep = ("point_id", "status", "error")
+    env_cols = [c for c in preds.columns if c in actuals.columns and c not in keep]
     preds = preds.drop(columns=env_cols).rename(
         columns={"status": "pred_status", "error": "pred_error"}
     )
@@ -119,6 +122,33 @@ def load_joined(results_dir: Path, floors: Floors | None = None) -> pd.DataFrame
             df[col] = pd.to_numeric(df[col], errors="coerce")
     df["has_estimate"] = df["has_estimate"].fillna("False").astype(str).eq("True")
     return classify_points(df, floors)
+
+
+def load_joined(results_dir: Path, floors: Floors | None = None) -> pd.DataFrame:
+    """DEV-split rows only: one row per (grid point, tier); tier NaN if no prediction ran.
+
+    Reads ``actuals.csv``/``predictions.csv`` (never ``sealed/``) and refuses data containing a
+    test-split case, so tuning/calibration/notebook code built on this cannot see the test split.
+    """
+    df = _read_split(results_dir, floors or Floors())
+    test = load_split().test
+    leaked = sorted(set(df["case"]) & test)
+    if leaked:
+        raise SealedAccessError(f"test-split cases found in the dev results files: {leaked}")
+    return df
+
+
+def load_sealed(results_dir: Path, floors: Floors | None, token: object) -> pd.DataFrame:
+    """TEST-split rows. Only reachable with the token from ``open_test_split`` (evaluate --final)."""
+    require_token(token)
+    directory = results_dir / SEALED_DIR
+    if not (directory / "actuals.csv").exists():
+        return pd.DataFrame(columns=["point_id", "status", "case", "op", "tier"])
+    df = _read_split(directory, floors or Floors())
+    wrong = sorted(set(df["case"]) - load_split().test)
+    if wrong:
+        raise SealedAccessError(f"non-test cases found in the sealed files: {wrong}")
+    return df
 
 
 def _accuracy(g: pd.DataFrame) -> dict[str, Any]:
@@ -276,7 +306,7 @@ def _select(t: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
     return t[[c for c in cols if c in t.columns]]
 
 
-def make_figures(df: pd.DataFrame, out_dir: Path, tier: int) -> list[str]:
+def make_figures(df: pd.DataFrame, out_dir: Path, tier: int, suffix: str = "") -> list[str]:
     try:
         import matplotlib
 
@@ -306,7 +336,7 @@ def make_figures(df: pd.DataFrame, out_dir: Path, tier: int) -> list[str]:
         ax.set_title(f"Tier {tier}: predicted vs actual {name} (bars = [low, high]; dotted = 2x)")
         ax.legend(fontsize=7)
         fig.tight_layout()
-        fname = f"fig_pred_vs_actual_{name}_tier{tier}.png"
+        fname = f"fig_pred_vs_actual_{name}_tier{tier}{suffix}.png"
         fig.savefig(out_dir / fname, dpi=130)
         plt.close(fig)
         written.append(fname)
@@ -322,7 +352,7 @@ def make_figures(df: pd.DataFrame, out_dir: Path, tier: int) -> list[str]:
         ax.set_title(f"Tier {tier}: {name.upper()} error by operation")
         ax.tick_params(axis="x", rotation=60)
     fig.tight_layout()
-    fname = f"fig_error_by_op_tier{tier}.png"
+    fname = f"fig_error_by_op_tier{tier}{suffix}.png"
     fig.savefig(out_dir / fname, dpi=130)
     plt.close(fig)
     written.append(fname)
@@ -339,7 +369,7 @@ def make_figures(df: pd.DataFrame, out_dir: Path, tier: int) -> list[str]:
         ax.axhline(0.9, color="gray", ls=":", lw=0.8)
         ax.legend()
         fig.tight_layout()
-        fname = f"fig_coverage_by_op_tier{tier}.png"
+        fname = f"fig_coverage_by_op_tier{tier}{suffix}.png"
         fig.savefig(out_dir / fname, dpi=130)
         plt.close(fig)
         written.append(fname)
@@ -365,26 +395,96 @@ CAVEATS = """\
 """
 
 
-def write_report(
-    results_dir: Path, tiers: list[int] | None = None, floors: Floors | None = None
-) -> Path:
-    floors = floors or Floors()
-    df = load_joined(results_dir, floors)
-    meta_path = results_dir / "meta.json"
-    meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+def _split_rows(df: pd.DataFrame) -> str:
+    n = df.drop_duplicates("point_id")
+    return f"{len(n)} points ({int((n['status'] == 'ok').sum())} measured)"
+
+
+def _report_lines(
+    df: pd.DataFrame,
+    results_dir: Path,
+    floors: Floors,
+    tiers: list[int] | None,
+    suffix: str,
+    heading: str,
+) -> list[str]:
+    """Report body for one split; CSVs and figures are written with ``suffix`` in their names."""
     tiers = tiers or sorted(int(t) for t in df["tier"].dropna().unique())
     acc_op = accuracy_table(df, ["tier", "op"])
     acc_all = accuracy_table(df.assign(op="ALL"), ["tier", "op"])
     acc_case = accuracy_table(df, ["tier", "op", "case"])
     acc_op_all = pd.concat([acc_op, acc_all], ignore_index=True)
-    acc_op_all.to_csv(results_dir / "metrics_by_op.csv", index=False)
-    acc_case.to_csv(results_dir / "metrics_by_case.csv", index=False)
-    df.to_csv(results_dir / "points_joined.csv", index=False)
+    acc_op_all.to_csv(results_dir / f"metrics_by_op{suffix}.csv", index=False)
+    acc_case.to_csv(results_dir / f"metrics_by_case{suffix}.csv", index=False)
+    df.to_csv(results_dir / f"points_joined{suffix}.csv", index=False)
     breakdown = censor_breakdown(df)
-    breakdown.to_csv(results_dir / "classification_by_op.csv", index=False)
+    breakdown.to_csv(results_dir / f"classification_by_op{suffix}.csv", index=False)
 
     status = df.drop_duplicates("point_id")["status"].value_counts().to_dict()
-    lines = [f"# NEXUS benchmark report: `{meta.get('suite', results_dir.name)}`\n"]
+    lines = [f"{heading}\n", f"Grid points by outcome: {status}.\n"]
+    lines.append("### Classification of measurements (all points that ran)\n")
+    lines.append(md_table(breakdown))
+    lines.append(
+        "`cens_setup_peak` = operation never exceeded the peak reached while loading inputs; "
+        "`cens_floor` = measured but below the floor.\n"
+    )
+    lines.append("### Instrument cross-check (OS peak vs polled RSS)\n")
+    lines.append(md_table(instrument_crosscheck(df)))
+    lines.append(
+        "`poll_over_os` should be 0 (polling can only under-measure). `poll_missed_half` = runs "
+        "where polling saw less than half of the OS peak.\n"
+    )
+    for tier in tiers:
+        lines.append(f"\n### Tier {tier}\n")
+        t = acc_op_all[acc_op_all["tier"] == tier]
+        lines.append("#### Estimate availability and sample sizes\n")
+        lines.append(md_table(_select(t, ["op", "points", "estimated", "ram_valid", "ram_censored",
+                                          "ram_excluded", "time_valid", "time_censored",
+                                          "time_excluded"])))  # fmt: skip
+        lines.append("#### RAM accuracy (valid points)\n")
+        lines.append(md_table(_select(t, ["op", "ram_n", "ram_err_med", "ram_err_p90", "ram_bias",
+                                          "ram_cov", "ram_above_high", "ram_below_low",
+                                          "ram_width"]), PCT))  # fmt: skip
+        lines.append("#### Time accuracy (valid points)\n")
+        lines.append(md_table(_select(t, ["op", "time_n", "time_err_med", "time_err_p90",
+                                          "time_bias", "time_cov", "time_above_high",
+                                          "time_below_low", "time_width"]), PCT))  # fmt: skip
+        lines.append(
+            "`above_high` = actual exceeded the predicted high (under-prediction beyond the "
+            "range); `below_low` = actual fell under the predicted low. bias = median(expected / actual).\n"
+        )
+        lines.append("#### Per case (configuration) detail\n")
+        c = acc_case[acc_case["tier"] == tier]
+        lines.append(md_table(_select(c, ["case", "ram_n", "ram_bias", "ram_cov", "time_n",
+                                          "time_bias", "time_cov"]), PCT))  # fmt: skip
+        lines.append("#### OOM warnings (simulated memory limits)\n")
+        oom = oom_table(df, tier)
+        oom.to_csv(results_dir / f"oom_tier{tier}{suffix}.csv", index=False)
+        lines.append(md_table(oom, PCT))
+        lines.append("#### Analysis overhead (budget 250 ms)\n")
+        lines.append(md_table(overhead_table(df, tier)))
+        figs = make_figures(df, results_dir, tier, suffix)
+        if figs:
+            lines.append("#### Figures\n")
+            lines += [f"![{f}]({f})\n" for f in figs]
+        worst = df[(df["tier"] == tier) & df["has_estimate"] & (df["ram_class"] == "valid")].copy()
+        worst["dev"] = np.abs(np.log(worst["ram_expected"] / worst["ram_value"]))
+        worst = worst.sort_values("dev", ascending=False).head(10)
+        lines.append("#### Ten worst RAM predictions (valid points)\n")
+        lines.append(md_table(worst.assign(actual_MB=worst["ram_value"] / 2**20,
+                                           expected_MB=worst["ram_expected"] / 2**20,
+                                           low_MB=worst["ram_low"] / 2**20,
+                                           high_MB=worst["ram_high"] / 2**20)
+                              [["point_id", "actual_MB", "expected_MB", "low_MB", "high_MB"]]))  # fmt: skip
+    failed = df.drop_duplicates("point_id")
+    failed = failed[failed["status"] != "ok"][["point_id", "status", "error"]]
+    lines.append("\n### Points that did not produce a measurement\n")
+    lines.append(md_table(failed))
+    return lines
+
+
+def _header(meta: dict[str, Any], floors: Floors, results_dir: Path, title: str) -> list[str]:
+    lines = [f"# {title}: `{meta.get('suite', results_dir.name)}`\n"]
     lines.append(
         f"Instrument `{meta.get('instrument', '?')}`. {meta.get('os', '?')}, Python "
         f"{meta.get('python', '?')}, pandas {meta.get('pandas', '?')} (default string dtype "
@@ -395,71 +495,42 @@ def write_report(
         f"child process: {float(meta.get('cap_bytes', 0)) / 2**20:.0f} MB. Machine profile calibrated: "
         f"{meta.get('machine_profile', {}).get('calibrated', '?')}.\n"
     )
-    lines.append(f"Grid points by outcome: {status}.\n")
     lines.append(
         f"Floors: RAM >= {floors.ram_bytes / MIB:.0f} MiB above baseline, time >= "
         f"{floors.time_s * 1e3:.0f} ms, relative spread <= {floors.max_spread:.0%}. Points below a floor "
         "are *censored*; points above the spread threshold are *excluded*; accuracy covers *valid* "
         "points only.\n"
     )
-    lines.append("## Classification of measurements (all points that ran)\n")
-    lines.append(md_table(breakdown))
+    return lines
+
+
+def _meta(results_dir: Path) -> dict[str, Any]:
+    path = results_dir / "meta.json"
+    return json.loads(path.read_text()) if path.exists() else {}
+
+
+def _sealed_count(results_dir: Path) -> int:
+    """Number of test-split points measured so far: a count only, no metrics."""
+    path = results_dir / SEALED_DIR / "actuals.csv"
+    if not path.exists():
+        return 0
+    return len(pd.read_csv(path, dtype=str, usecols=["point_id"]).drop_duplicates())
+
+
+def write_report(
+    results_dir: Path, tiers: list[int] | None = None, floors: Floors | None = None
+) -> Path:
+    """Dev-split report. The test split is sealed: only its point count is shown."""
+    floors = floors or Floors()
+    df = load_joined(results_dir, floors)
+    lines = _header(_meta(results_dir), floors, results_dir, "NEXUS benchmark report (dev split)")
+    lines += _report_lines(df, results_dir, floors, tiers, "", "## Dev split")
+    lines.append("\n## Test split (sealed)\n")
     lines.append(
-        "`cens_setup_peak` = operation never exceeded the peak reached while loading inputs; "
-        "`cens_floor` = measured but below the floor.\n"
+        f"{_sealed_count(results_dir)} test points measured. Test-split results are not shown "
+        "here: they are evaluated only by `python -m benchmarks evaluate <dir> --final --reason "
+        '"..."`, which logs every use in docs/PROGRESS.md.\n'
     )
-    lines.append("## Instrument cross-check (OS peak vs polled RSS)\n")
-    lines.append(md_table(instrument_crosscheck(df)))
-    lines.append(
-        "`poll_over_os` should be 0 (polling can only under-measure). `poll_missed_half` = runs "
-        "where polling saw less than half of the OS peak.\n"
-    )
-    for tier in tiers:
-        lines.append(f"\n## Tier {tier}\n")
-        t = acc_op_all[acc_op_all["tier"] == tier]
-        lines.append("### Estimate availability and sample sizes\n")
-        lines.append(md_table(_select(t, ["op", "points", "estimated", "ram_valid", "ram_censored",
-                                          "ram_excluded", "time_valid", "time_censored",
-                                          "time_excluded"])))  # fmt: skip
-        lines.append("### RAM accuracy (valid points)\n")
-        lines.append(md_table(_select(t, ["op", "ram_n", "ram_err_med", "ram_err_p90", "ram_bias",
-                                          "ram_cov", "ram_above_high", "ram_below_low",
-                                          "ram_width"]), PCT))  # fmt: skip
-        lines.append("### Time accuracy (valid points)\n")
-        lines.append(md_table(_select(t, ["op", "time_n", "time_err_med", "time_err_p90",
-                                          "time_bias", "time_cov", "time_above_high",
-                                          "time_below_low", "time_width"]), PCT))  # fmt: skip
-        lines.append(
-            "`above_high` = actual exceeded the predicted high (under-prediction beyond the "
-            "range); `below_low` = actual fell under the predicted low. bias = median(expected / actual).\n"
-        )
-        lines.append("### Per case (variant) detail\n")
-        c = acc_case[acc_case["tier"] == tier]
-        lines.append(md_table(_select(c, ["case", "ram_n", "ram_bias", "ram_cov", "time_n",
-                                          "time_bias", "time_cov"]), PCT))  # fmt: skip
-        lines.append("### OOM warnings (simulated memory limits)\n")
-        oom = oom_table(df, tier)
-        oom.to_csv(results_dir / f"oom_tier{tier}.csv", index=False)
-        lines.append(md_table(oom, PCT))
-        lines.append("### Analysis overhead (budget 250 ms)\n")
-        lines.append(md_table(overhead_table(df, tier)))
-        figs = make_figures(df, results_dir, tier)
-        if figs:
-            lines.append("### Figures\n")
-            lines += [f"![{f}]({f})\n" for f in figs]
-        worst = df[(df["tier"] == tier) & df["has_estimate"] & (df["ram_class"] == "valid")].copy()
-        worst["dev"] = np.abs(np.log(worst["ram_expected"] / worst["ram_value"]))
-        worst = worst.sort_values("dev", ascending=False).head(10)
-        lines.append("### Ten worst RAM predictions (valid points)\n")
-        lines.append(md_table(worst.assign(actual_MB=worst["ram_value"] / 2**20,
-                                           expected_MB=worst["ram_expected"] / 2**20,
-                                           low_MB=worst["ram_low"] / 2**20,
-                                           high_MB=worst["ram_high"] / 2**20)
-                              [["point_id", "actual_MB", "expected_MB", "low_MB", "high_MB"]]))  # fmt: skip
-    failed = df.drop_duplicates("point_id")
-    failed = failed[failed["status"] != "ok"][["point_id", "status", "error"]]
-    lines.append("\n## Points that did not produce a measurement\n")
-    lines.append(md_table(failed))
     lines.append("\n## Measurement caveats\n")
     lines.append(CAVEATS)
     report = results_dir / "report.md"
@@ -467,10 +538,41 @@ def write_report(
     return report
 
 
+def write_final_report(
+    results_dir: Path,
+    reason: str,
+    *,
+    command: str = "evaluate --final",
+    tiers: list[int] | None = None,
+    floors: Floors | None = None,
+    progress_path: Path | None = None,
+) -> Path:
+    """Dev and test results side by side (separate sections). Logs the access first."""
+    floors = floors or Floors()
+    token = open_test_split(
+        reason,
+        results_dir=results_dir,
+        command=command,
+        n_points=_sealed_count(results_dir),
+        progress_path=progress_path or PROGRESS_PATH,
+    )
+    dev = load_joined(results_dir, floors)
+    test = load_sealed(results_dir, floors, token)
+    lines = _header(_meta(results_dir), floors, results_dir, "NEXUS FINAL report (dev + test)")
+    lines.append(f"Test split opened {token.timestamp}; reason: {token.reason}\n")
+    lines += _report_lines(dev, results_dir, floors, tiers, "_final_dev", "## Dev split")
+    lines += _report_lines(test, results_dir, floors, tiers, "_final_test", "## Test split")
+    lines.append("\n## Measurement caveats\n")
+    lines.append(CAVEATS)
+    report = results_dir / "final_report.md"
+    report.write_text("\n".join(lines), encoding="utf-8")
+    return report
+
+
 def main(argv: list[str] | None = None) -> None:
     args = sys.argv[1:] if argv is None else argv
     if len(args) != 1:
-        raise SystemExit("usage: python -m benchmarks.evaluate <results_dir>")
+        raise SystemExit("usage: python -m benchmarks.evaluate <results_dir>  (dev split only)")
     print(write_report(Path(args[0])))
 
 

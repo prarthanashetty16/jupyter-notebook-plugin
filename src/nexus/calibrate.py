@@ -1,7 +1,12 @@
 """Per-machine throughput calibration: dedicated microbenchmarks, never benchmark data.
 
-Each microbenchmark builds its own small synthetic input, runs the operation a few times, and
-takes the median. Nothing here touches the benchmark suite's datasets or grid points.
+Every microbenchmark builds its own synthetic input, runs one primitive a few times and takes the
+median. Nothing here touches the benchmark suite's datasets or grid points, and nothing is fitted
+to benchmark results. Version 2 makes the primitives more representative of real operations:
+working sets are far larger than CPU caches (64-256 MB), each repetition allocates its output
+fresh so first-touch page faults are included (cold), and the page-fault cost is also measured
+separately (``first_touch_bps``, ``page_fault_s_per_byte``; informational, no model uses it yet).
+
 CLI: ``nexus-calibrate-machine [--quick] [--force] [--show]``.
 """
 
@@ -23,10 +28,15 @@ import pandas as pd
 from nexus.machine import MachineProfile, load_profile, profile_path, save_profile
 
 REPEATS = 5
+CALIBRATION_VERSION = 2
 
 
 def _median_time(run: Callable[[Any], Any], prepare: Callable[[], Any] | None = None) -> float:
-    """Median seconds of ``run`` over REPEATS timed calls (one untimed warm-up first)."""
+    """Median seconds of ``run`` over REPEATS timed calls (one untimed warm-up first).
+
+    ``prepare`` builds a fresh argument for every call (untimed); ``run`` allocates its output
+    anew each time, so allocation and first-touch costs are part of what is timed.
+    """
     times = []
     for i in range(REPEATS + 1):
         arg = prepare() if prepare else None
@@ -42,34 +52,54 @@ def _nlogn(n: int) -> float:
     return n * math.log2(n)
 
 
-def measure_profile(quick: bool = False) -> MachineProfile:
+def _scaled(n: int, s: float, floor: int = 10_000) -> int:
+    return max(floor, int(n * s))
+
+
+def measure_profile(quick: bool = False) -> MachineProfile:  # noqa: C901
     """Run every microbenchmark and return the resulting (calibrated) profile."""
-    s = 0.1 if quick else 1.0
+    s = 0.05 if quick else 1.0
     rng = np.random.default_rng(12345)
     out: dict[str, float] = {}
 
-    n = int(8_000_000 * s)  # memcpy
-    src, dst = rng.random(n), np.empty(n)
-    out["copy_bps"] = src.nbytes / _median_time(lambda _: np.copyto(dst, src))
+    n = _scaled(16_000_000, s)  # 128 MB working set: cold copy, warm copy, first touch
+    src = rng.random(n)
+    out["copy_bps"] = src.nbytes / _median_time(lambda a: a.copy(), lambda: src)  # fresh output
+    dst = np.empty(n)
+    dst[:] = 0.0
+    out["warm_copy_bps"] = src.nbytes / _median_time(lambda _: np.copyto(dst, src))
 
-    n = int(2_000_000 * s)  # numeric factorize
-    ints = rng.integers(0, 200_000, n)
-    t_fact = _median_time(lambda _: pd.factorize(ints))
-    out["num_hash_s"] = t_fact / n
+    def cold_write(_: Any) -> None:
+        fresh = np.empty(n)
+        fresh[:] = 1.0
 
-    n_text = int(300_000 * s)  # text factorize
-    words = np.array([f"s{i:08d}" for i in rng.integers(0, 100_000, n_text)], dtype=object)
+    def warm_write(_: Any) -> None:
+        dst[:] = 1.0
+
+    t_cold, t_warm = _median_time(cold_write), _median_time(warm_write)
+    out["first_touch_bps"] = src.nbytes / t_cold
+    out["page_fault_s_per_byte"] = max(0.0, (t_cold - t_warm) / src.nbytes)
+    src = dst = None  # release the 128 MB working set
+
+    n = _scaled(8_000_000, s)  # numeric factorize, 64 MB, 1M distinct values
+    ints = rng.integers(0, 1_000_000, n)
+    out["num_hash_s"] = _median_time(lambda _: pd.factorize(ints)) / n
+
+    n_text = _scaled(1_000_000, s)  # text factorize, ~300k distinct python strings
+    words = np.array([f"s{i:08d}" for i in rng.integers(0, 300_000, n_text)], dtype=object)
     out["text_hash_s"] = _median_time(lambda _: pd.factorize(words)) / n_text
 
-    n = int(2_000_000 * s)  # numeric sorts
+    n = _scaled(16_000_000, s)  # np.sort on 128 MB (copy made untimed, in-place sort timed)
     floats = rng.random(n)
     out["np_sort_s"] = _median_time(np.sort, floats.copy) / _nlogn(n)
-    out["num_argsort_s"] = _median_time(np.argsort, floats.copy) / _nlogn(n)
-    n_text = int(200_000 * s)
+    n = _scaled(8_000_000, s)
+    out["num_argsort_s"] = _median_time(np.argsort, rng.random(n).copy) / _nlogn(n)
+    n_text = _scaled(1_000_000, s)
     text = np.array([f"s{i:08d}" for i in rng.permutation(n_text)], dtype=object)
     out["text_argsort_s"] = _median_time(np.argsort, text.copy) / _nlogn(n_text)
+    del floats, text
 
-    rows = int(300_000 * s)  # CSV parse rate (generic 8-column mixed file)
+    rows = _scaled(1_500_000, s, 20_000)  # CSV parse rate: generic 8-column mixed file, ~100 MB
     frame = pd.DataFrame(
         {
             **{f"f{i}": rng.random(rows) for i in range(4)},
@@ -82,20 +112,21 @@ def measure_profile(quick: bool = False) -> MachineProfile:
         frame.to_csv(path, index=False)
         size = os.path.getsize(path)
         out["csv_parse_bps"] = size / _median_time(lambda _: pd.read_csv(path))
+    del frame
 
-    d = int(1000 * (s**0.5 if quick else 1.0))  # BLAS float64 matmul
+    d = max(200, int(2000 * (s**0.5)))  # BLAS float64 matmul (result 32 MB at d=2000)
     a, b = rng.random((d, d)), rng.random((d, d))
     out["blas_flops"] = 2 * d**3 / _median_time(lambda _: a @ b)
 
-    n = int(4_000_000 * s)  # numeric cast
+    n = _scaled(16_000_000, s)  # numeric cast, 128 MB in, 64 MB out
     big_ints = rng.integers(0, 10**6, n)
     out["cast_s"] = _median_time(lambda _: big_ints.astype("float32")) / n
 
-    n_str = int(300_000 * s)  # int -> str
+    n_str = _scaled(1_000_000, s)  # int -> str
     series = pd.Series(rng.integers(0, 10**6, n_str))
     out["to_str_s"] = _median_time(lambda _: series.astype(str)) / n_str
 
-    n = int(2_000_000 * s)  # groupby sum beyond factorization
+    n = _scaled(8_000_000, s)  # groupby sum beyond factorization
     keys = rng.integers(0, 1000, n)
     gdf = pd.DataFrame({"k": keys, "v": rng.random(n)})
     t_group = _median_time(lambda _: gdf.groupby("k")["v"].sum())
@@ -110,16 +141,18 @@ def measure_profile(quick: bool = False) -> MachineProfile:
         "numpy": np.__version__,
         "pandas": pd.__version__,
         "quick": quick,
+        "calibration_version": CALIBRATION_VERSION,
     }
     return MachineProfile(**out, calibrated=True, meta=meta)
 
 
 def _fingerprint(meta: dict[str, Any]) -> tuple[Any, ...]:
-    return tuple(meta.get(k) for k in ("platform", "cpu_count", "numpy", "pandas"))
+    keys = ("platform", "cpu_count", "numpy", "pandas", "calibration_version")
+    return tuple(meta.get(k) for k in keys)
 
 
 def ensure_profile(*, quick: bool = False, force: bool = False) -> MachineProfile:
-    """Cached profile if it matches this machine/library stack, else measure and cache it."""
+    """Cached profile if it matches this machine/library stack/calibration version, else measure."""
     current = load_profile()
     if current is not None and current.calibrated and not force:
         probe = {
@@ -127,6 +160,7 @@ def ensure_profile(*, quick: bool = False, force: bool = False) -> MachineProfil
             "cpu_count": os.cpu_count(),
             "numpy": np.__version__,
             "pandas": pd.__version__,
+            "calibration_version": CALIBRATION_VERSION,
         }
         if _fingerprint(current.meta) == _fingerprint(probe):
             return current
@@ -148,9 +182,9 @@ def main(argv: list[str] | None = None) -> None:
     profile = ensure_profile(quick=args.quick, force=args.force)
     print(f"profile ({profile_path()}):")
     for name, value in vars(profile).items():
-        if name not in ("meta",):
+        if name != "meta":
             print(
-                f"  {name:16s} {value:.4g}" if isinstance(value, float) else f"  {name:16s} {value}"
+                f"  {name:22s} {value:.4g}" if isinstance(value, float) else f"  {name:22s} {value}"
             )
 
 

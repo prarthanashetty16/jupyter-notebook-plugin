@@ -54,6 +54,8 @@ class FrameDescriptor(Descriptor):
     index_kind: str
     index_nbytes: int
     text_columns: int
+    n_blocks: int | None = None  # pandas memory blocks; None if not introspectable
+    consolidated: bool | None = None  # True if no two blocks share a dtype
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -125,6 +127,22 @@ def _is_text_like(pd: Any, dtype: Any) -> bool:
 
 def _stride(obj: Any, step: int) -> Any:
     return obj.iloc[::step] if hasattr(obj, "iloc") else obj[::step]
+
+
+def frame_block_info(df: Any) -> tuple[int | None, bool | None]:
+    """(number of memory blocks, consolidated?) of a DataFrame, or (None, None).
+
+    Reads pandas internals (``_mgr.blocks``) defensively and never mutates the frame: any failure
+    (private API change, unusual subclass) yields ``(None, None)``. ``consolidated`` is "no two
+    blocks share a dtype", which is when pandas would not merge blocks (a ``copy()`` of a
+    non-consolidated frame can peak at about twice its size). Informational; no model uses it yet.
+    """
+    try:
+        blocks = df._mgr.blocks
+        dtypes = [str(b.dtype) for b in blocks]
+        return len(dtypes), len(set(dtypes)) == len(dtypes)
+    except Exception:
+        return None, None
 
 
 class StateInspector:
@@ -240,6 +258,7 @@ class StateInspector:
         check()
         index_nbytes, index_sampled = self._index_nbytes(df.index, pd)
         cap = self._max_listed_columns
+        n_blocks, consolidated = frame_block_info(df)
         return FrameDescriptor(
             name=name,
             nbytes=total + index_nbytes,
@@ -250,6 +269,8 @@ class StateInspector:
             index_kind=type(df.index).__name__,
             index_nbytes=index_nbytes,
             text_columns=text_columns,
+            n_blocks=n_blocks,
+            consolidated=consolidated,
         )
 
     def _series(self, name: str, s: Any, pd: Any) -> SeriesDescriptor:

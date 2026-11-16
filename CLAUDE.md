@@ -84,6 +84,18 @@ nexus-calibrate-machine       # per-machine throughputs (the runner calibrates o
 RAM is measured with OS peak counters on inputs loaded from disk (`nexus.measure`); the instrument is validated by `tests/test_measure_validation.py` and must stay green.
 Do not run tests or other heavy work while a benchmark runs (it distorts memory measurements).
 
+Full run (resumable; re-run the same command to continue; `status` from a second terminal):
+```bash
+python -m benchmarks plan   --suite full --mem-limit-gb 2.5 --max-size 10000000
+python -m benchmarks full   --mem-limit-gb 2.5 --max-size 10000000
+python -m benchmarks status benchmarks/results/full
+python -m benchmarks evaluate benchmarks/results/full          # dev split only
+```
+The cap must stay well below free RAM. **Dev/test split (`benchmarks/split.json`, frozen):** all tuning,
+calibration and notebooks may read the dev split only. The test split (written to `<results>/sealed/`) is read
+only by `python -m benchmarks evaluate <dir> --final --reason "..."`, which logs each use in the
+"Test-split access log" in docs/PROGRESS.md. Never edit `split.json`; never read `sealed/` directly.
+
 ### Commit message style
 - First line: imperative, ~50 chars. Example: "Add Tier 0 estimator for DataFrame.sum()"
 - Body (if needed): explain WHY, not WHAT. Keep lines ≤72 chars

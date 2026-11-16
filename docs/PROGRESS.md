@@ -261,3 +261,93 @@ max 14.9 ms of the 250 ms budget).
   factors, group-count prior, bands) are unchanged. Calibration runs only on its own microbenchmarks.
 - Runner now also generates missing predictions when an actual already exists (bug found during the
   ablation; regression test added), and has `--no-calibrate` for the default-constants ablation.
+
+
+## Phase 3c: full baseline preparation, dev/test split, cross-platform check
+
+No estimator model or prior was changed in this phase. Only the calibration *primitives* (item 4) changed.
+
+### Dev/test split (frozen, `benchmarks/split.json`)
+- **Unit = case** (operation + source + dataset configuration). All sizes of a case stay together, so the
+  split is by configuration, not by row or size. 47 cases: **29 dev**, **18 test**.
+- **Rule:** dev = every case already present in a committed report under `docs/benchmarks` (all of these
+  were examined in Phases 3 and 3b); test = every other case, never measured or evaluated before the freeze.
+- The test cases are *new configurations* the dev cases never use: null rates, zipfian ("real_like") value
+  distributions, datetime keys, longer strings, `outer`/`right` joins, two-key groupby, three-frame concat,
+  rectangular matmul, reverse-sorted and float32 arrays, int32 casts, datetime-to-str. Each of the 9
+  operations has at least one dev and one test configuration. Expect test results to be worse than dev:
+  that is the point (the models were designed while looking at the dev cases).
+- `split.json` stores SHA-256 digests of both lists; `load_split` refuses a modified file. Tests assert the
+  test cases appear in no committed report, every suite case is classified exactly once, and a case is never
+  split across dev and test.
+- **Guard.** Dev tooling (`load_joined`, reports, `compare`, calibration, anything built on them) reads only
+  `actuals.csv`/`predictions.csv`. The runner writes test-split results to `<results>/sealed/` and
+  `load_joined` refuses dev files containing a test case. The normal report shows only the *count* of test
+  points measured. The test split is read only by
+  `python -m benchmarks evaluate <dir> --final --reason "..."`, which requires a reason, logs every use in
+  the **Test-split access log** at the end of this file, and writes `final_report.md` with dev and test
+  results in separate sections. A test scans the source tree and fails if other modules reference the sealed
+  area, and checks `nexus.calibrate` never imports benchmark code. Limitation: this is procedural; the sealed
+  CSVs are plain files and anyone can open them.
+
+### Suite extension and the full run
+- `full` suite: rows 1M / 3M / 10M / 30M (matmul dims 2000-8000; `np.sort` arrays 5M-100M elements; `read_csv`
+  capped at 3M rows). At the default floors most points now exceed 32 MiB. Points above the memory cap are
+  recorded as `skipped_cap`, never dropped. 180 points in total (111 dev, 69 test); `--max-size 10000000`
+  leaves 136.
+- Runner: dev split first, resumable (re-run the same command; finished actuals are kept, missing predictions
+  are filled), Ctrl+C safe, `run.log` plus an atomically written `progress.json`; `python -m benchmarks status
+  <dir>` (second terminal) prints state, ETA, counts by outcome and the last log lines; `python -m benchmarks plan`
+  is a dry run showing how many points fit under a cap.
+- **Not run by me.** On this machine 4.0 GiB of 15.6 GiB RAM was free, so a 4 GiB cap would be unsafe. Exact
+  commands are in the final answer of this phase and in CLAUDE.md.
+
+### Memory blocks feature
+`FrameDescriptor.n_blocks` and `.consolidated` (`nexus.state.frame_block_info`): reads `df._mgr.blocks`
+defensively, never mutates the frame (it does not call `_consolidate`), and returns `(None, None)` if pandas
+internals change or the object is unusual. `consolidated` means "no two blocks share a dtype". Shown in
+verbose output; recorded as `input_blocks` in benchmark rows; **no model uses it**. Motivation: Phase 3b showed
+a 4-block frame's `copy()` peaks at 2x its size.
+
+### Calibration primitives v2 (information only)
+Changes: working sets 64-256 MB (far beyond cache), outputs allocated fresh in every repetition (cold
+first touch included), CSV file ~100 MB, plus separately measured `warm_copy_bps`, `first_touch_bps` and
+`page_fault_s_per_byte` (~0.2 ns/byte here; informational, unused by models). Cached profiles from the
+older version are re-measured automatically (`calibration_version`). Calibration took 29 s. It was run
+**once**; nothing was fitted to benchmark points, and no iteration followed.
+Effect on the *existing* v2 dev measurements (same actuals; predictions only re-run):
+
+| time model | valid | median err | p90 err | bias | coverage |
+|---|---|---|---|---|---|
+| default guesses | 37 | 66% | 335% | 1.25 | 81% |
+| calibration v1 (small, warm primitives) | 37 | 64% | 85% | 0.38 | 81% |
+| calibration v2 (large, cold primitives) | 37 | 47% | 116% | 0.93 | 97% |
+
+Per-operation time bias (default / v1 / v2): drop_duplicates 0.64 / 0.35 / 1.00, sort_values 1.66 / 0.45 /
+1.41, merge 1.41 / 0.41 / 1.48, astype 1.09 / 0.60 / 0.90, matmul 5.99 / 0.81 / 0.93, concat 0.76 / 0.16 /
+0.70, groupby 0.42 / 0.32 / 0.71, read_csv 2.23 / 0.37 / 0.37. RAM numbers are unchanged (RAM models do not use
+the profile). Caveats: these are the same dev points used to understand the problem in Phase 3b, so the
+improvement is not an independent test (the test split exists for that); coverage rose partly because wider
+time bands (x0.25..x4 around a better-centred value) cover more; `read_csv` remains 2.7x under-predicted
+(a ~100 MB mixed CSV parse microbenchmark does not capture string/category construction); the p90 got
+slightly worse (85% to 116%).
+
+### CI
+`.github/workflows/ci.yml`: lint on ubuntu; tests on ubuntu, windows and macOS, each on Python 3.10 and 3.12
+(`fail-fast: false`), with the instrument validation suite as its own step on every platform. The old
+workflow only triggered on `main`/`develop` while this repo's branch is `master`; it now triggers on every
+push and pull request. **CI has not run:** the repo has no remote. Local Windows is the only platform
+verified; Linux and macOS behaviour (the `/proc/self/clear_refs` reset path, macOS `ru_maxrss`, macOS memory
+compression affecting RSS) is untested.
+
+### What remains unvalidated
+- Linux and macOS (instrument validation, reset path, calibration), and Python 3.10 (only 3.12 run here).
+- The full suite, including every >3M-row point and the 1-4 GB points; the 5M+ element `np.sort` cases.
+- The test split has not been measured or evaluated at all; all accuracy figures so far are dev-split.
+- Real (non-synthetic) data; string-sharing vs resident bytes (`input_resident_bytes` is recorded, not analysed).
+- The OOM precision/recall figures (pooled, deep input bytes, few positives above 512 MB).
+
+## Test-split access log
+
+Every use of the sealed test split is recorded here by `evaluate --final` (timestamp, git commit, results
+directory, number of test points, reason, command). Entries are appended below; none so far.

@@ -37,6 +37,11 @@ def test_quick_calibration_is_finite_positive_and_plausible():
     assert 1e8 < profile.copy_bps < 1e12
     assert 1e8 < profile.blas_flops < 1e14
     assert profile.text_hash_s > profile.num_hash_s
+    assert profile.meta["calibration_version"] == calibrate.CALIBRATION_VERSION
+    for name in ("warm_copy_bps", "first_touch_bps"):
+        assert getattr(profile, name) > 0, name
+    assert profile.page_fault_s_per_byte >= 0.0
+    assert profile.copy_bps > 0 and profile.copy_bps < profile.warm_copy_bps * 1.5  # cold <= warm
 
 
 def test_profile_cache_roundtrip_and_ensure(tmp_path, monkeypatch):
@@ -127,3 +132,13 @@ def test_env_info_is_recorded():
     assert set(ENV_FIELDS) <= set(info)
     assert info["instrument"] == "os-peak-v2" and info["pandas_str_default"]
     json.dumps(info, default=str)
+
+
+def test_stale_calibration_version_is_remeasured(tmp_path, monkeypatch):
+    monkeypatch.setenv(machine_mod.ENV_VAR, str(tmp_path / "old.json"))
+    first = calibrate.ensure_profile(quick=True)
+    stale = MachineProfile(**{**vars(first), "meta": {**first.meta, "calibration_version": 1}})
+    save_profile(stale)
+    again = calibrate.ensure_profile(quick=True)
+    assert again.meta["calibration_version"] == calibrate.CALIBRATION_VERSION
+    assert again.meta["timestamp"] >= stale.meta["timestamp"]

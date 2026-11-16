@@ -37,6 +37,9 @@ class MachineProfile:
     cast_s: float = 3e-9  # s per element, numeric astype
     to_str_s: float = 150e-9  # s per element, int -> str astype
     agg_s: float = 5e-9  # s per element, groupby sum beyond key factorization
+    warm_copy_bps: float = 0.0  # bytes/s copying into already-touched memory (informational)
+    first_touch_bps: float = 0.0  # bytes/s allocating + first write of fresh memory (informational)
+    page_fault_s_per_byte: float = 0.0  # extra s/byte for first touch vs warm write (informational)
     calibrated: bool = False
     meta: dict[str, Any] = field(default_factory=dict, compare=False)
 
