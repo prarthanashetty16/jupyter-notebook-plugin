@@ -87,14 +87,17 @@ Do not run tests or other heavy work while a benchmark runs (it distorts memory 
 Full run (resumable; re-run the same command to continue; `status` from a second terminal):
 ```bash
 python -m benchmarks plan   --suite full --mem-limit-gb 2.5 --max-size 10000000
-python -m benchmarks full   --mem-limit-gb 2.5 --max-size 10000000
+python -m benchmarks full   --mem-limit-gb 2.5 --max-size 10000000      # dev + exposed-v1 only
 python -m benchmarks status benchmarks/results/full
 python -m benchmarks evaluate benchmarks/results/full          # dev split only
 ```
-The cap must stay well below free RAM. **Dev/test split (`benchmarks/split.json`, frozen):** all tuning,
-calibration and notebooks may read the dev split only. The test split (written to `<results>/sealed/`) is read
-only by `python -m benchmarks evaluate <dir> --final --reason "..."`, which logs each use in the
-"Test-split access log" in docs/PROGRESS.md. Never edit `split.json`; never read `sealed/` directly.
+The cap must stay well below free RAM. **Splits (`benchmarks/split.json`, frozen, digest-checked):** `dev` (29 cases) and `exposed-v1` (18 cases whose
+values were printed in Phase 3c; development and diagnosis only, **never final claims**) may be read by all tooling
+(`load_joined`, reports, `diagnose`). `test-v2` (17 cases, sealed, never run) is opt-in (`--splits test-v2`), its
+results go to `<results>/sealed/`, runner/log/console output for it shows only point id, status and elapsed time, and
+it is read only by `python -m benchmarks evaluate <dir> --final --reason "..."` (logged in the "Test-split access log"
+in docs/PROGRESS.md). Never print, plot or paste sealed values anywhere; never edit `split.json` (create a new
+version with a new sealed group instead); never read `sealed/` directly. Run test-v2 only once models are frozen.
 
 ### Commit message style
 - First line: imperative, ~50 chars. Example: "Add Tier 0 estimator for DataFrame.sum()"

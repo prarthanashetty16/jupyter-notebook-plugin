@@ -1,64 +1,105 @@
 {
-  "version": 1,
-  "frozen": "2026-11-16",
-  "rule": "dev = cases present in committed reports under docs/benchmarks; test = all other cases (never measured or evaluated before the freeze)",
-  "meta": {
-    "n_dev": 29,
-    "n_test": 18
-  },
-  "dev": [
-    "astype/float_to_float32",
-    "astype/int_to_float64",
-    "astype/int_to_str",
-    "astype/str_to_category_highcard",
-    "astype/str_to_category_lowcard",
-    "concat/mixed",
-    "concat/numeric",
-    "drop_duplicates/mixed_dup0",
-    "drop_duplicates/mixed_dup50",
-    "drop_duplicates/numeric_dup50",
-    "drop_duplicates/strings_dup50",
-    "drop_duplicates/subset_s0_lowcard",
-    "groupby/int_sum_numeric",
-    "groupby/str_highcard_sum_f0",
-    "groupby/str_lowcard_sum_f0",
-    "matmul/square_f64",
-    "merge/inner_1to1",
-    "merge/inner_fanout3",
-    "merge/inner_manymany",
-    "merge/inner_overlap10",
-    "merge/left_1to1",
-    "np_sort/random",
-    "np_sort/sorted",
-    "read_csv/mixed",
-    "read_csv/numeric",
-    "read_csv/strings",
-    "sort_values/by_int",
-    "sort_values/by_int_float",
-    "sort_values/by_str"
+  "version": 2,
+  "frozen": "2026-11-17",
+  "rule": "dev = cases examined in Phases 3/3b; exposed-v1 = the version-1 test split, whose values were printed to console/run.log (development use only, never final claims); test-v2 = new sealed configurations, never run or evaluated",
+  "history": [
+    {
+      "version": 1,
+      "frozen": "2026-11-16",
+      "event": "frozen: dev = seen cases, test = unseen cases",
+      "sha256": {
+        "dev": "0031cc05cb818a6c8fbc336550f50e860d1665bf52d59c023ecaa5976621a36b",
+        "test": "60afd8697647c316778b9d0b3fd3a42b39ebde1c8549d47a6bc893a569d55b01"
+      }
+    },
+    {
+      "version": 2,
+      "frozen": "2026-11-17",
+      "event": "test-v2 created after the exposure of the version-1 test split (console/run.log printed its values)"
+    }
   ],
-  "test": [
-    "astype/datetime_to_str",
-    "astype/int_to_int32",
-    "astype/str_to_category_zipf",
-    "concat/realistic_nulls",
-    "concat/three_frames",
-    "drop_duplicates/realistic_nulls_dup30",
-    "drop_duplicates/subset_i0_s0_lowcard",
-    "groupby/cat_key_zipf_sum",
-    "groupby/two_keys_mean_realistic",
-    "matmul/rect_f64",
-    "merge/outer_overlap50_realistic",
-    "merge/right_fanout4_strings",
-    "np_sort/float32_random",
-    "np_sort/reverse",
-    "read_csv/realistic_nulls",
-    "read_csv/wide_numeric",
-    "sort_values/by_datetime",
-    "sort_values/by_str_desc_nulls"
-  ],
-  "sha256": {
-    "dev": "0031cc05cb818a6c8fbc336550f50e860d1665bf52d59c023ecaa5976621a36b",
-    "test": "60afd8697647c316778b9d0b3fd3a42b39ebde1c8549d47a6bc893a569d55b01"
+  "groups": {
+    "dev": {
+      "cases": [
+        "astype/float_to_float32",
+        "astype/int_to_float64",
+        "astype/int_to_str",
+        "astype/str_to_category_highcard",
+        "astype/str_to_category_lowcard",
+        "concat/mixed",
+        "concat/numeric",
+        "drop_duplicates/mixed_dup0",
+        "drop_duplicates/mixed_dup50",
+        "drop_duplicates/numeric_dup50",
+        "drop_duplicates/strings_dup50",
+        "drop_duplicates/subset_s0_lowcard",
+        "groupby/int_sum_numeric",
+        "groupby/str_highcard_sum_f0",
+        "groupby/str_lowcard_sum_f0",
+        "matmul/square_f64",
+        "merge/inner_1to1",
+        "merge/inner_fanout3",
+        "merge/inner_manymany",
+        "merge/inner_overlap10",
+        "merge/left_1to1",
+        "np_sort/random",
+        "np_sort/sorted",
+        "read_csv/mixed",
+        "read_csv/numeric",
+        "read_csv/strings",
+        "sort_values/by_int",
+        "sort_values/by_int_float",
+        "sort_values/by_str"
+      ],
+      "sha256": "0031cc05cb818a6c8fbc336550f50e860d1665bf52d59c023ecaa5976621a36b",
+      "status": "development"
+    },
+    "exposed-v1": {
+      "cases": [
+        "astype/datetime_to_str",
+        "astype/int_to_int32",
+        "astype/str_to_category_zipf",
+        "concat/realistic_nulls",
+        "concat/three_frames",
+        "drop_duplicates/realistic_nulls_dup30",
+        "drop_duplicates/subset_i0_s0_lowcard",
+        "groupby/cat_key_zipf_sum",
+        "groupby/two_keys_mean_realistic",
+        "matmul/rect_f64",
+        "merge/outer_overlap50_realistic",
+        "merge/right_fanout4_strings",
+        "np_sort/float32_random",
+        "np_sort/reverse",
+        "read_csv/realistic_nulls",
+        "read_csv/wide_numeric",
+        "sort_values/by_datetime",
+        "sort_values/by_str_desc_nulls"
+      ],
+      "sha256": "60afd8697647c316778b9d0b3fd3a42b39ebde1c8549d47a6bc893a569d55b01",
+      "status": "exposed: development and diagnosis only, never final claims"
+    },
+    "test-v2": {
+      "cases": [
+        "v2/astype/float_to_int64",
+        "v2/astype/int_to_category_lowcard",
+        "v2/concat/five_small_frames",
+        "v2/concat/unequal_variable_strings",
+        "v2/drop_duplicates/clustered_nulls_varstr_dup60",
+        "v2/drop_duplicates/subset_f0_d0_wide_floats",
+        "v2/groupby/int_key_heavy_zipf_mean",
+        "v2/groupby/two_str_keys_multi_agg",
+        "v2/matmul/tall_skinny",
+        "v2/merge/big_right_low_overlap",
+        "v2/merge/zipf_right_left_join",
+        "v2/np_sort/int64_few_unique",
+        "v2/np_sort/nearly_sorted",
+        "v2/read_csv/category_heavy_dates",
+        "v2/read_csv/variable_strings_clustered_nulls",
+        "v2/sort_values/block_sorted_int",
+        "v2/sort_values/multikey_str_float_desc"
+      ],
+      "sha256": "597a5180924bcc484564337492775f171b7d600d3624ac7af90cbe98f7f1d296",
+      "status": "sealed"
+    }
   }
 }

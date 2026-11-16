@@ -29,9 +29,13 @@ import numpy as np
 import pandas as pd
 
 from benchmarks.split import (
+    DEV,
+    EXPOSED,
     PROGRESS_PATH,
     SEALED_DIR,
+    TEST,
     SealedAccessError,
+    group_of,
     load_split,
     open_test_split,
     require_token,
@@ -125,21 +129,23 @@ def _read_split(directory: Path, floors: Floors) -> pd.DataFrame:
 
 
 def load_joined(results_dir: Path, floors: Floors | None = None) -> pd.DataFrame:
-    """DEV-split rows only: one row per (grid point, tier); tier NaN if no prediction ran.
+    """DEVELOPMENT rows (groups ``dev`` and ``exposed-v1``), tagged in the ``split`` column.
 
-    Reads ``actuals.csv``/``predictions.csv`` (never ``sealed/``) and refuses data containing a
-    test-split case, so tuning/calibration/notebook code built on this cannot see the test split.
+    One row per (grid point, tier); tier NaN if no prediction ran. Reads ``actuals.csv`` and
+    ``predictions.csv`` only (never ``sealed/``) and refuses data containing a sealed test-v2
+    case, so tuning/calibration/notebook code built on this cannot see the sealed split.
+    ``exposed-v1`` rows are for development and diagnosis, never for final claims.
     """
     df = _read_split(results_dir, floors or Floors())
-    test = load_split().test
-    leaked = sorted(set(df["case"]) & test)
+    df["split"] = df["case"].map(group_of)
+    leaked = sorted(set(df.loc[df["split"] == TEST, "case"]))
     if leaked:
-        raise SealedAccessError(f"test-split cases found in the dev results files: {leaked}")
+        raise SealedAccessError(f"sealed test-v2 cases found in the development files: {leaked}")
     return df
 
 
 def load_sealed(results_dir: Path, floors: Floors | None, token: object) -> pd.DataFrame:
-    """TEST-split rows. Only reachable with the token from ``open_test_split`` (evaluate --final)."""
+    """SEALED test-v2 rows. Only reachable with the token from ``open_test_split``."""
     require_token(token)
     directory = results_dir / SEALED_DIR
     if not (directory / "actuals.csv").exists():
@@ -147,7 +153,8 @@ def load_sealed(results_dir: Path, floors: Floors | None, token: object) -> pd.D
     df = _read_split(directory, floors or Floors())
     wrong = sorted(set(df["case"]) - load_split().test)
     if wrong:
-        raise SealedAccessError(f"non-test cases found in the sealed files: {wrong}")
+        raise SealedAccessError(f"non-test-v2 cases found in the sealed files: {wrong}")
+    df["split"] = TEST
     return df
 
 
@@ -517,19 +524,25 @@ def _sealed_count(results_dir: Path) -> int:
     return len(pd.read_csv(path, dtype=str, usecols=["point_id"]).drop_duplicates())
 
 
+EXPOSED_HEADING = "## Exposed-v1 split (development and diagnosis only; never final claims)"
+
+
 def write_report(
     results_dir: Path, tiers: list[int] | None = None, floors: Floors | None = None
 ) -> Path:
-    """Dev-split report. The test split is sealed: only its point count is shown."""
+    """Development report: ``dev`` and ``exposed-v1`` sections. test-v2 is sealed (count only)."""
     floors = floors or Floors()
     df = load_joined(results_dir, floors)
-    lines = _header(_meta(results_dir), floors, results_dir, "NEXUS benchmark report (dev split)")
-    lines += _report_lines(df, results_dir, floors, tiers, "", "## Dev split")
-    lines.append("\n## Test split (sealed)\n")
+    lines = _header(_meta(results_dir), floors, results_dir, "NEXUS benchmark report (development)")
+    dev, exposed = df[df["split"] == DEV], df[df["split"] == EXPOSED]
+    lines += _report_lines(dev, results_dir, floors, tiers, "", "## Dev split")
+    if not exposed.empty:
+        lines += _report_lines(exposed, results_dir, floors, tiers, "_exposed", EXPOSED_HEADING)
+    lines.append("\n## Test-v2 split (sealed)\n")
     lines.append(
-        f"{_sealed_count(results_dir)} test points measured. Test-split results are not shown "
-        "here: they are evaluated only by `python -m benchmarks evaluate <dir> --final --reason "
-        '"..."`, which logs every use in docs/PROGRESS.md.\n'
+        f"{_sealed_count(results_dir)} test-v2 points measured. Their values are not shown here: "
+        'they are evaluated only by `python -m benchmarks evaluate <dir> --final --reason "..."`, '
+        "which logs every use in docs/PROGRESS.md.\n"
     )
     lines.append("\n## Measurement caveats\n")
     lines.append(CAVEATS)
@@ -547,7 +560,7 @@ def write_final_report(
     floors: Floors | None = None,
     progress_path: Path | None = None,
 ) -> Path:
-    """Dev and test results side by side (separate sections). Logs the access first."""
+    """dev, exposed-v1 and test-v2 in separate sections. Logs the sealed access first."""
     floors = floors or Floors()
     token = open_test_split(
         reason,
@@ -556,12 +569,19 @@ def write_final_report(
         n_points=_sealed_count(results_dir),
         progress_path=progress_path or PROGRESS_PATH,
     )
-    dev = load_joined(results_dir, floors)
+    df = load_joined(results_dir, floors)
     test = load_sealed(results_dir, floors, token)
-    lines = _header(_meta(results_dir), floors, results_dir, "NEXUS FINAL report (dev + test)")
-    lines.append(f"Test split opened {token.timestamp}; reason: {token.reason}\n")
+    dev, exposed = df[df["split"] == DEV], df[df["split"] == EXPOSED]
+    lines = _header(_meta(results_dir), floors, results_dir, "NEXUS FINAL report")
+    lines.append(f"Test-v2 opened {token.timestamp}; reason: {token.reason}\n")
     lines += _report_lines(dev, results_dir, floors, tiers, "_final_dev", "## Dev split")
-    lines += _report_lines(test, results_dir, floors, tiers, "_final_test", "## Test split")
+    if not exposed.empty:
+        heading = EXPOSED_HEADING.replace("never final claims", "not evidence for claims")
+        lines += _report_lines(exposed, results_dir, floors, tiers, "_final_exposed", heading)
+    if test.empty:
+        lines.append("\n## Test-v2 split\n\nno test-v2 points measured.\n")
+    else:
+        lines += _report_lines(test, results_dir, floors, tiers, "_final_test", "## Test-v2 split")
     lines.append("\n## Measurement caveats\n")
     lines.append(CAVEATS)
     report = results_dir / "final_report.md"

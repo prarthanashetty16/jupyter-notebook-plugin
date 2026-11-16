@@ -19,7 +19,7 @@ import numpy as np
 
 from benchmarks import store
 from benchmarks.datasets import DatasetConfig, estimate_frame_bytes, make_frame, make_join_pair
-from benchmarks.split import load_split
+from benchmarks.split import GROUPS, load_split
 
 BASE = DatasetConfig(n_rows=1, n_int=2, n_float=2, n_object=2, n_category=1, n_datetime=1)
 NP_SORT_SIZES = (5_000_000, 10_000_000, 30_000_000, 100_000_000)
@@ -77,10 +77,29 @@ class JoinInput(_Stored):
     right_rows: int
     overlap: float = 1.0
     fanout: float = 1.0
+    right_key_dist: str = "uniform"  # "zipf": skewed fan-out over the right keys
+    right_seed: int = 1
+
+    def __repr__(self) -> str:
+        """Omit the newer knobs at their defaults so existing cache keys stay valid."""
+        extra = ""
+        if self.right_key_dist != "uniform":
+            extra += f", right_key_dist={self.right_key_dist!r}"
+        if self.right_seed != 1:
+            extra += f", right_seed={self.right_seed!r}"
+        return (
+            f"JoinInput(left={self.left!r}, right_rows={self.right_rows!r}, "
+            f"overlap={self.overlap!r}, fanout={self.fanout!r}{extra})"
+        )
 
     def generate(self) -> dict[str, Any]:
         left, right = make_join_pair(
-            self.left, self.right_rows, overlap=self.overlap, fanout=self.fanout
+            self.left,
+            self.right_rows,
+            overlap=self.overlap,
+            fanout=self.fanout,
+            seed=self.right_seed,
+            right_key_dist=self.right_key_dist,
         )
         return {"df": left, "right": right}
 
@@ -93,7 +112,7 @@ class JoinInput(_Stored):
 
 @dataclass(frozen=True)
 class ArrayInput(_Stored):
-    """A 1-D/2-D array bound to ``var``: pattern 'random', 'sorted' or 'reverse'."""
+    """A 1-D/2-D array bound to ``var``: random, sorted, reverse, nearly_sorted or few_unique."""
 
     shape: tuple[int, ...]
     var: str = "a"
@@ -108,6 +127,13 @@ class ArrayInput(_Stored):
             arr = np.arange(size, dtype=np.float64)
         elif self.pattern == "reverse":
             arr = np.arange(size, 0, -1, dtype=np.float64)
+        elif self.pattern == "nearly_sorted":  # sorted, then ~1% of positions swapped at random
+            arr = np.arange(size, dtype=np.float64)
+            k = max(1, size // 100)
+            i, j = rng.integers(0, size, k), rng.integers(0, size, k)
+            arr[i], arr[j] = arr[j].copy(), arr[i].copy()
+        elif self.pattern == "few_unique":  # 1000 distinct values, random order
+            arr = rng.integers(0, 1000, size).astype(np.float64)
         else:
             arr = rng.random(size)
         return {self.var: arr.astype(self.dtype).reshape(self.shape)}
@@ -184,11 +210,34 @@ def _frame(n: int, **kw: Any) -> tuple[InputSpec, ...]:
     return (FrameInput(BASE.with_(n_rows=n, **kw)),)
 
 
-def _join(n: int, overlap: float = 1.0, fanout: float = 1.0, **kw: Any) -> tuple[InputSpec, ...]:
+def _join(
+    n: int,
+    overlap: float = 1.0,
+    fanout: float = 1.0,
+    right_ratio: float = 0.5,
+    right_key_dist: str = "uniform",
+    right_seed: int = 1,
+    **kw: Any,
+) -> tuple[InputSpec, ...]:
     return (
         JoinInput(
-            BASE.with_(n_rows=n, **kw), right_rows=max(1, n // 2), overlap=overlap, fanout=fanout
+            BASE.with_(n_rows=n, **kw),
+            right_rows=max(1, int(n * right_ratio)),
+            overlap=overlap,
+            fanout=fanout,
+            right_key_dist=right_key_dist,
+            right_seed=right_seed,
         ),
+    )
+
+
+def _concat_parts(
+    n: int, fractions: tuple[float, ...], seeds: tuple[int, ...], **kw: Any
+) -> tuple[InputSpec, ...]:
+    names = ["df"] + [f"df{i}" for i in range(2, len(fractions) + 1)]
+    return tuple(
+        FrameInput(BASE.with_(n_rows=max(1, int(n * f)), seed=s, **kw), v)
+        for f, s, v in zip(fractions, seeds, names, strict=True)
     )
 
 
@@ -524,6 +573,244 @@ def _cases() -> list[Case]:
             full_sizes=NP_SORT_SIZES,
         )
     )
+    # ---- test-v2: fresh sealed configurations (new generators/parameters/seeds >= 100) ----
+    vs = {"str_len_dist": "variable", "null_pattern": "clustered"}
+    add(
+        Case(
+            "v2/drop_duplicates/clustered_nulls_varstr_dup60",
+            "drop_duplicates",
+            "df.drop_duplicates()",
+            lambda n: _frame(
+                n,
+                dup_rate=0.6,
+                cardinality=0.07,
+                null_rate=0.15,
+                str_len=10,
+                n_int=1,
+                n_float=1,
+                n_object=3,
+                n_category=0,
+                n_datetime=2,
+                seed=101,
+                **vs,
+            ),
+            3.0,
+            meta=vs,
+        )
+    )
+    add(
+        Case(
+            "v2/drop_duplicates/subset_f0_d0_wide_floats",
+            "drop_duplicates",
+            'df.drop_duplicates(subset=["f0", "d0"])',
+            lambda n: _frame(
+                n,
+                n_float=8,
+                n_int=1,
+                n_object=1,
+                n_category=0,
+                n_datetime=1,
+                dup_rate=0.4,
+                seed=102,
+            ),
+            3.0,
+        )
+    )
+    add(
+        Case(
+            "v2/merge/zipf_right_left_join",
+            "merge",
+            'df.merge(right, on="k", how="left")',
+            lambda n: _join(
+                n,
+                overlap=0.8,
+                fanout=5.0,
+                right_ratio=0.25,
+                right_key_dist="zipf",
+                right_seed=1103,
+                cardinality=0.3,
+                distribution="real_like",
+                zipf_exponent=1.8,
+                seed=103,
+            ),
+            5.0,
+        )
+    )
+    add(
+        Case(
+            "v2/merge/big_right_low_overlap",
+            "merge",
+            'df.merge(right, on="k", how="inner")',
+            lambda n: _join(
+                n,
+                overlap=0.3,
+                fanout=1.5,
+                right_ratio=1.5,
+                right_seed=1104,
+                str_len_dist="variable",
+                str_len=14,
+                seed=104,
+            ),
+            5.0,
+        )
+    )
+    add(
+        Case(
+            "v2/groupby/two_str_keys_multi_agg",
+            "groupby",
+            'df.groupby(["s0", "s1"])[["f0", "f1"]].sum()',
+            lambda n: _frame(
+                n, n_object=3, cardinality=300, str_len=9, str_len_dist="variable", seed=105
+            ),
+            3.0,
+        )
+    )
+    add(
+        Case(
+            "v2/groupby/int_key_heavy_zipf_mean",
+            "groupby",
+            'df.groupby("i0")["f0"].mean()',
+            lambda n: _frame(
+                n, cardinality=5000, distribution="real_like", zipf_exponent=1.8, seed=106
+            ),
+            3.0,
+        )
+    )
+    add(
+        Case(
+            "v2/sort_values/block_sorted_int",
+            "sort_values",
+            'df.sort_values("i0")',
+            lambda n: _frame(n, ordering="block_sorted", cardinality=0.3, seed=107),
+            3.0,
+        )
+    )
+    add(
+        Case(
+            "v2/sort_values/multikey_str_float_desc",
+            "sort_values",
+            'df.sort_values(["s0", "f0"], ascending=[True, False])',
+            lambda n: _frame(n, str_len=11, null_rate=0.05, cardinality=0.25, seed=108, **vs),
+            3.0,
+        )
+    )
+    add(
+        Case(
+            "v2/read_csv/variable_strings_clustered_nulls",
+            "pandas.read_csv",
+            "pd.read_csv({csv!r})",
+            lambda n: (
+                CsvInput(
+                    BASE.with_(
+                        n_rows=n,
+                        n_object=3,
+                        str_len=14,
+                        null_rate=0.1,
+                        cardinality=0.3,
+                        seed=109,
+                        **vs,
+                    )
+                ),
+            ),
+            4.0,
+            max_size=3_000_000,
+        )
+    )
+    add(
+        Case(
+            "v2/read_csv/category_heavy_dates",
+            "pandas.read_csv",
+            "pd.read_csv({csv!r})",
+            lambda n: (
+                CsvInput(
+                    BASE.with_(
+                        n_rows=n,
+                        n_int=1,
+                        n_float=1,
+                        n_object=0,
+                        n_category=4,
+                        n_datetime=3,
+                        cardinality=0.02,
+                        seed=110,
+                    )
+                ),
+            ),
+            4.0,
+            max_size=3_000_000,
+        )
+    )
+    add(
+        Case(
+            "v2/astype/int_to_category_lowcard",
+            "astype",
+            'df["i0"].astype("category")',
+            lambda n: _frame(n, cardinality=50, seed=111),
+            3.0,
+        )
+    )
+    add(
+        Case(
+            "v2/astype/float_to_int64",
+            "astype",
+            'df["f0"].astype("int64")',
+            lambda n: _frame(n, distribution="real_like", seed=112),
+            3.0,
+        )
+    )
+    add(
+        Case(
+            "v2/concat/unequal_variable_strings",
+            "pandas.concat",
+            "pd.concat([df, df2], ignore_index=True)",
+            lambda n: _concat_parts(n, (0.7, 0.3), (113, 114), str_len=12, str_len_dist="variable"),
+            3.0,
+        )
+    )
+    add(
+        Case(
+            "v2/concat/five_small_frames",
+            "pandas.concat",
+            "pd.concat([df, df2, df3, df4, df5])",
+            lambda n: _concat_parts(
+                n, (0.2,) * 5, (115, 116, 117, 118, 119), null_rate=0.03, null_pattern="clustered"
+            ),
+            3.0,
+        )
+    )
+    add(
+        Case(
+            "v2/matmul/tall_skinny",
+            "operator.matmul",
+            "a @ b",
+            lambda d: (
+                ArrayInput((2 * d, d // 4), "a", seed=120),
+                ArrayInput((d // 4, d), "b", seed=121),
+            ),
+            4.0,
+            size_kind="dim",
+            full_sizes=MATMUL_FULL_DIMS,
+        )
+    )
+    add(
+        Case(
+            "v2/np_sort/nearly_sorted",
+            "numpy.sort",
+            "np.sort(a)",
+            lambda n: (ArrayInput((n,), pattern="nearly_sorted", seed=122),),
+            3.0,
+            full_sizes=NP_SORT_SIZES,
+        )
+    )
+    add(
+        Case(
+            "v2/np_sort/int64_few_unique",
+            "numpy.sort",
+            "np.sort(a)",
+            lambda n: (ArrayInput((n,), pattern="few_unique", dtype="int64", seed=123),),
+            3.0,
+            full_sizes=NP_SORT_SIZES,
+        )
+    )
     return c
 
 
@@ -556,10 +843,12 @@ def build_grid(
     suite: str = "small",
     *,
     ops: set[str] | None = None,
-    splits: tuple[str, ...] = ("dev", "test"),
+    splits: tuple[str, ...] = ("dev", "exposed-v1"),
     max_size: int | None = None,
 ) -> list[GridPoint]:
-    """All grid points of ``suite``, dev split first, then test.
+    """All grid points of ``suite`` in the requested groups (dev first, then exposed-v1, test-v2).
+
+    The sealed ``test-v2`` group is opt-in: it is never part of the default selection.
 
     ``ops`` keeps cases whose op or case-group name is in it; ``max_size`` drops larger points.
     """
@@ -595,4 +884,4 @@ def build_grid(
                     split=which,
                 )
             )
-    return sorted(points, key=lambda pt: pt.split != "dev")  # stable: dev first, then test
+    return sorted(points, key=lambda pt: GROUPS.index(pt.split))  # stable group order

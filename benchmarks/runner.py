@@ -27,7 +27,7 @@ import pandas as pd
 import psutil
 
 from benchmarks import workers
-from benchmarks.split import SEALED_DIR
+from benchmarks.split import DEV, EXPOSED, SEALED_DIR, SEALED_GROUPS, TEST
 from benchmarks.suite import CsvInput, GridPoint, build_grid
 from nexus.calibrate import ensure_profile
 from nexus.machine import MachineProfile
@@ -46,6 +46,7 @@ INSTRUMENT = "os-peak-v2"
 ENV_FIELDS = [
     "instrument", "python", "pandas", "numpy", "pyarrow", "pandas_str_default", "text_dtype",
     "os", "cpu", "cpu_count", "cpu_max_mhz", "total_ram", "git_commit",
+    "read_csv_engine", "read_csv_text_dtype",
 ]  # fmt: skip
 ACTUAL_FIELDS = [
     "point_id", "suite", "case", "op", "size", "source", "status", "error", "repeats_ok",
@@ -63,6 +64,21 @@ PREDICTION_FIELDS = [
 SKIPPED_CAP = "skipped_cap"
 
 
+def read_csv_defaults() -> tuple[str, str]:
+    """(parser class, text dtype) that a plain ``pd.read_csv(path)`` uses in this environment.
+
+    ``CParserWrapper`` is the default C engine; ``ArrowParserWrapper`` would mean pyarrow.
+    """
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "probe.csv"
+        path.write_text("a,s\n1,x\n2,y\n", encoding="utf-8")
+        with pd.read_csv(path, iterator=True) as reader:
+            engine = type(reader._engine).__name__
+        return engine, str(pd.read_csv(path)["s"].dtype)
+
+
 def env_info() -> dict[str, Any]:
     """Library versions, string dtype and hardware, recorded in every result row."""
     try:
@@ -78,6 +94,7 @@ def env_info() -> dict[str, Any]:
     except Exception:
         commit = ""
     freq = psutil.cpu_freq()
+    engine, text_dtype = read_csv_defaults()
     return {
         "instrument": INSTRUMENT,
         "python": platform.python_version(),
@@ -92,6 +109,8 @@ def env_info() -> dict[str, Any]:
         "cpu_max_mhz": round(freq.max) if freq else "",
         "total_ram": psutil.virtual_memory().total,
         "git_commit": commit,
+        "read_csv_engine": engine,
+        "read_csv_text_dtype": text_dtype,
     }
 
 
@@ -244,21 +263,40 @@ def _summary(m: Measurement) -> str:
 
 
 class Stores:
-    """Dev results in ``out/``; test-split results in ``out/sealed/`` (never read by dev tools)."""
+    """dev and exposed-v1 results in ``out/``; sealed test-v2 results in ``out/sealed/``.
+
+    Development tooling reads only ``out/actuals.csv`` and ``out/predictions.csv``.
+    """
 
     def __init__(self, out: Path) -> None:
         (out / SEALED_DIR).mkdir(parents=True, exist_ok=True)
         sealed = out / SEALED_DIR
+        main_actuals = ResultStore(out / "actuals.csv", ACTUAL_FIELDS, ("point_id",))
+        main_preds = ResultStore(out / "predictions.csv", PREDICTION_FIELDS, ("point_id", "tier"))
         self.actuals = {
-            "dev": ResultStore(out / "actuals.csv", ACTUAL_FIELDS, ("point_id",)),
-            "test": ResultStore(sealed / "actuals.csv", ACTUAL_FIELDS, ("point_id",)),
+            DEV: main_actuals,
+            EXPOSED: main_actuals,
+            TEST: ResultStore(sealed / "actuals.csv", ACTUAL_FIELDS, ("point_id",)),
         }
         self.preds = {
-            "dev": ResultStore(out / "predictions.csv", PREDICTION_FIELDS, ("point_id", "tier")),
-            "test": ResultStore(
-                sealed / "predictions.csv", PREDICTION_FIELDS, ("point_id", "tier")
-            ),
+            DEV: main_preds,
+            EXPOSED: main_preds,
+            TEST: ResultStore(sealed / "predictions.csv", PREDICTION_FIELDS, ("point_id", "tier")),
         }
+
+
+def log_point(
+    point: GridPoint, prefix: str, status: str, detail: str, point_s: float, total_s: float
+) -> None:
+    """One log line per point.
+
+    Points of a sealed split log ONLY the point id, status and elapsed time: no measured or
+    predicted value, no censoring or classification detail, no exception text.
+    """
+    if point.split in SEALED_GROUPS:
+        log.info("%s: %s [%.0fs]", prefix, status, point_s)
+    else:
+        log.info("%s: %s%s  [%.0fs elapsed]", prefix, status, detail, total_s)
 
 
 def write_progress(out: Path, state: dict[str, Any]) -> None:
@@ -275,7 +313,7 @@ def _point_line(point: GridPoint, prow: dict[str, Any], tier: int) -> str:
     return f" | tier{tier} no estimate ({prow['status']})"
 
 
-def run_suite(cfg: RunConfig, points: Iterable[GridPoint] | None = None) -> tuple[Path, Path]:
+def run_suite(cfg: RunConfig, points: Iterable[GridPoint] | None = None) -> tuple[Path, Path]:  # noqa: C901
     """Run (or resume) a suite; returns the paths of the dev actuals.csv and predictions.csv.
 
     Re-running the same command resumes: finished actuals are kept and only missing predictions
@@ -359,21 +397,25 @@ def run_suite(cfg: RunConfig, points: Iterable[GridPoint] | None = None) -> tupl
                     row, m = run_actual(point, cfg.suite, source, cache_dir, cap, env)
                     actuals.add(row)
                     counts["measured"] += 1
-                    line = f"{prefix}: {row['status']} {_summary(m)}"
+                    status, detail = row["status"], " " + _summary(m)
                 else:  # actual already measured: only the missing predictions run
                     _prepare(point, cache_dir)
                     source = previous["source"]
-                    line = f"{prefix}: actual kept ({previous['status']})"
+                    status, detail = f"actual kept ({previous['status']})", ""
                 for tier in missing:
                     prow = run_prediction(point, tier, source, cache_dir, cap, env)
                     preds.add(prow)
-                    line += _point_line(point, prow, tier)
+                    detail += _point_line(point, prow, tier)
                 session_times.append(time.monotonic() - t_point)
                 publish(i, None)
-                log.info("%s  [%.0fs elapsed]", line, time.monotonic() - t_start)
-            except Exception:
+                now = time.monotonic()
+                log_point(point, prefix, status, detail, now - t_point, now - t_start)
+            except Exception as exc:
                 counts["errors"] += 1
-                log.exception("%s: harness error (point skipped, will retry on resume)", prefix)
+                if point.split in SEALED_GROUPS:  # no traceback/message: could carry values
+                    log.error("%s: harness error (%s)", prefix, type(exc).__name__)
+                else:
+                    log.exception("%s: harness error (point skipped, will retry on resume)", prefix)
     except KeyboardInterrupt:
         publish(i, None, "interrupted")
         log.warning("interrupted: finished points are saved; re-run the same command to resume")

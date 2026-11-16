@@ -265,6 +265,8 @@ max 14.9 ms of the 250 ms budget).
 
 ## Phase 3c: full baseline preparation, dev/test split, cross-platform check
 
+> **Superseded in part by Phase 3d:** the 18 "test" cases described here are now the *exposed-v1* group (their values were printed to the console and run.log); the sealed split is `test-v2`.
+
 No estimator model or prior was changed in this phase. Only the calibration *primitives* (item 4) changed.
 
 ### Dev/test split (frozen, `benchmarks/split.json`)
@@ -285,7 +287,7 @@ No estimator model or prior was changed in this phase. Only the calibration *pri
   `load_joined` refuses dev files containing a test case. The normal report shows only the *count* of test
   points measured. The test split is read only by
   `python -m benchmarks evaluate <dir> --final --reason "..."`, which requires a reason, logs every use in
-  the **Test-split access log** at the end of this file, and writes `final_report.md` with dev and test
+  the **Test-split access log** section of this file, and writes `final_report.md` with dev and test
   results in separate sections. A test scans the source tree and fails if other modules reference the sealed
   area, and checks `nexus.calibrate` never imports benchmark code. Limitation: this is procedural; the sealed
   CSVs are plain files and anyone can open them.
@@ -350,4 +352,133 @@ compression affecting RSS) is untested.
 ## Test-split access log
 
 Every use of the sealed test split is recorded here by `evaluate --final` (timestamp, git commit, results
-directory, number of test points, reason, command). Entries are appended below; none so far.
+directory, number of test points, reason, command). Entries are appended below. The first records an exposure of the version-1 test split (not a final evaluation); there has been no `evaluate --final` access to `test-v2`.
+- 2026-11-17 | EXPOSURE (not an `evaluate --final` access) | split version 1, test group (18 cases, 52 points, full suite, `--max-size 10000000`) | what: measured peak RAM and time, censoring/classification detail and Tier 0 predicted RAM and time for those points were printed to the console and written to `benchmarks/results/full/run.log` | how: `run_suite` logged one detailed line per point for every split; only the CSV files had been separated into `sealed/`, the log path was missed | reported by the project owner | consequence: group renamed `exposed-v1` (development and diagnosis only, never final claims), replaced by the new sealed `test-v2` (17 cases); runner now logs id/status/elapsed only for sealed groups | NOT scrubbed yet: the run.log was not present in this workspace; run `python -m benchmarks.maintenance scrub-logs benchmarks/results/full`
+
+## Phase 3d: test-split integrity repair and baseline diagnosis
+
+No estimator model or constant was changed in this phase.
+
+### Exposure of the version-1 test split (what happened and what was done)
+- **What was exposed.** During the first full run (Phase 3c commands), the runner printed, to the console and
+  to `benchmarks/results/full/run.log`, one detailed line per point for *every* split: measured peak RAM and
+  time, the censoring/classification detail, and the Tier 0 predicted RAM and time. That included the 52 points
+  of the 18 version-1 test cases. Reported by the project owner after the run.
+- **How.** Phase 3c separated only the result *files* (`sealed/`); the console/log path was not covered by the
+  guard and nobody checked it. The guard tests covered CSVs, reports and imports, not log output.
+- **Consequence.** The version-1 test group is renamed **`exposed-v1`**: it may be used for development and
+  diagnosis but **never for final claims**. A fresh sealed group, **`test-v2`**, replaces it (below). The
+  exposure is recorded in the access log at the end of this file.
+- **Runner fix.** For any sealed group the runner now logs only `[i/N] <point id>: <status> [<elapsed>s]`
+  (no predictions, actuals, censoring or classification detail), and on a harness error only the exception
+  *type* (no message, no traceback). Regression tests assert the exact line format and that non-sealed groups
+  still log values. `status`, `progress.json` and the normal report already showed only ids/counts.
+- **Scrub tooling.** `python -m benchmarks.maintenance scrub-logs <dir>` rewrites every log line naming an
+  exposed-v1 or test-v2 point down to timestamp, index, id, status and elapsed time (idempotent, tested);
+  `migrate-exposed <dir>` moves the exposed-v1 rows from `sealed/` into the development files with
+  `split=exposed-v1` (tested).
+- **NOT done: the existing `run.log` could not be scrubbed and the full-run results could not be analysed.**
+  `benchmarks/results/full/` (and its `run.log`) does not exist in this workspace: the full run's output is not
+  on this machine's copy of the repo, and no other copy was found. Both scrubbing and `docs/benchmarks/full-v3/`
+  need that directory. Run these where the results are (or copy the directory to `benchmarks/results/full`):
+  `python -m benchmarks.maintenance migrate-exposed benchmarks/results/full`, then
+  `python -m benchmarks.maintenance scrub-logs benchmarks/results/full` (also scrub any saved terminal output
+  or pasted copies yourself; the tool only knows `*.log` files), then
+  `python -m benchmarks.diagnose benchmarks/results/full --out docs/benchmarks/full-v3`.
+
+### Split version 2 (`benchmarks/split.json`, frozen 2026-11-17, digests per group, history kept)
+| group | cases | status |
+|---|---|---|
+| `dev` | 29 | examined in Phases 3/3b |
+| `exposed-v1` | 18 | the old sealed split; values were printed; development/diagnosis only |
+| `test-v2` | 17 | **sealed**, never run or evaluated |
+
+- `test-v2` cases are named `v2/...`, cover all 9 operations (2 configurations each, 1 for matmul), and differ
+  from every dev and exposed-v1 configuration: tests assert (a) no input configuration is equal (compared
+  independent of row count), (b) no random seed is shared (v2 seeds are 101-123 and 1103/1104), (c) at least 10
+  cases use generator options no dev or exposed case uses, and (d) none appears in a committed report.
+- New generator options (defaults reproduce every earlier dataset **bit for bit**, regression-tested with
+  portable content hashes): `zipf_exponent` (heavier skew, 1.8), `null_pattern="clustered"` (nulls in runs of
+  ~64 rows), `str_len_dist="variable"` (lognormal string lengths 3..4x), `ordering="block_sorted"` (sorted within
+  4096-row blocks), zipfian right-key fan-out in joins, `nearly_sorted` and `few_unique` (int64) arrays. Join
+  shapes: right smaller (0.25x, skewed fan-out, left join) and right larger (1.5x, 30% overlap). Also new:
+  composite string keys with variable lengths, five-frame and unequal-frame concat with `ignore_index`, a
+  tall-skinny matmul, categorical-heavy and datetime-heavy CSVs, `int -> category` and `float -> int64` casts.
+- Guard unchanged in spirit: only `evaluate --final` reads `test-v2`; development loaders return `dev` and
+  `exposed-v1` rows only and refuse a `test-v2` case; reports label exposed-v1 as "development and diagnosis
+  only". **`test-v2` is opt-in**: the default `--splits` is `dev,exposed-v1`, so no ordinary run measures it.
+- Do not run `test-v2` until the models/constants are frozen for the claim.
+  To run it later (about 44 of 49 points fit under a 2.5 GiB cap with `--max-size 10000000`):
+  ```
+  nexus-calibrate-machine                       # fix the machine profile BEFORE; do not recalibrate afterwards
+  python -m benchmarks plan --suite full --splits test-v2 --mem-limit-gb 2.5 --max-size 10000000
+  python -m benchmarks full --splits test-v2 --mem-limit-gb 2.5 --max-size 10000000 --no-report
+  python -m benchmarks status benchmarks/results/full          # counts only for test-v2
+  python -m benchmarks evaluate benchmarks/results/full --final --reason "<why now>"   # logged; use once
+  ```
+  Each `--final` run appends to the access log. Re-running with changed models after seeing the result burns
+  the split; create `test-v3` instead.
+
+### read_csv engine check
+- **The benchmark and the NEXUS model both assume the default C engine.** `pd.read_csv(path)` resolves to
+  `CParserWrapper` here (pandas 3.1.1); pyarrow is not installed, so no pyarrow scenario exists and none was
+  needed. The engine is now recorded in every result row (`read_csv_engine`, `read_csv_text_dtype`), and a test
+  fails loudly if pandas' default engine ever changes or a suite source passes `engine=`.
+- The model has no engine awareness: `pd.read_csv(f, engine="pyarrow")` would be estimated with C-engine
+  numbers (and the analyzer ignores the kwarg). A pyarrow scenario should be added when pyarrow is available,
+  together with a model decision; not changed here.
+- With pandas 3, text columns come back as `str` (python-backed string dtype), although the benchmark's
+  generated frames use `object`; read_csv outputs are therefore not the same dtype as the other operations'
+  inputs (relevant to the read_csv RAM under-prediction; unverified).
+- **Parse throughput (plausibility check, small-suite files, this machine, 16 logical CPUs):**
+
+| scenario | 300k rows | 1M rows | 3M rows | wall / CPU time, 1M rows |
+|---|---|---|---|---|
+| numeric (7 cols) | 1082 MB/s | 1391 MB/s | 1380 MB/s | 0.17 s / 0.33 s (CPU/wall 2.0); 259 MB file: 0.23 s / 1.06 s (4.5) |
+| mixed (int/float/text/category/date) | 199 MB/s | 181 MB/s | 178 MB/s | 0.70 s / 0.88 s (1.3) |
+| strings (4 text columns) | 174 MB/s | 144 MB/s | 131 MB/s | 0.76 s / 0.77 s (1.0) |
+
+  The 1.1-1.4 GB/s numeric figure looked too fast for a single-threaded parser; re-timing a 259 MB numeric file
+  standalone gave 0.23 s wall but 1.06 s CPU, so the C engine in this pandas build **uses several threads** for
+  numeric content, while string-heavy files run single-threaded (CPU/wall 1.0). Parse throughput therefore
+  depends on dtype mix and on core count, which no single `csv_parse_bps` (calibrated at ~485 MB/s on a mixed
+  100 MB file) can capture: a data-dependent time error, not a calibration error.
+
+### Diagnosis (preliminary: development data only)
+`benchmarks/diagnose.py` (new; tests use synthetic data with known structure) builds the per-point
+predicted/actual tables, log-log slopes of time and RAM versus n, and a rule-based structural vs data-dependent
+classification (rule and thresholds in its docstring and in `findings.md`).
+**`docs/benchmarks/full-v3/findings.md` was not produced** (full-run results unavailable, see above). To
+validate the tool on real data I ran it on what exists: the 87 dev points of the small suite (3 sizes
+300k/1M/3M, scored with the current calibration): `docs/benchmarks/small-diagnosis/findings.md`. It contains no
+exposed-v1 points, so everything below is **preliminary**: 3-5 scenarios per operation, one data parameter varied
+at a time, and a median of 1-3 valid points per scenario.
+
+Two kinds of "data-dependent" need separating, and the automatic rule cannot: an error that depends on a feature
+Tier 0 *already has* (dtype mix, shapes, file size) is a **formula** problem fixable without new statistics; one
+that depends on a quantity Tier 0 cannot see (cardinality, duplicate fraction, key overlap/fan-out, which columns
+are aggregated, text content) needs **Tier 1 statistics or a Tier 2 dry run**.
+Folds below are median predicted/actual per scenario on the log scale (+ over, - under):
+
+| operation | main error | verdict | evidence (dev, small suite) |
+|---|---|---|---|
+| merge | RAM over x2.8..x5.8 | **structural** (formula) with an output-size component | four variants (1:1, 10% overlap, fan-out 3, left join) are +4.5..+5.8 regardless of overlap or join type; many-to-many, the one with the largest output, is the least wrong (+2.8). Per-scenario spread is only x1.3, but all five variants use right = n/2, so overlap/fan-out are under-sampled. The default output-rows prior (max of the two sizes) is the suspect |
+| sort_values | RAM over x2.3 | **structural** | +2.26 (int key), +2.46 (int+float), +2.25 (string key): identical regardless of key dtype or data; the "peak ~ input bytes + indexer" formula is wrong. Time slope 1.23-1.30 vs 1.04-1.07 modelled: superlinear scaling, also structural |
+| drop_duplicates | RAM over x1.6; time scaling | **structural** (dtype weights + exponent) | RAM +1.6/+1.4 (mixed), +2.7 (strings), -1.2 (numeric): depends on dtype mix, which Tier 0 sees. Time slope 1.18-1.28 in every scenario vs 1.0 modelled (hash tables outgrow cache); duplicate fraction changes neither (consistent with the Phase 3b finding) |
+| groupby | RAM +1.3..+4.1; time +6.9 / -1.7 | **data-dependent** (cardinality, aggregated columns) | folds change sign with key cardinality: low-cardinality string key +2.5 RAM / +6.9 time, high-cardinality -1.0..+1.7 RAM / -1.7 time, numeric-all-columns +4.1. The rule labels RAM "structural" (spread x1.6 is below its x2 threshold with only 3 scenarios); the raw scenario folds say otherwise. Needs group count (Tier 1) and the aggregation target |
+| read_csv | RAM under -1.6..-2.9; time sign flips | RAM **structural**, time **data-dependent** | RAM under-predicted in all three scenarios (numeric -1.6, mixed -2.7, strings -2.85). Time: numeric +2.8 (faster than modelled: multithreaded parse), mixed -2.7, strings -3.4; the sign follows dtype mix, so a header/first-rows sniff (Tier 1) is the fix. Likely contributing: pandas 3 returns `str` dtype, not `object` |
+| astype | RAM under -1.6..-3.0; time +1.4..-2.9 | **data-dependent** (cardinality) | category conversion of a high-cardinality string column is -3.0 (down to -4) vs -1.55 for low cardinality (prior assumes 10% distinct); time flips sign (+3.4 low-card, -2.9 high-card) |
+| concat | RAM +2.0 mixed, -1.2 numeric | **structural** (text weighting) | the text-dtype frames are over-predicted ~2x, numeric slightly under; dtype is visible at Tier 0 (shared strings make deep bytes overstate RSS). Time slope 1.21 vs 1.0 |
+| matmul | no dominant error at d=1000-3000 | none yet | -1.04 RAM, -1.08 time; time slope 2.34 vs 3.0 modelled (BLAS efficiency rises with d), one scenario only |
+| np.sort | not assessable | n/a | all small-suite points fall under the 32 MiB floor; needs the 5M+ element points |
+
+Overall: **structural** errors dominate RAM (merge, sort_values, drop_duplicates, concat, read_csv) and the
+superlinear time scaling (drop_duplicates, sort_values, concat, high-cardinality groupby); these are Tier 0
+formula problems that more statistics will not fix by themselves. **Data-dependent** errors are groupby,
+astype and read_csv time (cardinality, dtype content): those are the Tier 1 / Tier 2 targets. This must be
+re-done on the full dev + exposed-v1 data (more scenarios and sizes up to 30M, which will test the slopes).
+
+### Next steps
+1. Restore or re-create `benchmarks/results/full`, run `migrate-exposed`, `scrub-logs` and `diagnose` (commands above)
+   and commit `docs/benchmarks/full-v3/`.
+2. Decide Tier 0 formula fixes only after that, using dev + exposed-v1; keep `test-v2` sealed for the final claim.

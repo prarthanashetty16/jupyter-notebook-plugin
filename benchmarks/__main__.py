@@ -23,7 +23,7 @@ import pandas as pd
 
 from benchmarks.evaluate import Floors, write_final_report, write_report
 from benchmarks.runner import RunConfig, default_mem_limit_bytes, run_suite
-from benchmarks.split import SEALED_DIR
+from benchmarks.split import GROUPS, SEALED_DIR
 from benchmarks.suite import SUITES, build_grid
 from nexus.machine import ENV_VAR
 
@@ -49,9 +49,22 @@ def _select_args(p: argparse.ArgumentParser) -> None:
         "it (default: 40%% of available RAM, at most 8)",
     )
     p.add_argument("--ops", help="comma-separated operation or case-group names")
-    p.add_argument("--splits", default="dev,test", help="dev, test or dev,test (dev runs first)")
+    p.add_argument(
+        "--splits",
+        default="dev,exposed-v1",
+        help="comma list of dev, exposed-v1, test-v2. The sealed test-v2 group is measured only "
+        "when named here; its log lines show id, status and elapsed time only",
+    )
     p.add_argument("--max-size", type=int, help="skip points with size above this")
     p.add_argument("--max-points", type=int)
+
+
+def _splits(args: argparse.Namespace) -> tuple[str, ...]:
+    chosen = tuple(s.strip() for s in args.splits.split(",") if s.strip())
+    unknown = [s for s in chosen if s not in GROUPS]
+    if unknown:
+        raise SystemExit(f"unknown split(s) {unknown}; choose from {list(GROUPS)}")
+    return chosen
 
 
 def _cap(args: argparse.Namespace) -> int:
@@ -61,10 +74,10 @@ def _cap(args: argparse.Namespace) -> int:
 def cmd_plan(args: argparse.Namespace) -> None:
     cap = _cap(args)
     ops = set(args.ops.split(",")) if args.ops else None
-    splits = tuple(args.splits.split(","))
+    splits = _splits(args)
     grid = build_grid(args.suite, ops=ops, splits=splits, max_size=args.max_size)
     print(f"suite={args.suite}  memory cap={cap / 2**30:.1f} GiB  points={len(grid)}")
-    for split in ("dev", "test"):
+    for split in GROUPS:
         pts = [p for p in grid if p.split == split]
         run = [p for p in pts if p.est_footprint_bytes() <= cap]
         procs = sum(p.repeats + 2 for p in run)  # repeats + prep + prediction
@@ -101,12 +114,12 @@ def cmd_status(args: argparse.Namespace) -> None:
         print(f"no progress.json in {out} (run not started?)")
     for label, path in (
         ("dev", out / "actuals.csv"),
-        ("test (count only)", out / SEALED_DIR / "actuals.csv"),
+        ("test-v2 (count only)", out / SEALED_DIR / "actuals.csv"),
     ):
         if path.exists():
             rows = pd.read_csv(path, dtype=str, keep_default_na=False)
             rows = rows.drop_duplicates("point_id", keep="last")
-            print(f"{label:18s}: {len(rows)} points  {dict(Counter(rows['status']))}")
+            print(f"{label:22s}: {len(rows)} points  {dict(Counter(rows['status']))}")
     log = out / "run.log"
     if log.exists():
         print("last log lines:")
@@ -183,7 +196,7 @@ def main() -> None:  # noqa: C901
         retry_failed=args.retry_failed,
         max_points=args.max_points,
         max_size=args.max_size,
-        splits=tuple(args.splits.split(",")),
+        splits=_splits(args),
     )
     if args.no_calibrate:
         os.environ[ENV_VAR] = str(out / "no_profile.json")  # nonexistent: models use defaults
