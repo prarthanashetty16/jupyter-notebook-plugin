@@ -1,0 +1,11 @@
+op,points,ram_valid,ram_cens_setup_peak,ram_cens_floor,ram_excluded,time_valid,time_cens_setup_peak,time_cens_floor,time_excluded
+astype,15,5,0,10,0,4,0,11,0
+drop_duplicates,15,11,0,4,0,12,0,3,0
+groupby,9,4,0,5,0,3,0,6,0
+merge,10,5,0,5,0,2,0,8,0
+numpy.sort,6,0,0,6,0,0,0,6,0
+operator.matmul,3,2,0,1,0,1,0,2,0
+pandas.concat,6,4,0,2,0,1,0,5,0
+pandas.read_csv,9,9,0,0,0,7,0,2,0
+sort_values,9,6,0,3,0,7,0,2,0
+ALL,82,46,0,36,0,37,0,45,0

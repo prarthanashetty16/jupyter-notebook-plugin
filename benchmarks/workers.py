@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 from typing import Any
-
-from benchmarks.datasets import DatasetConfig, make_frame
 
 
 @dataclass
@@ -28,16 +25,28 @@ def _nbytes(obj: Any) -> int:
     return 0
 
 
+def prepare_inputs(specs: list[Any], cache_dir: str) -> None:
+    """Generate and cache every input (runs in a spawned prep process, never measured)."""
+    for spec in specs:
+        spec.ensure(cache_dir)
+
+
 def build_state(payload: dict[str, Any]) -> State:
-    """Materialise inputs into a namespace like a notebook kernel's (``pd``/``np`` imported)."""
+    """Load cached inputs from disk into a kernel-like namespace (``pd``/``np`` imported)."""
     import numpy as np
     import pandas as pd
 
+    from nexus.measure import read_memory
+
     ns: dict[str, Any] = {"pd": pd, "np": np}
+    rss_before = read_memory().rss
     for spec in payload["inputs"]:
-        ns.update(spec.build(payload["cache_dir"]))
+        ns.update(spec.load(payload["cache_dir"]))
     code = compile(payload["source"], "<bench>", "eval")
-    info = {"input_bytes": sum(_nbytes(v) for v in ns.values())}
+    info = {
+        "input_bytes": sum(_nbytes(v) for v in ns.values()),
+        "input_resident_bytes": max(0, read_memory().rss - rss_before),
+    }
     return State(ns=ns, code=code, source=payload["source"], info=info)
 
 
@@ -46,18 +55,18 @@ class Outcome:
     """Operation result plus setup facts, so ``summarize_result`` can report both."""
 
     value: Any
-    input_bytes: int
+    setup_info: dict[str, Any]
 
 
 def run_op(state: State) -> Outcome:
-    return Outcome(eval(state.code, state.ns), state.info["input_bytes"])
+    return Outcome(eval(state.code, state.ns), state.info)
 
 
 def summarize_result(outcome: Outcome) -> dict[str, Any]:
     import numpy as np
     import pandas as pd
 
-    result, info = outcome.value, {"input_bytes": outcome.input_bytes}
+    result, info = outcome.value, dict(outcome.setup_info)
     if isinstance(result, pd.DataFrame):
         info.update(out_rows=int(result.shape[0]), out_bytes=_nbytes(result))
     elif isinstance(result, pd.Series):
@@ -102,10 +111,3 @@ def predict(state: State, tier: int) -> dict[str, Any]:
 
 def as_info(result: Any) -> dict[str, Any]:
     return result if isinstance(result, dict) else {}
-
-
-def write_csv_file(cfg: DatasetConfig, path: str) -> None:
-    """Write ``make_frame(cfg)`` to ``path`` atomically (used to prepare read_csv inputs)."""
-    tmp = path + ".part"
-    make_frame(cfg).to_csv(tmp, index=False)
-    os.replace(tmp, path)

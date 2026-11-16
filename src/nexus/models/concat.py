@@ -39,7 +39,7 @@ class ConcatModel(OperationModel):
         total = features["total_bytes"]
         return u.build(
             (0.9 * total, total, 1.6 * total),
-            u.time_band(total / u.COPY_BPS),
+            u.time_band(total / u.machine().copy_bps),
             0.7,
             tier,
             ["new frame holding every input row", "possible dtype-unification temporaries"],

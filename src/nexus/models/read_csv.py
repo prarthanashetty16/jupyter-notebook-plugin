@@ -11,7 +11,6 @@ from nexus.registry import register_model
 from nexus.state import Inspection, candidate_paths
 
 EXPANSION_FACTORS = (0.5, 1.5, 5.0)  # in-memory bytes per CSV byte; depends on dtype mix
-PARSE_BPS = 80e6  # CSV bytes parsed per second
 
 
 @register_model
@@ -42,7 +41,7 @@ class ReadCsvModel(OperationModel):
         lo, mid, hi = (f * size for f in EXPANSION_FACTORS)
         return u.build(
             (lo, mid, hi),
-            u.time_band(size / PARSE_BPS),
+            u.time_band(size / u.machine().csv_parse_bps),
             0.4,
             tier,
             ["parsed frame size vs file size depends on unknown dtypes/cardinality"],

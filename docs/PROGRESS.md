@@ -43,6 +43,8 @@
 
 ## Phase 3: benchmark harness and baseline results (small suite)
 
+> **Superseded/provisional:** every number in this section was measured with the flawed v1 instrument. See "Phase 3b" below.
+
 Phase 2 is **not** ticked: Phase 3 needed something to measure, so a first-draft Tier 0 model set
 (`drop_duplicates, merge, groupby, sort_values, read_csv, astype, concat, matmul, np_sort`) was
 written from first principles *before any benchmark data existed* and frozen. Their constants are
@@ -156,3 +158,106 @@ precision/100% recall and the `high` rule 69%/100%; at 128 MB `high` was 50%/91%
 - The harness kills children above a memory cap (default 40% of available RAM, max 8 GiB) and skips
   points whose estimated footprint exceeds it; both outcomes are recorded, never dropped silently.
 - Results are CSV (no pyarrow dependency); matplotlib is the `bench` extra.
+
+
+## Phase 3b: measurement instrument fix and re-baseline (v2)
+
+### Measurement flaw (finding)
+The Phase 3 instrument polled the child's RSS every ~2 ms and took the maximum. That **under-measures
+whenever the allocator reuses memory freed during setup** and misses short spikes. Evidence from v1:
+a 100k `np.sort` (800 KB array) peaked at 0 B; a *sorted* 500k array at 0.1 MB versus 3.9 MB for the
+*random* array doing the identical copy; `drop_duplicates(subset=["s0"])` peaks implausibly small.
+Every v1 accuracy number was therefore measured against a faulty ground truth and is **provisional /
+superseded** (the v1 report is kept as `docs/benchmarks/small-baseline-v1/`). The v1 verdicts quoted in
+the Phase 3 section above should be read through the v1-to-v2 table below.
+
+### New instrument (`nexus.measure`, `benchmarks/store.py`)
+- RAM = OS-tracked peak counter read *inside the measured process* (Windows `peak_wset`, Linux `VmHWM`,
+  macOS `ru_maxrss`) behind one function, `read_memory`. Polling is kept only as a cross-check.
+- Inputs are generated once, cached to disk as `.npy` (one per column) and **loaded** in the child
+  (`DataFrame(dict, copy=False)` leaves no transient), then `gc`, then baseline = RSS and setup peak =
+  OS peak. Operation peak = OS peak after minus baseline.
+- The Windows/macOS peak counter cannot be reset (verified: a 100 MB allocation after a freed 200 MB
+  is invisible). If the operation never exceeds the setup peak the run is **censored** (upper bound
+  recorded, delta `None`), never 0. Linux resets the counter after setup via `/proc/self/clear_refs`
+  (**untested here; only Windows was available**).
+- Floors (configurable): RAM 32 MiB above baseline, time 100 ms; spread = (max-min)/median over 3
+  repeats, excluded above 30%. Every report shows valid / censored (below setup peak, below floor) /
+  excluded counts separately. Every result row records python, pandas, numpy, pyarrow ("none" here),
+  pandas default string dtype (`str`; generated text columns are `object`), OS, CPU, RAM, git commit.
+- Suite sizes raised to 300k / 1M / 3M rows (matmul 1000-3000); `full` is 100k-10M but was **not run**.
+
+### Instrument validation (`tests/test_measure_validation.py`, 13 tests, passing on Windows)
+Known allocations measure within +/-10%: `np.ones` 100 MiB, `bytes` 100 MiB, repeated allocate/free
+(peak not sum), `np.sort` of random and sorted 100 MiB arrays (the v1 regression: now both within 10%
+of 100 MiB and of each other), DataFrame copy. A `df.copy()` of a frame stored as 4 float blocks
+measured 2x the data (200 MiB) against my first expectation of 1x; `tracemalloc` (independent oracle)
+confirms pandas consolidates blocks on copy, so the instrument was right and the expectation wrong. The
+test now uses `tracemalloc` as the oracle for both single-block (1x) and multi-block (2x) frames. Frame
+block layout therefore changes copy-like peaks by 2x, which Tier 1 may need to model. Setup garbage:
+measured on Linux, censored with an upper bound on Windows (tested, never 0). Cross-check on the v2 run:
+polled RSS never exceeded the OS peak (0 of 246 runs), median poll/OS ratio 0.98.
+
+### v2 run
+Windows 11, pandas 3.1.1, numpy 2.5.5, no pyarrow, 16 logical CPUs, 3 repeats, 1.5 GB memory cap;
+7.7 minutes. 82 points measured, 5 skipped (merge at 3M rows, estimated above the cap). Spread
+exclusions: 0 (repeats were highly consistent). Setup-peak censoring: 0 (disk loading works). Machine
+profile calibrated with `nexus-calibrate-machine` (e.g. CSV parse 483 MB/s vs the old guess of 80 MB/s).
+
+| | | valid | censored | excluded | median err | p90 err | bias | coverage | width |
+|---|---|---|---|---|---|---|---|---|
+| RAM | v1 | 53 | n/a | 34 (below old floor) | 92% | 558% | 1.92 | 70% | 243% |
+| RAM | v2 | 46 | 36 | 0 | 64% | 268% | 1.35 | 78% | 197% |
+| Time | v1 | 35 | n/a | 52 (below old floor) | 69% | 472% | 1.65 | 80% | 378% |
+| Time | v2 | 37 | 45 | 0 | 64% | 85% | 0.38 | 81% | 378% |
+
+v1 and v2 differ in sizes (v2 is 3-6x larger) as well as instrument, so per-point comparison is not
+possible; pooled and per-operation comparisons are in `docs/benchmarks/small-baseline-v2/comparison.md`.
+RAM models and priors were **not changed**, so RAM movement is instrument plus sizes. Time models read the
+calibrated profile, so time movement mixes instrument and calibration. Re-scoring the *same v2
+measurements* with the old default constants separates them:
+
+| time model (same v2 actuals) | valid | median err | p90 err | bias | coverage |
+|---|---|---|---|---|---|
+| default (guessed) constants | 37 | 66% | 335% | 1.25 | 81% |
+| calibrated constants | 37 | 64% | 85% | 0.38 | 81% |
+
+Calibration cut the worst-case time error (p90 335% to 85%) but introduced a systematic 2.6x
+**under**-prediction: microbenchmark throughputs measure warm, in-cache, small workloads, and the time
+models omit page-fault, allocation and per-column overheads. Not tuned; logged as a finding.
+
+### Which earlier verdicts changed
+Unchanged by the better instrument (so not artifacts): `merge` over-predicted ~5x (bias 5.2), `groupby`
+over-predicted ~2x (2.1, down from 4.1), `sort_values` over-predicted ~2.3x with **0% RAM coverage**
+(the "peak ~ input bytes" hypothesis stays falsified), text-heavy `drop_duplicates` over-predicted 2.7x,
+`concat` of mixed frames 2x. `drop_duplicates` peak RAM is independent of duplicate fraction: at 3M rows
+`mixed_dup0` and `mixed_dup50` both peaked at 335 MB (identical to within 0.1%), while output size halves;
+this cost-driver claim is now solidly supported on this dataset family.
+Changed: `matmul` RAM bias 3.6 to 0.96 (the v1 figure came from tiny 200-1000 matrices where the assumed
+BLAS buffer dominated); `read_csv` RAM went from 0.63 to **0.37** (under-prediction, up to 2.8x on string
+files: 1327 MB actual vs 466 MB predicted at 3M rows, though inside the wide [low, high]); `astype` to
+category on high-cardinality strings is under-predicted 2.3-4x. Under-predicting verdicts matter more than
+over-predicting ones for OOM warning. `np.sort` is now measured correctly (1M sorted: 7.7 MB vs 8 MB
+expected; 3M: 23.0 MB vs predicted 22.9 MB) but every point is below the 32 MiB floor, so it is censored
+and reported as such: it needs >= 5M rows. Time: `matmul` bias 6.0 to 0.81 and `read_csv` 2.4 to 0.37
+(calibration effect, see above); other operations moved from over- to under-prediction for the same reason.
+
+### OOM warnings with v2 (pooled across ops/sizes, tier 0)
+Positives exist for 64-1024 MB limits (66, 49, 34, 19, 3). Rule `expected`: precision/recall 96/98% (64 MB),
+89/96% (128), 86/91% (256), 95/95% (512), 17/33% (1024, 3 positives). Rule `high`: recall 97-100% but
+precision 68-75% at 128-512 MB and 16% at 1024 MB. Caveats: pooled over operations and sizes (large
+inputs dominate, so this is easier than per-operation use), uses *deep* input bytes on both sides, and has
+very few positives above 512 MB. Treat as indicative only.
+
+### Remaining caveats
+Windows only (Linux reset path and macOS `ru_maxrss` path untested; CI will exercise Linux). Synthetic data.
+`full` suite (up to 10M rows) not run. Resident vs deep input bytes: the harness now records
+`input_resident_bytes` for this check, not yet analysed. Analysis overhead unchanged (median 4.2 ms,
+max 14.9 ms of the 250 ms budget).
+
+### Additional decisions
+- Throughput constants moved to `nexus.machine.MachineProfile` (cached JSON, `nexus-calibrate-machine`;
+  uncalibrated defaults equal the old guesses and are used when no profile exists). Other priors (expansion
+  factors, group-count prior, bands) are unchanged. Calibration runs only on its own microbenchmarks.
+- Runner now also generates missing predictions when an actual already exists (bug found during the
+  ablation; regression test added), and has `--no-calibrate` for the default-constants ablation.

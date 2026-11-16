@@ -45,6 +45,9 @@ learn = [
     "scikit-learn>=1.0.0",
 ]
 
+[project.scripts]
+nexus-calibrate-machine = "nexus.calibrate:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

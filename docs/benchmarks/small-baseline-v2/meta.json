@@ -1,0 +1,41 @@
+{
+  "instrument": "os-peak-v2",
+  "python": "3.12.5",
+  "pandas": "3.1.1",
+  "numpy": "2.5.5",
+  "pyarrow": "none",
+  "pandas_str_default": "str",
+  "text_dtype": "object",
+  "os": "Windows-11-10.0.26200-SP0",
+  "cpu": "Intel64 Family 6 Model 186 Stepping 2, GenuineIntel",
+  "cpu_count": 16,
+  "cpu_max_mhz": 2400,
+  "total_ram": 16791150592,
+  "git_commit": "6154ddb",
+  "suite": "small",
+  "started": "2026-11-16 22:50:42",
+  "cap_bytes": 1593176883,
+  "machine_profile": {
+    "copy_bps": 9229482428.52039,
+    "num_hash_s": 1.3622100001157378e-08,
+    "text_hash_s": 7.312233333019928e-08,
+    "num_argsort_s": 1.848784044623739e-09,
+    "text_argsort_s": 2.241425658682884e-08,
+    "np_sort_s": 4.865091675287332e-10,
+    "csv_parse_bps": 482883384.3857975,
+    "blas_flops": 221574731657.6705,
+    "cast_s": 1.243149999936577e-09,
+    "to_str_s": 9.12136666738661e-08,
+    "agg_s": 5.883550000362448e-09,
+    "calibrated": true,
+    "meta": {
+      "timestamp": "2026-11-16 22:50:25",
+      "platform": "Windows-11-10.0.26200-SP0",
+      "cpu_count": 16,
+      "python": "3.12.5",
+      "numpy": "2.5.5",
+      "pandas": "3.1.1",
+      "quick": false
+    }
+  }
+}

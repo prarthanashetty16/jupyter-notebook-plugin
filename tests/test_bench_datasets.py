@@ -112,7 +112,7 @@ def test_suite_grid_is_well_formed():
         sizes = {p.size for p in grid if p.case.startswith(("drop_duplicates", "sort_values"))}
         assert sizes == set(spec.row_sizes)
     assert max(p.size for p in build_grid("full")) == 10_000_000
-    assert min(p.size for p in build_grid("full") if "drop_dup" in p.case) == 10_000
+    assert min(p.size for p in build_grid("full") if "drop_dup" in p.case) == 100_000
 
 
 def test_suite_filters_and_footprint_cap_inputs():

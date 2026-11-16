@@ -12,7 +12,6 @@ from nexus.models.base import Estimate, NoEstimateError, OperationModel
 from nexus.registry import register_model
 from nexus.state import Inspection
 
-BLAS_FLOPS = 3e10  # effective floating-point ops/s; depends heavily on cores and BLAS build
 BLAS_BUFFER_BYTES = 8 * 2**20  # typical packing-buffer overhead, per call
 
 
@@ -53,9 +52,9 @@ class MatmulModel(OperationModel):
         return u.build(
             (out, out + BLAS_BUFFER_BYTES, 1.5 * out + 8 * BLAS_BUFFER_BYTES),
             (
-                2 * m * k * p / BLAS_FLOPS * 0.2,
-                2 * m * k * p / BLAS_FLOPS,
-                2 * m * k * p / BLAS_FLOPS * 5,
+                2 * m * k * p / u.machine().blas_flops * 0.2,
+                2 * m * k * p / u.machine().blas_flops,
+                2 * m * k * p / u.machine().blas_flops * 5,
             ),
             0.7,
             tier,

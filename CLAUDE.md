@@ -79,7 +79,9 @@ ruff format .               # Auto-format code
 python -m benchmarks small    # ~3 min, resumable; writes benchmarks/results/small/report.md
 python -m benchmarks full     # 1e4..1e7 rows, long, needs several GB free RAM
 pip install -e ".[dev,bench]"   # matplotlib for figures
+nexus-calibrate-machine       # per-machine throughputs (the runner calibrates once if missing)
 ```
+RAM is measured with OS peak counters on inputs loaded from disk (`nexus.measure`); the instrument is validated by `tests/test_measure_validation.py` and must stay green.
 Do not run tests or other heavy work while a benchmark runs (it distorts memory measurements).
 
 ### Commit message style

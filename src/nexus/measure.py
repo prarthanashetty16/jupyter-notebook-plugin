@@ -1,32 +1,41 @@
 """Measure a callable's peak RAM and wall time in a fresh spawned process.
 
-Method: the child builds its inputs (``setup``), garbage-collects, and reports ``ready``. The
-parent records the child's resident set size (RSS) as the baseline, sends ``go``, and then polls
-the child's RSS every ``poll_interval_s`` until the child reports ``done``. Peak RAM is the
-maximum polled RSS minus the baseline ("incremental peak": memory the operation added on top of
-what was already resident). Wall time is measured inside the child around ``func`` only.
+Method
+------
+The child builds its inputs (``setup``, normally by *loading from disk*), garbage-collects, and
+reports ``ready`` with its own memory reading: current RSS (the **baseline**) and the OS-tracked
+**peak** counter at that moment. The parent sends ``go``; the child runs ``func``, times it, and
+reads the OS peak counter again. The operation's peak is ``peak_after - baseline``.
 
-Known limitations (state them when reporting results):
-- Polling can miss spikes shorter than the poll interval, so very short operations have
-  unreliable peaks.
-- RSS counts pages actually resident: lazily allocated memory (``np.zeros``) is invisible until
-  touched, and memory freed by setup that the allocator retained can be reused by the operation
-  without raising RSS (under-measurement).
-- On Windows RSS is the working set; on Linux/macOS it is the resident set.
+The OS peak counter (Windows peak working set, Linux ``VmHWM``, macOS ``ru_maxrss``) is exact
+but monotonic and, except on Linux, cannot be reset. If the operation never exceeded the peak
+reached during setup, the counter says nothing about it: the run is reported as **censored**
+(upper bound ``setup_peak - baseline``) and its delta is ``None``, never 0. On Linux the counter
+is reset after setup (``/proc/self/clear_refs``) so runs are never censored for that reason.
+
+The parent additionally polls the child's RSS (also used to enforce a memory cap) as an
+independent cross-check; disagreements are logged and recorded, not used as the value.
+
+Limitations: RSS counts resident pages (lazily allocated, untouched memory is invisible);
+Windows reports the working set; time is measured around the single call without warm-up.
 """
 
 from __future__ import annotations
 
 import gc
+import logging
 import multiprocessing
 import statistics
+import sys
 import time
 import traceback
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
 import psutil
+
+log = logging.getLogger("nexus.measure")
 
 OK = "ok"
 ERROR = "error"
@@ -34,19 +43,76 @@ TIMEOUT = "timeout"
 MEMORY_LIMIT = "memory_limit"
 DIED = "died"
 
+MIB = 2**20
+DEFAULT_RAM_FLOOR_BYTES = 32 * MIB
+DEFAULT_TIME_FLOOR_S = 0.100
+DEFAULT_MAX_SPREAD = 0.30
 
-def rss_bytes(proc: psutil.Process) -> int:
-    """Resident memory of ``proc`` in bytes: the one place platform differences are hidden."""
-    return int(proc.memory_info().rss)
+
+# -- platform layer: the only place that knows about OS-specific counters ----------------------
+@dataclass(frozen=True)
+class MemoryReading:
+    rss: int  # current resident set (Windows: working set)
+    peak: int | None  # OS-tracked peak of the same quantity; None if unavailable
 
 
+def read_memory(pid: int | None = None) -> MemoryReading:
+    """Current and peak resident memory of ``pid`` (default: this process).
+
+    Windows: ``psutil`` working set and ``peak_wset``. Linux: ``VmRSS``/``VmHWM`` from /proc.
+    macOS/other Unix: psutil RSS and ``ru_maxrss`` (own process only; ``peak`` is None for others).
+    """
+    if sys.platform == "win32":
+        m = psutil.Process(pid).memory_info()
+        return MemoryReading(int(m.rss), int(m.peak_wset))
+    if sys.platform.startswith("linux"):
+        try:
+            fields: dict[str, int] = {}
+            with open(f"/proc/{pid or 'self'}/status", encoding="ascii") as fh:
+                for line in fh:
+                    key, _, rest = line.partition(":")
+                    if key in ("VmRSS", "VmHWM"):
+                        fields[key] = int(rest.split()[0]) * 1024
+            if "VmRSS" in fields and "VmHWM" in fields:
+                return MemoryReading(fields["VmRSS"], fields["VmHWM"])
+        except (OSError, ValueError):
+            pass
+    rss = int(psutil.Process(pid).memory_info().rss)
+    if pid is None or pid == psutil.Process().pid:
+        import resource
+
+        scale = 1 if sys.platform == "darwin" else 1024
+        return MemoryReading(rss, int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) * scale)
+    return MemoryReading(rss, None)
+
+
+def reset_peak() -> bool:
+    """Reset this process's peak counter to its current value; True if supported (Linux only)."""
+    if sys.platform.startswith("linux"):
+        try:
+            with open("/proc/self/clear_refs", "w", encoding="ascii") as fh:
+                fh.write("5")
+            return True
+        except OSError:
+            return False
+    return False
+
+
+# -- results -----------------------------------------------------------------------------------
 @dataclass(frozen=True, kw_only=True)
 class RunResult:
-    """One spawned-process run."""
+    """One spawned-process run. ``delta_bytes`` is None when the run is censored."""
 
     status: str
-    peak_bytes: int = 0
     baseline_bytes: int = 0
+    setup_peak_bytes: int = 0
+    peak_bytes: int = 0  # absolute OS peak after the operation
+    delta_bytes: int | None = None  # peak above baseline; None if censored
+    bound_bytes: int = 0  # when censored: upper bound on the operation's increment
+    censored: bool = False
+    peak_reset: bool = False
+    peak_source: str = "os"  # "os" counter or "poll" fallback when no counter exists
+    poll_delta_bytes: int = 0  # max polled RSS minus baseline (cross-check only)
     time_s: float = 0.0
     samples: int = 0
     info: dict[str, Any] = field(default_factory=dict)
@@ -55,17 +121,60 @@ class RunResult:
 
 @dataclass(frozen=True, kw_only=True)
 class Measurement:
-    """Aggregate of repeated runs: medians over the successful runs."""
+    """Aggregate of repeated runs."""
 
     status: str
-    peak_bytes: int = 0
+    delta_bytes: int | None = None  # median over uncensored runs; None if all censored
+    bound_bytes: int = 0
+    censored: bool = False
+    ram_spread: float | None = None  # (max - min) / median over uncensored runs
     baseline_bytes: int = 0
     time_s: float = 0.0
+    time_spread: float | None = None
     info: dict[str, Any] = field(default_factory=dict)
     error: str | None = None
     runs: list[RunResult] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class Classification:
+    """Floor/spread classification of one metric over repeats."""
+
+    klass: str  # "valid" | "censored" | "excluded"
+    value: float | None
+    spread: float | None
+    reason: str = ""
+
+
+def relative_spread(values: Sequence[float]) -> float | None:
+    """(max - min) / median; None for fewer than two values or a zero median."""
+    if len(values) < 2:
+        return None
+    med = statistics.median(values)
+    return (max(values) - min(values)) / med if med > 0 else None
+
+
+def classify(
+    values: Sequence[float | None], *, floor: float, max_spread: float = DEFAULT_MAX_SPREAD
+) -> Classification:
+    """Classify repeats of one metric (None = censored run).
+
+    censored: no uncensored run, or the median is below ``floor`` (value is then not trusted);
+    excluded: relative spread above ``max_spread``; valid otherwise.
+    """
+    measured = [v for v in values if v is not None]
+    if not measured:
+        return Classification("censored", None, None, "below_setup_peak")
+    med = float(statistics.median(measured))
+    spread = relative_spread(measured)
+    if med < floor:
+        return Classification("censored", med, spread, "below_floor")
+    if spread is not None and spread > max_spread:
+        return Classification("excluded", med, spread, "spread")
+    return Classification("valid", med, spread)
+
+
+# -- child / parent ----------------------------------------------------------------------------
 def _child_main(
     conn: Any,
     func: Callable[[Any], Any],
@@ -76,13 +185,16 @@ def _child_main(
     try:
         state = setup(*setup_args) if setup is not None else None
         gc.collect()
-        conn.send(("ready",))
+        reset = reset_peak()
+        before = read_memory()
+        conn.send(("ready", {"rss": before.rss, "peak": before.peak, "reset": reset}))
         if conn.recv() != "go":
             return
         t0 = time.perf_counter()
         result = func(state)
         elapsed = time.perf_counter() - t0
-        conn.send(("done", elapsed))
+        after = read_memory()
+        conn.send(("done", {"elapsed": elapsed, "rss": after.rss, "peak": after.peak}))
         conn.send(("info", summarize(result) if summarize is not None else {}))
     except BaseException:
         try:
@@ -91,7 +203,7 @@ def _child_main(
             pass
 
 
-class _Peak:
+class _Poll:
     def __init__(self, baseline: int) -> None:
         self.peak = baseline
         self.samples = 0
@@ -102,12 +214,7 @@ class _Peak:
 
 
 def _pump(
-    conn: Any,
-    ps: psutil.Process,
-    until: float,
-    cap: int | None,
-    tracker: _Peak | None,
-    poll_s: float,
+    conn: Any, ps: psutil.Process, until: float, cap: int | None, poll: _Poll | None, poll_s: float
 ) -> tuple[str, Any]:
     """Wait for the next child message while sampling RSS; returns (kind, payload)."""
     while True:
@@ -118,15 +225,47 @@ def _pump(
         except (EOFError, OSError):
             return DIED, None
         try:
-            rss = rss_bytes(ps)
+            rss = int(ps.memory_info().rss)
         except psutil.Error:
             return DIED, None
-        if tracker is not None:
-            tracker.add(rss)
+        if poll is not None:
+            poll.add(rss)
         if cap is not None and rss > cap:
             return MEMORY_LIMIT, rss
         if time.monotonic() > until:
             return TIMEOUT, None
+
+
+def _evaluate_run(ready: dict[str, Any], done: dict[str, Any], poll: _Poll) -> dict[str, Any]:
+    baseline = int(ready["rss"])
+    poll_delta = max(0, poll.peak - baseline)
+    out: dict[str, Any] = {
+        "baseline_bytes": baseline,
+        "poll_delta_bytes": poll_delta,
+        "peak_reset": bool(ready["reset"]),
+        "time_s": float(done["elapsed"]),
+        "samples": poll.samples,
+    }
+    if done["peak"] is None or ready["peak"] is None:
+        return {**out, "peak_source": "poll", "delta_bytes": poll_delta, "censored": False}
+    out.update(setup_peak_bytes=int(ready["peak"]), peak_bytes=int(done["peak"]))
+    if ready["reset"] or done["peak"] > ready["peak"]:
+        delta = max(0, int(done["peak"]) - baseline)
+        if poll_delta > delta * 1.1 + MIB:
+            log.warning(
+                "instrument disagreement: polled RSS rose %.1f MiB but OS peak says %.1f MiB",
+                poll_delta / MIB,
+                delta / MIB,
+            )
+        elif delta >= DEFAULT_RAM_FLOOR_BYTES and poll_delta < 0.5 * delta:
+            log.info(
+                "polling missed spike: OS peak %.1f MiB vs polled %.1f MiB",
+                delta / MIB,
+                poll_delta / MIB,
+            )
+        return {**out, "delta_bytes": delta, "censored": False}
+    bound = max(0, int(ready["peak"]) - baseline)
+    return {**out, "delta_bytes": None, "censored": True, "bound_bytes": bound}
 
 
 def _run_once(
@@ -149,44 +288,29 @@ def _run_once(
     child.close()
     try:
         ps = psutil.Process(proc.pid)
-        kind, payload = _pump(
+        kind, ready = _pump(
             parent, ps, time.monotonic() + setup_timeout_s, max_rss_bytes, None, poll_s
         )
         if kind != "ready":
-            return RunResult(
-                status=kind, error=str(payload) if payload else f"during setup: {kind}"
-            )
-        baseline = rss_bytes(ps)
-        tracker = _Peak(baseline)
+            return RunResult(status=kind, error=str(ready) if ready else f"during setup: {kind}")
+        poll = _Poll(int(ready["rss"]))
         parent.send("go")
-        kind, payload = _pump(
-            parent, ps, time.monotonic() + run_timeout_s, max_rss_bytes, tracker, poll_s
+        kind, done = _pump(
+            parent, ps, time.monotonic() + run_timeout_s, max_rss_bytes, poll, poll_s
         )
         if kind != "done":
             status = kind if kind in (TIMEOUT, MEMORY_LIMIT, DIED) else ERROR
             return RunResult(
                 status=status,
-                peak_bytes=max(0, tracker.peak - baseline),
-                baseline_bytes=baseline,
-                samples=tracker.samples,
-                error=str(payload) if payload else kind,
+                baseline_bytes=int(ready["rss"]),
+                poll_delta_bytes=max(0, poll.peak - int(ready["rss"])),
+                error=str(done) if done else kind,
             )
-        try:
-            tracker.add(rss_bytes(ps))
-        except psutil.Error:
-            pass
         info: dict[str, Any] = {}
         kind2, payload2 = _pump(parent, ps, time.monotonic() + 120, None, None, poll_s)
         if kind2 == "info" and isinstance(payload2, dict):
             info = payload2
-        return RunResult(
-            status=OK,
-            peak_bytes=max(0, tracker.peak - baseline),
-            baseline_bytes=baseline,
-            time_s=float(payload),
-            samples=tracker.samples,
-            info=info,
-        )
+        return RunResult(status=OK, info=info, **_evaluate_run(ready, done, poll))
     finally:
         parent.close()
         if proc.is_alive():
@@ -209,9 +333,9 @@ def measure_call(
     """Run ``func(setup(*setup_args))`` ``repeats`` times, each in a fresh spawned process.
 
     ``func``, ``setup`` and ``summarize`` must be picklable (module-level). ``summarize`` turns
-    ``func``'s result into a small dict reported after timing stops. A child whose RSS exceeds
-    ``max_rss_bytes`` is killed (status ``memory_limit``). Repetition stops at the first failed
-    run; the returned status is then that failure and medians cover the successful runs so far.
+    ``func``'s result into a small dict reported after the measurement window closes. A child
+    whose RSS exceeds ``max_rss_bytes`` is killed (status ``memory_limit``). Repetition stops at
+    the first failed run. Floors and spread thresholds are applied later by ``classify``.
     """
     if repeats < 1:
         raise ValueError("repeats must be >= 1")
@@ -235,11 +359,17 @@ def measure_call(
     if not ok:
         assert failure is not None
         return Measurement(status=failure.status, error=failure.error, runs=runs)
+    deltas = [r.delta_bytes for r in ok if r.delta_bytes is not None]
+    times = [r.time_s for r in ok]
     return Measurement(
         status=failure.status if failure else OK,
-        peak_bytes=int(statistics.median(r.peak_bytes for r in ok)),
+        delta_bytes=int(statistics.median(deltas)) if deltas else None,
+        bound_bytes=max(r.bound_bytes for r in ok),
+        censored=not deltas,
+        ram_spread=relative_spread([float(d) for d in deltas]),
         baseline_bytes=int(statistics.median(r.baseline_bytes for r in ok)),
-        time_s=float(statistics.median(r.time_s for r in ok)),
+        time_s=float(statistics.median(times)),
+        time_spread=relative_spread(times),
         info=ok[0].info,
         error=failure.error if failure else None,
         runs=runs,

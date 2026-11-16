@@ -57,7 +57,10 @@ class GroupByModel(OperationModel):
             codes + text_tables + result + mid_v,
             codes + 2 * text_tables + n * 8 * cols + hi_v,
         )
-        seconds = n * ((k - kt) * u.NUM_HASH_S + kt * u.TEXT_HASH_S) + n * cols * 5e-9
+        seconds = (
+            n * ((k - kt) * u.machine().num_hash_s + kt * u.machine().text_hash_s)
+            + n * cols * u.machine().agg_s
+        )
         return u.build(
             ram,
             u.time_band(seconds),

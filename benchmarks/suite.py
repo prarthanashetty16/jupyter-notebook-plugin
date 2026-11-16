@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -16,6 +17,7 @@ from typing import Any
 
 import numpy as np
 
+from benchmarks import store
 from benchmarks.datasets import DatasetConfig, estimate_frame_bytes, make_frame, make_join_pair
 
 BASE = DatasetConfig(n_rows=1, n_int=2, n_float=2, n_object=2, n_category=1, n_datetime=1)
@@ -24,14 +26,40 @@ STRINGS = {"n_int": 0, "n_float": 0, "n_object": 4, "n_category": 0, "n_datetime
 
 
 # -- inputs --------------------------------------------------------------------------------
+class _Stored:
+    """Mixin: inputs are generated once into ``<cache>/ds_<hash>/<var>/`` and loaded by workers."""
+
+    def key(self) -> str:
+        return hashlib.sha1(repr(self).encode()).hexdigest()[:16]
+
+    def directory(self, cache_dir: str) -> Path:
+        return Path(cache_dir) / f"ds_{self.key()}"
+
+    def generate(self) -> dict[str, Any]:
+        raise NotImplementedError
+
+    def ensure(self, cache_dir: str) -> None:
+        """Generate and save the inputs unless already cached (runs in a spawned prep process)."""
+        d = self.directory(cache_dir)
+        if (d / "DONE").exists():
+            return
+        for var, obj in self.generate().items():
+            store.save(obj, d / var)
+        (d / "DONE").write_text("ok")
+
+    def load(self, cache_dir: str) -> dict[str, Any]:
+        d = self.directory(cache_dir)
+        return {sub.name: store.load(sub) for sub in sorted(d.iterdir()) if sub.is_dir()}
+
+
 @dataclass(frozen=True)
-class FrameInput:
+class FrameInput(_Stored):
     """One DataFrame bound to ``var``."""
 
     cfg: DatasetConfig
     var: str = "df"
 
-    def build(self, cache_dir: str) -> dict[str, Any]:
+    def generate(self) -> dict[str, Any]:
         return {self.var: make_frame(self.cfg)}
 
     def est_bytes(self) -> int:
@@ -39,7 +67,7 @@ class FrameInput:
 
 
 @dataclass(frozen=True)
-class JoinInput:
+class JoinInput(_Stored):
     """Two frames bound to ``df`` and ``right``."""
 
     left: DatasetConfig
@@ -47,7 +75,7 @@ class JoinInput:
     overlap: float = 1.0
     fanout: float = 1.0
 
-    def build(self, cache_dir: str) -> dict[str, Any]:
+    def generate(self) -> dict[str, Any]:
         left, right = make_join_pair(
             self.left, self.right_rows, overlap=self.overlap, fanout=self.fanout
         )
@@ -61,7 +89,7 @@ class JoinInput:
 
 
 @dataclass(frozen=True)
-class ArrayInput:
+class ArrayInput(_Stored):
     """A float64 array bound to ``var``: random ('random') or already sorted ('sorted')."""
 
     shape: tuple[int, ...]
@@ -69,7 +97,7 @@ class ArrayInput:
     pattern: str = "random"
     seed: int = 0
 
-    def build(self, cache_dir: str) -> dict[str, Any]:
+    def generate(self) -> dict[str, Any]:
         rng = np.random.default_rng(self.seed)
         size = int(np.prod(self.shape))
         arr = np.arange(size, dtype=np.float64) if self.pattern == "sorted" else rng.random(size)
@@ -89,7 +117,14 @@ class CsvInput:
         digest = hashlib.sha1(repr(self.cfg).encode()).hexdigest()[:16]
         return str(Path(cache_dir) / f"data_{digest}.csv")
 
-    def build(self, cache_dir: str) -> dict[str, Any]:
+    def ensure(self, cache_dir: str) -> None:
+        path = self.file_path(cache_dir)
+        if not Path(path).exists():
+            tmp = path + ".part"
+            make_frame(self.cfg).to_csv(tmp, index=False)
+            os.replace(tmp, path)
+
+    def load(self, cache_dir: str) -> dict[str, Any]:
         return {"path": self.file_path(cache_dir)}
 
     def est_bytes(self) -> int:
@@ -309,16 +344,17 @@ class SuiteSpec:
     dim_sizes: tuple[int, ...]
     repeats: int
     large_rows: int = 3_000_000  # at or above this size use ``large_repeats``
-    large_repeats: int = 2
+    large_repeats: int = 3
 
 
 SUITES: dict[str, SuiteSpec] = {
-    "small": SuiteSpec("small", (10_000, 100_000, 500_000), (200, 500, 1000), repeats=3),
+    "small": SuiteSpec("small", (300_000, 1_000_000, 3_000_000), (1000, 2000, 3000), repeats=3),
     "full": SuiteSpec(
         "full",
-        (10_000, 100_000, 1_000_000, 3_000_000, 10_000_000),
-        (200, 500, 1000, 2000, 3000),
+        (100_000, 1_000_000, 3_000_000, 10_000_000),
+        (2000, 3000, 4000, 6000),
         repeats=3,
+        large_repeats=3,
     ),
 }
 

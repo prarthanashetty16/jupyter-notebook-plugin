@@ -1,7 +1,8 @@
 """Shared helpers and first-draft constants for the Tier 0 models.
 
-Every constant below is an initial guess from general knowledge of pandas/numpy internals and
-commodity hardware, chosen BEFORE any benchmark data was seen. None is calibrated (Phase 6).
+Hardware throughputs come from ``machine()`` (per-machine microbenchmarks, ``nexus.machine``).
+The remaining constants (priors, bands, expansion factors) are initial guesses chosen BEFORE any
+benchmark data was seen; none is calibrated (Phase 6).
 RAM figures are *incremental peak*: extra resident memory above what was resident before the
 operation ran (the inputs themselves are not counted).
 """
@@ -12,14 +13,10 @@ import math
 from typing import Any
 
 from nexus.analyzer import DetectedOp, Expr
+from nexus.machine import machine  # noqa: F401  (re-exported for models)
 from nexus.models.base import Estimate, NoEstimateError
 from nexus.state import ArrayDescriptor, FrameDescriptor, Inspection
 
-COPY_BPS = 2.0e9  # effective bytes/s for column copies / takes
-NUM_HASH_S = 25e-9  # seconds per element to factorize/hash a numeric value
-TEXT_HASH_S = 120e-9  # same for an object/str value
-NUM_CMP_S = 6e-9  # seconds per comparison when sorting numerics
-TEXT_CMP_S = 120e-9  # seconds per comparison when sorting strings
 RAM_BAND_TIME = (0.25, 4.0)  # default low/high multipliers around the expected time
 
 TEXT_DTYPES = ("object", "str", "string")

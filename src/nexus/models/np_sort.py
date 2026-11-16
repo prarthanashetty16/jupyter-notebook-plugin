@@ -10,8 +10,6 @@ from nexus.models.base import Estimate, NoEstimateError, OperationModel
 from nexus.registry import register_model
 from nexus.state import Inspection
 
-SORT_S_PER_COMPARE = 8e-9
-
 
 @register_model
 class NpSortModel(OperationModel):
@@ -40,7 +38,7 @@ class NpSortModel(OperationModel):
         u.require_tier0(tier)
         size = features["size"]
         nbytes = features["nbytes"]
-        seconds = size * u.log2n(size) * SORT_S_PER_COMPARE
+        seconds = size * u.log2n(size) * u.machine().np_sort_s
         return u.build(
             (0.9 * nbytes, nbytes, 1.3 * nbytes),
             (seconds * 0.1, seconds, seconds * 4),

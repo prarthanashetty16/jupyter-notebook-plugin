@@ -68,22 +68,22 @@ class AstypeModel(OperationModel):
             groups = CATEGORY_CARDINALITY_PRIOR * n
             out = 4 * n + groups * (PY_STR_BYTES if source_text else 8)
             temp = 8 * n + 16 * groups
-            hash_s = u.TEXT_HASH_S if source_text else u.NUM_HASH_S
+            hash_s = u.machine().text_hash_s if source_text else u.machine().num_hash_s
             seconds = n * hash_s
             why = "hash every value; codes + unique values (count unknown)"
         elif target in ("str", "object"):
             out = n * (8 if source_text else PY_STR_BYTES)
             temp = 0.0
-            seconds = 0.0 if source_text else n * 150e-9
+            seconds = 0.0 if source_text else n * u.machine().to_str_s
             why = "one new Python str per row" if not source_text else "no-op for text"
         else:
             itemsize = np.dtype(target).itemsize
-            out, temp, seconds = n * itemsize, 0.0, n * 3e-9
+            out, temp, seconds = n * itemsize, 0.0, n * u.machine().cast_s
             why = f"new {target} array of {n} elements"
         expected = out + temp
         return u.build(
             (expected * 0.5, expected, expected * 2.5),
-            u.time_band(seconds + out / u.COPY_BPS),
+            u.time_band(seconds + out / u.machine().copy_bps),
             0.5,
             tier,
             [why],

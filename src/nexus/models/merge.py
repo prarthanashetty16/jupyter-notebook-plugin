@@ -57,8 +57,8 @@ class MergeModel(OperationModel):
             m = factor * base
             return hashing + 16 * m + m * (row_l + row_r)
 
-        hash_s = u.TEXT_HASH_S if features["key_text"] else u.NUM_HASH_S
-        seconds = (nl + nr) * hash_s + base * (row_l + row_r) / u.COPY_BPS
+        hash_s = u.machine().text_hash_s if features["key_text"] else u.machine().num_hash_s
+        seconds = (nl + nr) * hash_s + base * (row_l + row_r) / u.machine().copy_bps
         lo, mid, hi = OUTPUT_ROWS_FACTORS
         return u.build(
             (ram_at(lo), ram_at(mid), ram_at(hi)),

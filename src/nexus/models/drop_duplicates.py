@@ -52,7 +52,10 @@ class DropDuplicatesModel(OperationModel):
         text_tables = 8 * n * kt  # hash-table overhead for text keys
         out = size * OUTPUT_FRACTION_PRIOR
         ram = (codes, codes + text_tables + out, codes + 2 * text_tables + size)
-        seconds = n * ((k - kt) * u.NUM_HASH_S + kt * u.TEXT_HASH_S) + out / u.COPY_BPS
+        seconds = (
+            n * ((k - kt) * u.machine().num_hash_s + kt * u.machine().text_hash_s)
+            + out / u.machine().copy_bps
+        )
         return u.build(
             ram,
             u.time_band(seconds),

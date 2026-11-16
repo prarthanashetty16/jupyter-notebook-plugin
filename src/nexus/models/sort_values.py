@@ -41,8 +41,8 @@ class SortValuesModel(OperationModel):
         u.require_tier0(tier)
         n, k, kt, size = (features[x] for x in ("n_rows", "n_keys", "n_text_keys", "input_bytes"))
         ram = (size + 8 * n, size + 16 * n * k, 1.5 * size + 40 * n * k)
-        cmp_s = (k - kt) * u.NUM_CMP_S + kt * u.TEXT_CMP_S
-        seconds = n * u.log2n(n) * cmp_s + size / u.COPY_BPS
+        cmp_s = (k - kt) * u.machine().num_argsort_s + kt * u.machine().text_argsort_s
+        seconds = n * u.log2n(n) * cmp_s + size / u.machine().copy_bps
         return u.build(
             ram,
             u.time_band(seconds),
