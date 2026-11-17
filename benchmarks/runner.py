@@ -27,7 +27,7 @@ import pandas as pd
 import psutil
 
 from benchmarks import workers
-from benchmarks.split import DEV, EXPOSED, SEALED_DIR, SEALED_GROUPS, TEST
+from benchmarks.split import DEV, SEALED_DIR, SEALED_GROUPS, TEST, VAL, VAL_DIR
 from benchmarks.suite import CsvInput, GridPoint, build_grid
 from nexus.calibrate import ensure_profile
 from nexus.machine import MachineProfile
@@ -296,26 +296,24 @@ def _summary(m: Measurement) -> str:
 
 
 class Stores:
-    """dev and exposed-v1 results in ``out/``; sealed test-v2 results in ``out/sealed/``.
+    """dev results in ``out/``; test-v2 in ``out/sealed/``; val-v3 in ``out/validation/``.
 
     Development tooling reads only ``out/actuals.csv`` and ``out/predictions.csv``.
     """
 
     def __init__(self, out: Path) -> None:
-        (out / SEALED_DIR).mkdir(parents=True, exist_ok=True)
-        sealed = out / SEALED_DIR
         main_actuals = ResultStore(out / "actuals.csv", ACTUAL_FIELDS, ("point_id",))
         main_preds = ResultStore(out / "predictions.csv", PREDICTION_FIELDS, ("point_id", "tier"))
-        self.actuals = {
-            DEV: main_actuals,
-            EXPOSED: main_actuals,
-            TEST: ResultStore(sealed / "actuals.csv", ACTUAL_FIELDS, ("point_id",)),
-        }
-        self.preds = {
-            DEV: main_preds,
-            EXPOSED: main_preds,
-            TEST: ResultStore(sealed / "predictions.csv", PREDICTION_FIELDS, ("point_id", "tier")),
-        }
+        self.actuals = {DEV: main_actuals}
+        self.preds = {DEV: main_preds}
+        for group, name in ((TEST, SEALED_DIR), (VAL, VAL_DIR)):
+            (out / name).mkdir(parents=True, exist_ok=True)
+            self.actuals[group] = ResultStore(
+                out / name / "actuals.csv", ACTUAL_FIELDS, ("point_id",)
+            )
+            self.preds[group] = ResultStore(
+                out / name / "predictions.csv", PREDICTION_FIELDS, ("point_id", "tier")
+            )
 
 
 def log_point(

@@ -21,15 +21,16 @@ from pathlib import Path
 
 import pandas as pd
 
-from benchmarks.evaluate import Floors, write_final_report, write_report
+from benchmarks.evaluate import Floors, write_final_report, write_report, write_validation_report
 from benchmarks.runner import RunConfig, default_mem_limit_bytes, run_suite
 from benchmarks.split import (
     DEV,
-    EXPOSED,
     GROUPS,
     SEALED_DIR,
     SEALED_GROUPS,
     TEST,
+    VAL,
+    VAL_DIR,
     load_split,
 )
 from benchmarks.suite import SUITES, build_grid
@@ -59,9 +60,9 @@ def _select_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--ops", help="comma-separated operation or case-group names")
     p.add_argument(
         "--splits",
-        default="dev,exposed-v1",
-        help="comma list of dev, exposed-v1, test-v2. The sealed test-v2 group is measured only "
-        "when named here; its log lines show id, status and elapsed time only",
+        default="dev",
+        help="comma list of dev, test-v2, val-v3. A protected group is measured only when "
+        "named here; its log lines show id, status and elapsed time only",
     )
     p.add_argument("--max-size", type=int, help="skip points with size above this")
     p.add_argument("--max-points", type=int)
@@ -121,7 +122,11 @@ def cmd_status(args: argparse.Namespace) -> None:
     else:
         print(f"no progress.json in {out} (run not started?)")
     frames = []
-    for path in (out / "actuals.csv", out / SEALED_DIR / "actuals.csv"):
+    for path in (
+        out / "actuals.csv",
+        out / SEALED_DIR / "actuals.csv",
+        out / VAL_DIR / "actuals.csv",
+    ):
         if path.exists():
             frames.append(pd.read_csv(path, dtype=str, keep_default_na=False))
     if frames:
@@ -130,7 +135,7 @@ def cmd_status(args: argparse.Namespace) -> None:
         sp = load_split()
         case = rows["point_id"].str.split("|n=", regex=False).str[0]
         rows = rows.assign(
-            group=case.map(lambda c: TEST if c in sp.test else EXPOSED if c in sp.exposed else DEV)
+            group=case.map(lambda c: TEST if c in sp.test else VAL if c in sp.val else DEV)
         )
         for group in GROUPS:  # status counts only, no values (safe for the sealed group)
             part = rows[rows["group"] == group]
@@ -174,7 +179,10 @@ def main() -> None:  # noqa: C901
     ev = sub.add_parser("evaluate", help="(re)write the report for a results directory")
     ev.add_argument("results", type=Path)
     ev.add_argument("--final", action="store_true", help="evaluate the sealed TEST split (logged)")
-    ev.add_argument("--reason", help="required with --final; recorded in docs/PROGRESS.md")
+    ev.add_argument(
+        "--val", action="store_true", help="evaluate the held-out val-v3 split (logged)"
+    )
+    ev.add_argument("--reason", help="required with --final / --val; recorded in docs/PROGRESS.md")
     _floor_args(ev)
     args = parser.parse_args()
 
@@ -190,6 +198,15 @@ def main() -> None:  # noqa: C901
                 parser.error("--final requires --reason")
             cmd = "python -m benchmarks " + " ".join(sys.argv[1:])
             print(write_final_report(args.results, args.reason, command=cmd, floors=_floors(args)))
+        elif args.val:
+            if not args.reason:
+                parser.error("--val requires --reason")
+            cmd = "python -m benchmarks " + " ".join(sys.argv[1:])
+            print(
+                write_validation_report(
+                    args.results, args.reason, command=cmd, floors=_floors(args)
+                )
+            )
         else:
             print(write_report(args.results, floors=_floors(args)))
         return

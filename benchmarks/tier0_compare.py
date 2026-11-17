@@ -28,6 +28,7 @@ def metrics(directory: Path, floors: Floors | None = None) -> pd.DataFrame:
     """Tier 0 accuracy table per (op, split) plus pooled ``ALL`` rows."""
     df = load_joined(directory, floors)
     df = df[df["tier"] == 0]
+    df = df.assign(split=df["origin"])  # dev vs the former exposed-v1 (both are dev)
     parts = [accuracy_table(df, ["op", "split"])]
     pooled = accuracy_table(df.assign(op="ALL"), ["op", "split"])
     return pd.concat([parts[0], pooled], ignore_index=True)

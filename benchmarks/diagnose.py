@@ -56,7 +56,7 @@ def build_points(df: pd.DataFrame, tier: int = 0) -> pd.DataFrame:
     d = df[(df["tier"] == tier) & df["has_estimate"] & (df["status"] == "ok")].copy()
     out = pd.DataFrame(
         {
-            "op": d["op"], "scenario": d["case"], "split": d["split"], "size": d["size"],
+            "op": d["op"], "scenario": d["case"], "split": d["origin"] if "origin" in d else d["split"], "size": d["size"],
             "ram_actual_MB": d["ram_value"] / MB, "ram_pred_MB": d["ram_expected"] / MB,
             "ram_class": d["ram_class"], "time_actual_s": d["time_value"],
             "time_pred_s": d["time_expected"], "time_class": d["time_class"],
@@ -130,8 +130,9 @@ def error_structure(pts: pd.DataFrame) -> pd.DataFrame:
                     trends.append(np.polyfit(np.log10(s["size"].astype(float)), s["lr"], 1)[0])
             trend = float(np.median(trends)) if trends else math.nan
             same = float((np.sign(case_med) == np.sign(bias)).mean()) if bias != 0 else math.nan
-            dev = v[v["split"] == DEV]["lr"]
-            exp = v[v["split"] == EXPOSED]["lr"]
+            origin = v["origin"] if "origin" in v else v["split"]
+            dev = v[origin == DEV]["lr"]
+            exp = v[origin == EXPOSED]["lr"]
             label, why = _classify(bias, spread, trend)
             rows.append(
                 {"op": op, "metric": metric.upper(), "points": len(v), "scenarios": len(case_med),
@@ -209,7 +210,11 @@ def write_findings(
 
     meta_path = results_dir / "meta.json"
     meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
-    n_by = df.drop_duplicates("point_id")["split"].value_counts().to_dict()
+    n_by = (
+        df.drop_duplicates("point_id")["origin" if "origin" in df else "split"]
+        .value_counts()
+        .to_dict()
+    )
     lines = ["# Tier 0 diagnosis from development results\n"]
     lines.append(
         f"Source: `{results_dir.as_posix()}` (suite `{meta.get('suite', '?')}`, git "

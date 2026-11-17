@@ -21,7 +21,8 @@ from benchmarks.runner import (
 
 MB = 2**20
 DEV_CASE = "drop_duplicates/mixed_dup0"
-EXPOSED_CASE = "drop_duplicates/realistic_nulls_dup30"
+EXPOSED_CASE = "drop_duplicates/realistic_nulls_dup30"  # dev since split v3
+VAL_CASE = "v3/drop_duplicates/null_heavy_full"
 TEST_CASE = "v2/drop_duplicates/clustered_nulls_varstr_dup60"
 
 
@@ -57,12 +58,12 @@ def test_redact_line_keeps_only_id_status_elapsed(line, expected):
     assert redact_line(line) == expected
 
 
-def test_scrub_logs_redacts_exposed_and_sealed_lines_only_and_is_idempotent(tmp_path):
+def test_scrub_logs_redacts_protected_lines_only_and_is_idempotent(tmp_path):
     log = tmp_path / "run.log"
     nested = tmp_path / "sealed" / "old.log"
     nested.parent.mkdir()
     dev = f"00:00:01 [1/4] {DEV_CASE}|n=1000000: ok ram=12.0 MB t=0.5 s | tier0 pred=11.0 MB t=0.4 s  [5s elapsed]"
-    exp = f"00:00:02 [2/4] {EXPOSED_CASE}|n=1000000: ok ram=99.5 MB [censored:below_floor] t=1.5 s | tier0 pred=88.8 MB t=1.4 s  [9s elapsed]"
+    exp = f"00:00:02 [2/4] {VAL_CASE}|n=1000000: ok ram=99.5 MB [censored:below_floor] t=1.5 s | tier0 pred=88.8 MB t=1.4 s  [9s elapsed]"
     tst = f"00:00:03 [3/4] {TEST_CASE}|n=1000000: ok ram=77.7 MB t=2.5 s | tier0 pred=66.6 MB t=2.4 s  [14s elapsed]"
     other = "00:00:04 suite=full points=136 (runnable 124 under the 2560 MB cap) -> out"
     log.write_text("\n".join([dev, exp, tst, other]) + "\n", encoding="utf-8")
@@ -93,7 +94,7 @@ def test_migrate_exposed_moves_only_exposed_rows(tmp_path):
     moved = migrate_exposed(tmp_path)
     assert moved["actuals"] == 1 and moved["predictions"] == 1 and moved["left_sealed"] == 1
     main = {r["case"]: r["split"] for r in _read(tmp_path / "actuals.csv")}
-    assert main == {DEV_CASE: "dev", EXPOSED_CASE: "exposed-v1"}
+    assert main == {DEV_CASE: "dev", EXPOSED_CASE: "dev"}
     assert [r["case"] for r in _read(tmp_path / "sealed" / "actuals.csv")] == [TEST_CASE]
     assert not (tmp_path / "sealed" / "predictions.csv").exists()
     assert len(_read(tmp_path / "predictions.csv")) == 1

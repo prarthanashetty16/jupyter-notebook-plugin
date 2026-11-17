@@ -34,10 +34,13 @@ from benchmarks.split import (
     PROGRESS_PATH,
     SEALED_DIR,
     TEST,
+    VAL,
+    VAL_DIR,
     SealedAccessError,
     group_of,
     load_split,
     open_test_split,
+    open_validation_split,
     require_token,
 )
 from nexus.measure import (
@@ -129,7 +132,7 @@ def _read_split(directory: Path, floors: Floors) -> pd.DataFrame:
 
 
 def load_joined(results_dir: Path, floors: Floors | None = None) -> pd.DataFrame:
-    """DEVELOPMENT rows (groups ``dev`` and ``exposed-v1``), tagged in the ``split`` column.
+    """DEVELOPMENT rows (group ``dev``), tagged in ``split``; ``origin`` keeps ``exposed-v1``.
 
     One row per (grid point, tier); tier NaN if no prediction ran. Reads ``actuals.csv`` and
     ``predictions.csv`` only (never ``sealed/``) and refuses data containing a sealed test-v2
@@ -138,9 +141,13 @@ def load_joined(results_dir: Path, floors: Floors | None = None) -> pd.DataFrame
     """
     df = _read_split(results_dir, floors or Floors())
     df["split"] = df["case"].map(group_of)
-    leaked = sorted(set(df.loc[df["split"] == TEST, "case"]))
+    exposed = load_split().exposed
+    df["origin"] = [
+        EXPOSED if c in exposed else g for c, g in zip(df["case"], df["split"], strict=True)
+    ]
+    leaked = sorted(set(df.loc[df["split"].isin([TEST, VAL]), "case"]))
     if leaked:
-        raise SealedAccessError(f"sealed test-v2 cases found in the development files: {leaked}")
+        raise SealedAccessError(f"protected cases found in the development files: {leaked}")
     return df
 
 
@@ -155,6 +162,22 @@ def load_sealed(results_dir: Path, floors: Floors | None, token: object) -> pd.D
     if wrong:
         raise SealedAccessError(f"non-test-v2 cases found in the sealed files: {wrong}")
     df["split"] = TEST
+    df["origin"] = TEST
+    return df
+
+
+def load_validation(results_dir: Path, floors: Floors | None, token: object) -> pd.DataFrame:
+    """VALIDATION (val-v3) rows. Only reachable with the token from ``open_validation_split``."""
+    require_token(token, VAL)
+    directory = results_dir / VAL_DIR
+    if not (directory / "actuals.csv").exists():
+        return pd.DataFrame(columns=["point_id", "status", "case", "op", "tier"])
+    df = _read_split(directory, floors or Floors())
+    wrong = sorted(set(df["case"]) - load_split().val)
+    if wrong:
+        raise SealedAccessError(f"non-val-v3 cases found in the validation files: {wrong}")
+    df["split"] = VAL
+    df["origin"] = VAL
     return df
 
 
@@ -524,20 +547,29 @@ def _sealed_count(results_dir: Path) -> int:
     return len(pd.read_csv(path, dtype=str, usecols=["point_id"]).drop_duplicates())
 
 
-EXPOSED_HEADING = "## Exposed-v1 split (development and diagnosis only; never final claims)"
+def _validation_count(results_dir: Path) -> int:
+    """Number of val-v3 points measured so far: a count only, no metrics."""
+    path = results_dir / VAL_DIR / "actuals.csv"
+    if not path.exists():
+        return 0
+    return len(pd.read_csv(path, dtype=str, usecols=["point_id"]).drop_duplicates())
 
 
 def write_report(
     results_dir: Path, tiers: list[int] | None = None, floors: Floors | None = None
 ) -> Path:
-    """Development report: ``dev`` and ``exposed-v1`` sections. test-v2 is sealed (count only)."""
+    """Development report (dev only). test-v2 and val-v3 are protected (counts only)."""
     floors = floors or Floors()
     df = load_joined(results_dir, floors)
     lines = _header(_meta(results_dir), floors, results_dir, "NEXUS benchmark report (development)")
-    dev, exposed = df[df["split"] == DEV], df[df["split"] == EXPOSED]
+    dev = df[df["split"] == DEV]
     lines += _report_lines(dev, results_dir, floors, tiers, "", "## Dev split")
-    if not exposed.empty:
-        lines += _report_lines(exposed, results_dir, floors, tiers, "_exposed", EXPOSED_HEADING)
+    lines.append("\n## Val-v3 split (held-out validation)\n")
+    lines.append(
+        f"{_validation_count(results_dir)} val-v3 points measured. Values are not shown here: "
+        'they are evaluated only by `python -m benchmarks evaluate <dir> --val --reason "..."`, '
+        "which logs every use in docs/PROGRESS.md.\n"
+    )
     lines.append("\n## Test-v2 split (sealed)\n")
     lines.append(
         f"{_sealed_count(results_dir)} test-v2 points measured. Their values are not shown here: "
@@ -560,7 +592,7 @@ def write_final_report(
     floors: Floors | None = None,
     progress_path: Path | None = None,
 ) -> Path:
-    """dev, exposed-v1 and test-v2 in separate sections. Logs the sealed access first."""
+    """dev and test-v2 in separate sections. Logs the sealed access first."""
     floors = floors or Floors()
     token = open_test_split(
         reason,
@@ -571,13 +603,10 @@ def write_final_report(
     )
     df = load_joined(results_dir, floors)
     test = load_sealed(results_dir, floors, token)
-    dev, exposed = df[df["split"] == DEV], df[df["split"] == EXPOSED]
+    dev = df[df["split"] == DEV]
     lines = _header(_meta(results_dir), floors, results_dir, "NEXUS FINAL report")
     lines.append(f"Test-v2 opened {token.timestamp}; reason: {token.reason}\n")
     lines += _report_lines(dev, results_dir, floors, tiers, "_final_dev", "## Dev split")
-    if not exposed.empty:
-        heading = EXPOSED_HEADING.replace("never final claims", "not evidence for claims")
-        lines += _report_lines(exposed, results_dir, floors, tiers, "_final_exposed", heading)
     if test.empty:
         lines.append("\n## Test-v2 split\n\nno test-v2 points measured.\n")
     else:
@@ -585,6 +614,41 @@ def write_final_report(
     lines.append("\n## Measurement caveats\n")
     lines.append(CAVEATS)
     report = results_dir / "final_report.md"
+    report.write_text("\n".join(lines), encoding="utf-8")
+    return report
+
+
+def write_validation_report(
+    results_dir: Path,
+    reason: str,
+    *,
+    command: str = "evaluate --val",
+    tiers: list[int] | None = None,
+    floors: Floors | None = None,
+    progress_path: Path | None = None,
+) -> Path:
+    """dev and val-v3 in separate sections. Logs the validation access first."""
+    floors = floors or Floors()
+    token = open_validation_split(
+        reason,
+        results_dir=results_dir,
+        command=command,
+        n_points=_validation_count(results_dir),
+        progress_path=progress_path or PROGRESS_PATH,
+    )
+    df = load_joined(results_dir, floors)
+    val = load_validation(results_dir, floors, token)
+    dev = df[df["split"] == DEV]
+    lines = _header(_meta(results_dir), floors, results_dir, "NEXUS VALIDATION report (val-v3)")
+    lines.append(f"val-v3 opened {token.timestamp}; reason: {token.reason}\n")
+    lines += _report_lines(dev, results_dir, floors, tiers, "_val_dev", "## Dev split")
+    if val.empty:
+        lines.append("\n## Val-v3 split\n\nno val-v3 points measured.\n")
+    else:
+        lines += _report_lines(val, results_dir, floors, tiers, "_val", "## Val-v3 split")
+    lines.append("\n## Measurement caveats\n")
+    lines.append(CAVEATS)
+    report = results_dir / "validation_report.md"
     report.write_text("\n".join(lines), encoding="utf-8")
     return report
 

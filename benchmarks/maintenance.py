@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 from benchmarks.runner import ACTUAL_FIELDS, PREDICTION_FIELDS, ResultStore, upgrade_header
-from benchmarks.split import EXPOSED, SEALED_DIR, load_split
+from benchmarks.split import SEALED_DIR, load_split
 
 _STATUS = re.compile(
     r":\s+(?P<status>ok|error|timeout|memory_limit|died|actual kept \(\w+\)|already done \(\w+\)"
@@ -54,7 +54,7 @@ def migrate_exposed(results_dir: Path) -> dict[str, int]:
         upgrade_header(results_dir / f"{name}.csv", fields)
         dst = ResultStore(results_dir / f"{name}.csv", fields, key)
         for r in move:
-            r = {**r, "split": EXPOSED}
+            r = {**r, "split": "dev"}
             if dst.has(**{k: r[k] for k in key}) is None:
                 dst.add(r)
                 moved[name] += 1
@@ -87,9 +87,9 @@ def redact_line(line: str) -> str:
 
 
 def scrub_logs(results_dir: Path) -> int:
-    """Redact point lines of exposed-v1 and test-v2 cases in every ``*.log`` of the directory."""
+    """Redact point lines of test-v2 and val-v3 cases in every ``*.log`` of the directory."""
     sp = load_split()
-    names = sorted(sp.exposed | sp.test, key=len, reverse=True)
+    names = sorted(sp.test | sp.val, key=len, reverse=True)
     pattern = re.compile("|".join(re.escape(n) + r"\|n=\d+" for n in names))
     changed = 0
     for log in results_dir.rglob("*.log"):
