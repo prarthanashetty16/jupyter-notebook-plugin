@@ -1,0 +1,7 @@
+point,full_run_s,session1_s,s1_avail_min_MiB,s1_suspect,session2_s,s2_avail_min_MiB,s2_suspect,s2_reasons
+drop_duplicates/mixed_dup0,15.83,17.99,876,True,14.47,3122,True,"avail_min<footprint+1GiB,faults>3x_footprint_pages"
+drop_duplicates/numeric_dup50,11.88,16.89,1281,True,12.41,3621,True,faults>3x_footprint_pages
+drop_duplicates/strings_dup50,15.01,19.76,1985,True,14.57,3708,False,
+sort_values/by_int,3.16,4.85,1704,True,3.37,3178,False,
+sort_values/by_str,12.71,18.58,1695,True,14.93,2603,True,avail_min<footprint+1GiB
+concat/mixed,1.77,2.17,2335,True,2.47,3120,False,

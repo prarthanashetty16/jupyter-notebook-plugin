@@ -241,7 +241,7 @@ def test_upgrade_header_realigns_mixed_width_rows(tmp_path):
     """Rows written under an old header and rows in the new layout must both survive."""
     import csv
 
-    from benchmarks.maintenance import upgrade_header
+    from benchmarks.runner import upgrade_header
 
     path = tmp_path / "t.csv"
     path.write_text("a,b\n1,2\n", encoding="utf-8")

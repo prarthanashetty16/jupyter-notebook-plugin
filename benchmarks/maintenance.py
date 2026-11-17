@@ -16,7 +16,7 @@ import re
 import sys
 from pathlib import Path
 
-from benchmarks.runner import ACTUAL_FIELDS, PREDICTION_FIELDS, ResultStore
+from benchmarks.runner import ACTUAL_FIELDS, PREDICTION_FIELDS, ResultStore, upgrade_header
 from benchmarks.split import EXPOSED, SEALED_DIR, load_split
 
 _STATUS = re.compile(
@@ -32,30 +32,6 @@ def _read(path: Path) -> list[dict[str, str]]:
         return []
     with path.open(newline="", encoding="utf-8") as fh:
         return list(csv.DictReader(fh))
-
-
-def upgrade_header(path: Path, fields: list[str]) -> bool:
-    """Rewrite ``path`` under ``fields`` if its header is older, keeping every row aligned.
-
-    Rows appended after a schema change have ``fields`` layout while older rows follow the old
-    header, so each row is decoded by its own width (a plain ``DictReader`` would misalign them).
-    """
-    if not path.exists():
-        return False
-    with path.open(newline="", encoding="utf-8") as fh:
-        table = list(csv.reader(fh))
-    old = table[0]
-    if old == fields and all(len(r) == len(fields) for r in table[1:]):
-        return False
-    rows = []
-    for r in table[1:]:
-        names = fields if len(r) == len(fields) else old
-        rows.append(dict(zip(names, r, strict=True)))
-    with path.open("w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=fields)
-        writer.writeheader()
-        writer.writerows({f: r.get(f, "") for f in fields} for r in rows)
-    return True
 
 
 def migrate_exposed(results_dir: Path) -> dict[str, int]:

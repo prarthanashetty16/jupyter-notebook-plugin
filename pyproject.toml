@@ -62,6 +62,7 @@ python_functions = ["test_*"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+extend-exclude = ["docs/benchmarks/tier0-v2/probes"]  # scripts kept as run
 
 [tool.ruff.lint]
 select = [

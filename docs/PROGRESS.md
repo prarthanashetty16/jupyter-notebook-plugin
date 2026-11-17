@@ -535,3 +535,142 @@ are shown labelled and are for diagnosis only, never a final claim.
 3. Tooling follow-up (not done here): `python -m benchmarks status` labelled the exposed-v1 rows still in
    `sealed/` as "test-v2 (count only)" and, after migration, counts them under "dev". The run itself never
    measured test-v2, but the label is misleading and should be fixed in `benchmarks/__main__.py`.
+
+
+## Phase 4a: structural Tier 0 fixes
+
+Scope: fix the **structural** RAM errors found in Phase 3d, from how pandas/numpy implement each
+operation. Rules: derive from the implementation (source read, isolated allocation probes), do not
+fit constants to benchmark points; develop against `dev`, validate on the held-out `exposed-v1`
+(never a final claim); keep ranges honest; `test-v2` stayed sealed and was not run. **Time models
+were not changed** (step 6, see below).
+
+- [x] 0. Memory-pressure check. `nexus.measure` now records available RAM (start, minimum), page faults
+  (all/major) and swap rise per run; `python -m benchmarks.pressure` screens a results directory.
+  Report: `docs/benchmarks/tier0-v2/pressure.md`.
+- [x] 1. sort_values RAM. [x] 2. merge RAM as a function of output rows. [x] 3. read_csv RAM (+ regression
+  test). [x] 4. astype to-str / to-category. [x] 5. concat / drop_duplicates string sharing.
+- [x] 6. Time models: left unchanged, with evidence (below).
+- [x] 7. `python -m benchmarks status` shows dev, exposed-v1 and test-v2 separately (grouped by `split.json`,
+  not by a stored column).
+- [x] 8. Before/after on identical measurements: `docs/benchmarks/tier0-v2/before_after.md` (+ CSVs and
+  `points_ram.csv`). Probe scripts: `docs/benchmarks/tier0-v2/probes/`. Lint/tests pass on Windows.
+
+### Method note: before/after is scored on the SAME measurements
+Actuals are independent of the models, so instead of re-measuring (27 min, and ambient time noise of
++-40% between sessions would blur the comparison) the old `actuals.csv` was kept and only the Tier 0
+predictions were re-run (`benchmarks/results/tier0-v2`, 4.5 min, all 136 dev + exposed-v1 points;
+`tier0_compare` asserts the time predictions are identical before/after). To re-measure everything
+with the new instrumentation (about 27 min; close other programs, >= 6 GiB free so the pressure screen is
+clean):
+```
+python -m benchmarks full --out benchmarks/results/full-v4 --mem-limit-gb 2.5 --max-size 10000000
+python -m benchmarks status benchmarks/results/full-v4
+python -m benchmarks.pressure benchmarks/results/full-v4
+python -m benchmarks.maintenance scrub-logs benchmarks/results/full-v4
+python -m benchmarks evaluate benchmarks/results/full-v4
+```
+
+### Step 0: memory pressure (details in `pressure.md`)
+No swap/pagefile rise at any of 142 re-measured points; available RAM never below 876 MiB. 12 of the 33
+points at 10M rows or > 1 GiB were flagged (all in drop_duplicates / sort_values / concat, measured while
+2-4 GiB were free); the RAM values do not change with it (-1%..+4%). Time did: the flagged session was
+uniformly 1.28x slower than the original run (flagged and unflagged points alike), 10M points about +15%
+beyond that, and unflagged sessions still differ by up to 40% for the same point. **The super-linear
+slopes survive the exclusion of suspect points** (sort_values 1.30-1.58, drop_duplicates 1.16-1.37 on
+unflagged points; in-process primitives with no pressure possible: argsort 1.34, duplicated 1.35,
+gather 1.61) and are a cache-hierarchy effect of the working set, not paging and not a complexity class.
+Windows has no per-process hard-fault counter, so paging was only observable through available RAM,
+pagefile use and the soft-fault ratio.
+
+### What each model now says (derivations are in the model docstrings)
+| operation | mechanism (pandas 3.1) | Tier 0 range | verified with isolated probes |
+|---|---|---|---|
+| sort_values | peak = max(nargsort temporaries: 5 x int64 + 2 masks; take: **shallow** copy of all columns + int64 indexer + int64 index). Object columns copy 8-byte pointers: the string payload (deep bytes) is never copied, which is why the peak was ~84 B/row for every key type | low = -2%, expected = max of the phases, high = both phases + text-key tables | 8..168 B/row frames: take phase within 0.5%; single-key phase 41.2 vs 42; text multi-key adds ~5 B/row per key (measured) |
+| merge | output rows M is an explicit input (`features["out_rows"]`, `out_rows_source`). Phase 1 = presized hash table (`min(max(nl, nr), 2^20+7)` entries, whatever the distinct count) + codes + indexers; phase 2 = both indexers + M x (moved bytes of both sides); pandas skips a side's copy when its indexer is a range | M: semantic floors (a left join keeps all left rows ...) + the unchanged 0.1x/1x/4x prior; low assumes the left copy is elided; Tier 1 replaces M | 0.82-1.05 vs formula when the elision matches; the presized table explained a 23 MiB gap |
+| read_csv | not the frame size: peak ~ 1.6 x file + 13.5 B/field + 6 B/row (+ a new 16-byte-class `str` per text cell; de-duplication only per chunk). A chunked (no concat) read peaks at 13-73 B/row vs 71-384 for the default | file bytes only: bytes/field w in 2..24 (2.4x..11.4x the file), +-20% probe band | width sweep 1.56 B per file byte, column sweep 21.3 B/field; all-distinct 4 x 12-char text 384 vs 401 from the formula; +-20% overall |
+| astype -> str | new `str` objects: 8 + pymalloc class16(41 + len); integers add an object-int temporary (8 + 32 B/row); float/datetime do not | length 1..20 (int) etc., expected = geometric middle; `str_len` (Tier 1) collapses it | 7 int widths, 2 float, datetime: 64.3/90.8/96.4/96.4/112.5/112.5/112.5 vs 64/96/96/96/112/112/112 |
+| astype -> category | factorize + code remap; per-row cost independent of n | low = few distinct (24 text / 16 numeric B/row), high = all distinct (83 / 59), expected = geometric middle | 3 sizes (1M/2M/4M) x 3 cardinalities; **mid cardinalities are not linear in U/n** (documented) |
+| concat | `np.concatenate` of shallow bytes + int64 index (+12 B/row measured incl. a transient; 0 with `ignore_index`) | low = moved, expected = + index, high = 2 x moved + index (dtype unification) | numeric exact (`moved + 12`); mixed frames 4-13% above |
+| drop_duplicates | factorize per key (8 B/row codes kept, presized table), id fusion (+ compress step when the distinct-count product can exceed 2^63), `duplicated` table, mask/take; **each key column holding a null adds one int64 array** (`maybe_lift`) | distinct fraction 0..1, null columns 0..all nullable dtypes (Tier 0 sees dtype), +-20% formula band | 3-key numeric/text 67.1/66.9 vs 67.0; 4+ keys needed the compress step; nulls added 47.9 / 47.8 B/row = 8 x 6 columns at n = 1M / 2M |
+
+Descriptor change: `FrameDescriptor.shallow_bytes` / `moved_bytes` (what a take/concat/filter copies);
+deep `nbytes` is no longer used by those models. Tier 1 hooks are explicit features set to `None` at
+Tier 0: `out_rows`, `distinct_fraction`, `key_distinct_fraction`, `null_key_columns`, `str_len`,
+`n_rows/n_cols/text_cols/str_chars/unique_fraction` (read_csv). The "shared string objects" question
+resolved differently than assumed: for take/concat/mask the string objects are shared *by construction*
+(pointers are copied), so no sharing feature is needed there (probes: shared vs unshared strings gave
+identical peaks); the data-dependent quantity is the distinct count that sizes hash tables, which is the
+Tier 1 feature above. Where objects ARE created (read_csv, astype to str) the model uses the new-object
+size.
+
+### Before / after, RAM, same measurements (valid points only; bias = median expected/actual)
+| operation | dev bias | dev median err | dev coverage | exposed-v1 bias | exposed median err | exposed coverage |
+|---|---|---|---|---|---|---|
+| sort_values | 2.28 -> 1.01 | 128% -> 1% | 0% -> 100% | 2.27 -> 1.01 | 127% -> 1% | 0% -> 100% |
+| merge | 5.22 -> 2.03 | 422% -> 103% | 70% -> 90% | 4.45 -> 1.04 | 345% -> 41% | 50% -> 100% |
+| concat | 1.40 -> 0.96 | 58% -> 4% | 50% -> 100% | 2.10 -> 0.93 | 110% -> 7% | 0% -> 100% |
+| read_csv | 0.38 -> 1.10 | 62% -> 10% | 100% -> 100% | 0.64 -> 1.87 | 36% -> 87% | 100% -> 100% |
+| astype | 0.62 -> 1.00 | 38% -> 12% | 89% -> 100% | 0.83 -> 1.10 | 17% -> 10% | 86% -> 100% |
+| drop_duplicates | 1.57 -> 1.14 | 57% -> 14% | 100% -> 100% | 1.54 -> 0.70 | 54% -> 30% | 100% -> 100% |
+| groupby, np.sort, matmul | unchanged (not in scope) | | | | | |
+| ALL (dev / exposed-v1) | 1.57 -> 1.04 | 64% -> 8% | 76% -> 98% | 1.05 -> 1.00 | 52% -> 10% | 67% -> 100% |
+
+Share of valid actuals above `high` (the dangerous direction): 2% -> 0% on both splits. Mean range
+width: dev 1.86 -> 1.71, exposed 1.73 -> 1.53 (ranges did not widen overall; per-operation widths in
+`before_after.md`).
+
+### Which structural errors went away on BOTH dev and exposed-v1
+- **Gone on both:** sort_values RAM (x2.3 over -> within 1%), concat RAM (x1.4 / x2.1 over -> -4% / -7%),
+  the read_csv under-prediction (x0.38 / x0.64 -> now over; two of the three new regression files,
+  all-distinct strings at 7.5x and one-digit ints at 5.8x the file size, exceed the first-draft `high` of 5x), astype to-str.
+- **Constant fixed, remainder is data-dependent (Tier 1):** merge (x5.2 / x4.5 -> x2.0 / x1.0; the rest is
+  the unknown M and the left-copy elision, e.g. dev `left_1to1` still x3.3 and exposed `outer_overlap50`
+  x0.62 under), astype to-category (the range now brackets all points; expected still x0.6-1.6 by
+  cardinality), drop_duplicates dev (x1.57 -> 1.14).
+- **Did not go away / worse on one split:** drop_duplicates on exposed-v1 (bias 1.54 -> **0.70**, median
+  error 30%): `expected` under-predicts the null-heavy `realistic_nulls` and the high-survivor
+  `subset_i0_s0_lowcard` scenarios; all points are inside the range (coverage 100%, none above `high`).
+  read_csv on exposed-v1 is over-predicted x1.87 (x2.2 for `wide_numeric`, x1.9 for dev `numeric`): the
+  unknown field width puts `expected` at 4.4x the file while float-heavy files are 2.0-2.3x; Tier 1 (a
+  header sample) is the fix. groupby (x2.6 dev / x1.5) is untouched and data-dependent.
+
+### Honest notes
+- **The null-lift term in drop_duplicates was triggered by an exposed-v1 failure**: the null-heavy
+  `realistic_nulls` points were under-predicted after the first revision. The mechanism was then read from
+  `get_group_index` and verified with an isolated probe on synthetic frames (47.9 B/row = 8 x 6), not fitted
+  to those points; but exposed-v1 is no longer a clean hold-out for that scenario, and its validation rests
+  on the probe. `test-v2` has no such exposure.
+- Coefficients that are measured, not derived from pandas source: read_csv (1.6 / 13.5 / 6), the multi-key
+  text sort (45 + 5 per key), the category extremes (24/83, 16/59), concat's 12 B/row index and the
+  +-20% / -2% error bands. All come from isolated probes (scripts in
+  `docs/benchmarks/tier0-v2/probes/`), none from benchmark points, each stated in its docstring with the
+  probe values. The mechanism behind read_csv's second copy (chunk concatenation) is inferred, and a
+  drop_duplicates under-prediction at n = 1M (+18% at 9 keys, +5% at 2M) is unexplained and covered by the
+  band.
+- Ranges: none was narrowed below its probe error band. sort_values' range is narrow (derivation exact);
+  merge, read_csv, astype and drop_duplicates stay wide because Tier 0 genuinely does not know M, the field
+  width, the cardinality or the distinct count.
+- Out of scope and unchanged: all time models, groupby, matmul, np.sort. `test-v2` was not touched.
+- Fixed on the way: `python -m benchmarks status` (grouped by `split.json`); `ResultStore` upgrades an
+  older header automatically (the Phase 3d corruption cannot recur).
+
+### Step 6 (time models): why they were left alone
+The evidence for a different complexity class does not survive. Slopes stay at 1.2-1.6 with suspect points
+removed, but the same slopes appear for in-process primitives where pressure is impossible, because the
+per-element cost rises as the working set outgrows the caches (argsort 21 -> 92 ns/element from 125k to 8M
+rows). sort_values is already modelled as n log n (which explains ~1.05 of the 1.3-1.5 observed); hash
+operations are O(n) by algorithm. A working-set-dependent cost needs machine-specific breakpoints
+(calibration, Phase 6); an exponent fitted to three sizes would be the forbidden tuning.
+
+### Next steps
+1. Tier 1 statistics, now with explicit feature slots: distinct counts per key column and per row
+   (drop_duplicates, groupby, astype category), output-row estimate from key overlap/fan-out and copy
+   elision (merge), header/row sample for read_csv (rows, columns, text columns, string length), null counts
+   per key column, integer string length for astype.
+2. Phase 6 calibration: a working-set-dependent time cost (cache breakpoints) and re-validation of the
+   error bands on a clean machine; re-run the full benchmark (command above) so the pressure screen covers
+   the original 136 points.
+3. groupby RAM (x2.6 dev) was not part of this phase; derive it the same way (hash table by distinct keys,
+   result frame, aggregation temporaries).
+4. When the models are frozen: run `test-v2` once (procedure in the Phase 3d notes).

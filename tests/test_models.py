@@ -86,7 +86,11 @@ def test_read_csv_uses_file_size(pipeline, tmp_path):
     path = tmp_path / "d.csv"
     frame().to_csv(path, index=False)
     est = estimates(pipeline, f"pd.read_csv({str(path)!r})", {})["pandas.read_csv"]
-    assert est.estimate.ram_expected == pytest.approx(1.5 * path.stat().st_size, abs=1)
+    size = path.stat().st_size
+    assert est.estimate.ram_low < est.estimate.ram_expected < est.estimate.ram_high
+    # Phase 4a: the parse holds tokens and chunks, so the peak is several times the file, and the
+    # estimate scales linearly with it (the first draft pinned 1.5x, which under-predicted).
+    assert est.estimate.ram_expected == pytest.approx(4.41 * size, rel=0.02)
 
 
 def test_ram_grows_with_input_size(pipeline):

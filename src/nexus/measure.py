@@ -16,6 +16,11 @@ is reset after setup (``/proc/self/clear_refs``) so runs are never censored for 
 The parent additionally polls the child's RSS (also used to enforce a memory cap) as an
 independent cross-check; disagreements are logged and recorded, not used as the value.
 
+Memory-pressure evidence is recorded per run: available system RAM at the start and its minimum
+during the window, page faults of the child (all, and major ones where the OS reports them),
+and the rise of swap/pagefile use. Windows has no per-process hard-fault counter in psutil, so
+there only the system-wide signals (available RAM, pagefile use) can flag paging.
+
 Limitations: RSS counts resident pages (lazily allocated, untouched memory is invisible);
 Windows reports the working set; time is measured around the single call without warm-up.
 """
@@ -86,6 +91,20 @@ def read_memory(pid: int | None = None) -> MemoryReading:
     return MemoryReading(rss, None)
 
 
+def read_faults() -> tuple[int, int | None]:
+    """(all page faults, major faults or None) of this process since it started.
+
+    Windows: ``num_page_faults`` (soft + hard, no split). Unix: ``ru_minflt + ru_majflt`` and
+    ``ru_majflt``.
+    """
+    if sys.platform == "win32":
+        return int(psutil.Process().memory_info().num_page_faults), None
+    import resource
+
+    ru = resource.getrusage(resource.RUSAGE_SELF)
+    return int(ru.ru_minflt + ru.ru_majflt), int(ru.ru_majflt)
+
+
 def reset_peak() -> bool:
     """Reset this process's peak counter to its current value; True if supported (Linux only)."""
     if sys.platform.startswith("linux"):
@@ -115,6 +134,11 @@ class RunResult:
     poll_delta_bytes: int = 0  # max polled RSS minus baseline (cross-check only)
     time_s: float = 0.0
     samples: int = 0
+    avail_start_bytes: int = 0  # system available RAM when the operation started
+    avail_min_bytes: int = 0  # lowest available RAM seen while it ran (polled)
+    page_faults: int | None = None  # child page faults during the operation
+    major_faults: int | None = None  # of which major (None where the OS does not report)
+    swap_rise_bytes: int = 0  # max rise of swap/pagefile use during the operation (polled)
     info: dict[str, Any] = field(default_factory=dict)
     error: str | None = None
 
@@ -187,14 +211,34 @@ def _child_main(
         gc.collect()
         reset = reset_peak()
         before = read_memory()
-        conn.send(("ready", {"rss": before.rss, "peak": before.peak, "reset": reset}))
+        faults0 = read_faults()
+        avail0 = int(psutil.virtual_memory().available)
+        conn.send(
+            (
+                "ready",
+                {"rss": before.rss, "peak": before.peak, "reset": reset, "avail": avail0},
+            )
+        )
         if conn.recv() != "go":
             return
         t0 = time.perf_counter()
         result = func(state)
         elapsed = time.perf_counter() - t0
         after = read_memory()
-        conn.send(("done", {"elapsed": elapsed, "rss": after.rss, "peak": after.peak}))
+        faults1 = read_faults()
+        major = None if faults1[1] is None or faults0[1] is None else faults1[1] - faults0[1]
+        conn.send(
+            (
+                "done",
+                {
+                    "elapsed": elapsed,
+                    "rss": after.rss,
+                    "peak": after.peak,
+                    "faults": faults1[0] - faults0[0],
+                    "major": major,
+                },
+            )
+        )
         conn.send(("info", summarize(result) if summarize is not None else {}))
     except BaseException:
         try:
@@ -204,13 +248,31 @@ def _child_main(
 
 
 class _Poll:
-    def __init__(self, baseline: int) -> None:
+    """Polled RSS peak plus system-wide pressure signals (sampled at most every 20 ms)."""
+
+    def __init__(self, baseline: int, avail: int = 0) -> None:
         self.peak = baseline
         self.samples = 0
+        self.avail_min = avail
+        self.swap0 = self._swap_used()
+        self.swap_rise = 0
+        self._next = 0.0
+
+    @staticmethod
+    def _swap_used() -> int:
+        try:
+            return int(psutil.swap_memory().used)
+        except Exception:
+            return 0
 
     def add(self, rss: int) -> None:
         self.samples += 1
         self.peak = max(self.peak, rss)
+        now = time.monotonic()
+        if now >= self._next:
+            self._next = now + 0.02
+            self.avail_min = min(self.avail_min or 2**62, int(psutil.virtual_memory().available))
+            self.swap_rise = max(self.swap_rise, self._swap_used() - self.swap0)
 
 
 def _pump(
@@ -245,6 +307,11 @@ def _evaluate_run(ready: dict[str, Any], done: dict[str, Any], poll: _Poll) -> d
         "peak_reset": bool(ready["reset"]),
         "time_s": float(done["elapsed"]),
         "samples": poll.samples,
+        "avail_start_bytes": int(ready.get("avail", 0)),
+        "avail_min_bytes": int(poll.avail_min),
+        "page_faults": done.get("faults"),
+        "major_faults": done.get("major"),
+        "swap_rise_bytes": int(poll.swap_rise),
     }
     if done["peak"] is None or ready["peak"] is None:
         return {**out, "peak_source": "poll", "delta_bytes": poll_delta, "censored": False}
@@ -293,7 +360,7 @@ def _run_once(
         )
         if kind != "ready":
             return RunResult(status=kind, error=str(ready) if ready else f"during setup: {kind}")
-        poll = _Poll(int(ready["rss"]))
+        poll = _Poll(int(ready["rss"]), int(ready.get("avail", 0)))
         parent.send("go")
         kind, done = _pump(
             parent, ps, time.monotonic() + run_timeout_s, max_rss_bytes, poll, poll_s

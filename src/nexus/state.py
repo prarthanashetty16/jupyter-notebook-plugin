@@ -56,6 +56,15 @@ class FrameDescriptor(Descriptor):
     text_columns: int
     n_blocks: int | None = None  # pandas memory blocks; None if not introspectable
     consolidated: bool | None = None  # True if no two blocks share a dtype
+    # What a row-moving operation (take, concat, boolean mask) copies: numeric values and, for
+    # text, the 8-byte pointers only. Excludes the string objects (shared, never copied) and the
+    # index. None for descriptors built without it; ``moved_bytes`` then falls back to ``nbytes``.
+    shallow_bytes: int | None = None
+
+    @property
+    def moved_bytes(self) -> int:
+        """Bytes copied when rows are taken, concatenated or filtered (see ``shallow_bytes``)."""
+        return self.shallow_bytes if self.shallow_bytes is not None else self.nbytes
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -271,6 +280,7 @@ class StateInspector:
             text_columns=text_columns,
             n_blocks=n_blocks,
             consolidated=consolidated,
+            shallow_bytes=int(shallow.sum()),
         )
 
     def _series(self, name: str, s: Any, pd: Any) -> SeriesDescriptor:

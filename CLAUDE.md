@@ -81,6 +81,7 @@ python -m benchmarks full     # 1e4..1e7 rows, long, needs several GB free RAM
 pip install -e ".[dev,bench]"   # matplotlib for figures
 nexus-calibrate-machine       # per-machine throughputs (the runner calibrates once if missing)
 ```
+Phase 4a tooling: `python -m benchmarks.pressure <dir>` screens time points for memory pressure (available RAM, swap and page faults are recorded per run); `python -m benchmarks.tier0_compare <before> <after> <out>` scores old vs new predictions on identical actuals; the probe scripts behind the model derivations are in `docs/benchmarks/tier0-v2/probes/`.
 RAM is measured with OS peak counters on inputs loaded from disk (`nexus.measure`); the instrument is validated by `tests/test_measure_validation.py` and must stay green.
 Do not run tests or other heavy work while a benchmark runs (it distorts memory measurements).
 

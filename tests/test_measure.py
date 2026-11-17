@@ -95,3 +95,14 @@ def test_invalid_repeats():
 
 def test_measurement_type():
     assert isinstance(measure_call(sleep_a_bit, repeats=1), Measurement)
+
+
+def test_memory_pressure_evidence_is_recorded():
+    """Phase 4a: every run reports available RAM, page faults and swap use for the screen."""
+    run = measure_call(alloc_40mb, repeats=1).runs[0]
+    assert run.avail_start_bytes > 0
+    assert 0 < run.avail_min_bytes <= run.avail_start_bytes
+    assert run.page_faults is not None and run.page_faults >= 40 * MB // 4096 // 2
+    assert run.swap_rise_bytes >= 0
+    if run.major_faults is not None:  # Unix reports them; Windows has no per-process counter
+        assert run.major_faults >= 0

@@ -23,7 +23,15 @@ import pandas as pd
 
 from benchmarks.evaluate import Floors, write_final_report, write_report
 from benchmarks.runner import RunConfig, default_mem_limit_bytes, run_suite
-from benchmarks.split import GROUPS, SEALED_DIR
+from benchmarks.split import (
+    DEV,
+    EXPOSED,
+    GROUPS,
+    SEALED_DIR,
+    SEALED_GROUPS,
+    TEST,
+    load_split,
+)
 from benchmarks.suite import SUITES, build_grid
 from nexus.machine import ENV_VAR
 
@@ -112,14 +120,22 @@ def cmd_status(args: argparse.Namespace) -> None:
         print(f"current: {s.get('current')}   counts: {s['counts']}")
     else:
         print(f"no progress.json in {out} (run not started?)")
-    for label, path in (
-        ("dev", out / "actuals.csv"),
-        ("test-v2 (count only)", out / SEALED_DIR / "actuals.csv"),
-    ):
+    frames = []
+    for path in (out / "actuals.csv", out / SEALED_DIR / "actuals.csv"):
         if path.exists():
-            rows = pd.read_csv(path, dtype=str, keep_default_na=False)
-            rows = rows.drop_duplicates("point_id", keep="last")
-            print(f"{label:22s}: {len(rows)} points  {dict(Counter(rows['status']))}")
+            frames.append(pd.read_csv(path, dtype=str, keep_default_na=False))
+    if frames:
+        rows = pd.concat(frames).drop_duplicates("point_id", keep="last")
+        # group by split.json (authoritative), not by a stored column: old files lack it
+        sp = load_split()
+        case = rows["point_id"].str.split("|n=", regex=False).str[0]
+        rows = rows.assign(
+            group=case.map(lambda c: TEST if c in sp.test else EXPOSED if c in sp.exposed else DEV)
+        )
+        for group in GROUPS:  # status counts only, no values (safe for the sealed group)
+            part = rows[rows["group"] == group]
+            note = " (count only)" if group in SEALED_GROUPS else ""
+            print(f"{group + note:22s}: {len(part)} points  {dict(Counter(part['status']))}")
     log = out / "run.log"
     if log.exists():
         print("last log lines:")

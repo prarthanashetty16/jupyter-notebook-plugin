@@ -53,7 +53,8 @@ ACTUAL_FIELDS = [
     "ram_delta_all", "ram_bound_bytes", "ram_censored_runs", "peak_reset", "poll_delta_all",
     "time_s_all", "baseline_bytes", "setup_peak_bytes", "input_bytes", "input_resident_bytes",
     "out_rows", "out_bytes", "input_blocks", "est_footprint_bytes", "cap_bytes", "meta",
-    "split", *ENV_FIELDS,
+    "split", "avail_start_bytes", "avail_min_bytes", "page_faults_all", "major_faults_all",
+    "swap_rise_all", *ENV_FIELDS,
 ]  # fmt: skip
 PREDICTION_FIELDS = [
     "point_id", "tier", "status", "error", "has_estimate", "model", "ram_low", "ram_expected",
@@ -114,12 +115,39 @@ def env_info() -> dict[str, Any]:
     }
 
 
+def upgrade_header(path: Path, fields: list[str]) -> bool:
+    """Rewrite ``path`` under ``fields`` if its header is older, keeping every row aligned.
+
+    Rows appended after a schema change have ``fields`` layout while older rows follow the old
+    header, so each row is decoded by its own width (a plain ``DictReader`` would misalign them).
+    """
+    if not path.exists():
+        return False
+    with path.open(newline="", encoding="utf-8") as fh:
+        table = list(csv.reader(fh))
+    if not table:
+        return False
+    old = table[0]
+    if old == fields and all(len(r) == len(fields) for r in table[1:]):
+        return False
+    rows = []
+    for r in table[1:]:
+        names = fields if len(r) == len(fields) else old
+        rows.append(dict(zip(names, r, strict=True)))
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows({f: r.get(f, "") for f in fields} for r in rows)
+    return True
+
+
 class ResultStore:
     """Append-only CSV with an in-memory index of finished keys (last row wins)."""
 
     def __init__(self, path: Path, fields: list[str], key: tuple[str, ...]) -> None:
         self.path, self.fields, self.key = path, fields, key
         self.rows: list[dict[str, Any]] = []
+        upgrade_header(path, fields)
         if path.exists():
             with path.open(newline="", encoding="utf-8") as fh:
                 self.rows = list(csv.DictReader(fh))
@@ -194,6 +222,11 @@ def run_actual(
         ram_censored_runs=sum(r.censored for r in ok_runs),
         peak_reset=bool(ok_runs and ok_runs[0].peak_reset),
         poll_delta_all=json.dumps([r.poll_delta_bytes for r in ok_runs]),
+        avail_start_bytes=min((r.avail_start_bytes for r in ok_runs), default=""),
+        avail_min_bytes=min((r.avail_min_bytes for r in ok_runs), default=""),
+        page_faults_all=json.dumps([r.page_faults for r in ok_runs]),
+        major_faults_all=json.dumps([r.major_faults for r in ok_runs]),
+        swap_rise_all=json.dumps([r.swap_rise_bytes for r in ok_runs]),
         time_s_all=json.dumps([round(r.time_s, 6) for r in ok_runs]),
         baseline_bytes=m.baseline_bytes,
         setup_peak_bytes=ok_runs[0].setup_peak_bytes if ok_runs else "",
