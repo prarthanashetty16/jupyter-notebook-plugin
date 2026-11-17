@@ -444,7 +444,7 @@ No estimator model or constant was changed in this phase.
   depends on dtype mix and on core count, which no single `csv_parse_bps` (calibrated at ~485 MB/s on a mixed
   100 MB file) can capture: a data-dependent time error, not a calibration error.
 
-### Diagnosis (preliminary: development data only)
+### Diagnosis, preliminary (small suite only; superseded by "Full-data diagnosis" below)
 `benchmarks/diagnose.py` (new; tests use synthetic data with known structure) builds the per-point
 predicted/actual tables, log-log slopes of time and RAM versus n, and a rule-based structural vs data-dependent
 classification (rule and thresholds in its docstring and in `findings.md`).
@@ -478,7 +478,60 @@ formula problems that more statistics will not fix by themselves. **Data-depende
 astype and read_csv time (cardinality, dtype content): those are the Tier 1 / Tier 2 targets. This must be
 re-done on the full dev + exposed-v1 data (more scenarios and sizes up to 30M, which will test the slopes).
 
+### Full-data diagnosis (dev + exposed-v1; `docs/benchmarks/full-v3/findings.md`)
+- [x] `migrate-exposed` (52 actuals / 48 predictions moved, `sealed/` now empty), `scrub-logs` (48 lines
+  redacted), `diagnose` run. **Verification:** a scan of every file under `benchmarks/results/full` finds no
+  test-v2 case name (test-v2 was never run); exposed-v1 ids occur only in `actuals.csv`/`predictions.csv`
+  (both carry a `split` column) and in `run.log`, where lines are reduced to id, status and elapsed time.
+  `report.md`, `points_joined.csv`, `metrics_*.csv` and the figures are dev-only (84 points).
+- Data: 84 dev + 52 exposed-v1 points, 124 measured, 12 skipped by the 2.5 GiB cap (all at the largest sizes
+  of the heaviest scenarios). Sizes reach 10M rows only for astype, drop_duplicates, groupby (cheap scenarios),
+  sort_values, concat, np.sort; **merge, read_csv, high-cardinality groupby/astype stop at 3M**, so their
+  slopes rest on two points. The predictions come from the current models (`src/` is unchanged since the run's
+  commit cc45596).
+- **Fixed during this step:** `migrate-exposed` appended current-schema rows (41 columns) under the old header
+  of `actuals.csv`/`predictions.csv` (39/35 columns, written before `read_csv_engine`/`read_csv_text_dtype`
+  existed), which made both files unreadable. `maintenance.upgrade_header` now rewrites a file under the
+  current header, decoding each row by its own width, and `migrate-exposed` calls it. Row counts verified
+  (136 actuals, 124 predictions).
+- The `diagnose` auto-rule is only a first pass. It compares bias with scenario spread and therefore calls
+  groupby time "structural" (bias x3.7 > spread x2.8) although the per-scenario fold flips sign with key
+  cardinality. The classification below is from the per-scenario folds (median over sizes) and takes the rule's
+  output as one input.
+
+Median fold per scenario (+ over, - under) and the log-log slope of actual time (predicted slope is ~1 for every
+operation except matmul, where it is 3; full per-scenario slope table in `findings.md` section 2):
+
+| operation | RAM | time | time slope (actual) | classification (full data) | change vs small suite |
+|---|---|---|---|---|---|
+| merge | +1.7..+7.7 (1:1 +5.4, overlap10 +7.7, left +6.7, fan-out3 +4.6, fan-out4 str +7.2, many-many +2.8, outer +1.7) | +1.1..+3.2, outer -2.5 | 1.23-1.50 | RAM: **structural over-prediction (~x5) plus data-dependent** (output size: predicted value is constant across scenarios while actual varies 84-310 MB at 3M rows); time: structural exponent | RAM "structural only" becomes "structural + data-dependent": the small suite had every variant at right = n/2 and hid the spread (x4.5 across scenarios, not x1.3). Time slope is 1.3-1.5, not 1 |
+| sort_values | +2.27..+2.46, all dtypes | -1.4..-1.8 numeric/datetime, +1.4..+1.8 string | 1.35-1.40 | **structural** (constant RAM factor x2.3, spread x1.04; superlinear time) | unchanged. Time sign differs by dtype, which Tier 0 sees (formula, not statistics) |
+| drop_duplicates | mixed +1.6, strings +3.1, numeric -1.04, nulls -1.00, subset +1.6 | -1.1..-2.1, strings +1.0, **subset on one low-card string column +14.6** | 1.24-1.45 (1.05 for subset) | RAM **structural** (dtype weights). Time: **structural exponent** (slope 1.4, numeric 10M is -4.4) plus **data-dependent** for `subset=` on low-cardinality keys (cost follows distinct count, not rows) | time slope higher than 1.18-1.28 seen at 3M; the subset scenario is new evidence of a data-dependent component |
+| groupby | +1.3..+7.4 (cat key zipf +7.4, int +4.1, str low-card +2.6, two keys +1.5, str high-card +1.3) | +6.3 low-card, +9.3 zipf, **-2.0 high-card** | 0.83-1.07, high-card 1.52 | **data-dependent** (group count, aggregated columns, key distribution) | unchanged verdict, stronger evidence: time sign flips with cardinality, and 3 of 5 scenarios over-predict RAM by >= x2.5 |
+| read_csv | -1.4..-2.8, all negative | numeric +2.9 (wide), strings -3.2, mixed -2.7, nulls -1.9 | 0.87-1.09 | RAM **structural** (constant under-prediction); time **data-dependent on dtype mix** (sign follows content, throughput 150-1460 MB/s) | unchanged. wide_numeric and nulls scenarios confirm; time is linear in n (slope ~1.0) |
+| astype | plain numeric casts -1.00 (exact), to-str -1.2..-1.6, to-category -1.5 (low-card), -2.1 (zipf), -3.0 (high-card) | to-str +1.4/-1.4, category +3.2 low-card/+2.9 zipf/-2.5 high-card | 0.98-1.02 (1.48 high-card, 2 points) | RAM: numeric casts correct; to-str **structural** (text object overhead); to-category **data-dependent** (cardinality). Time: category **data-dependent** (sign flips) | refined: the single "data-dependent" label split by target dtype |
+| concat | text frames +2.0..+2.1, numeric -1.2 | -1.4..+1.9 | numeric 0.99, text/multi-frame 1.16-1.42 | RAM **structural** (text weighting, size-independent); time mild superlinear exponent for text frames | unchanged; the dev/exposed bias gap (1.28 vs 2.10) is a scenario-mix effect, not a size effect |
+| matmul | -1.02..-1.06 | -1.1..+1.07 | 2.68-2.77 (model 3.0) | no dominant error (2 scenarios) | unchanged; slope < 3 is BLAS efficiency rising with d, absorbed by calibration in the measured range |
+| np.sort | -1.00 | +1.2 | 1.09-1.19 | no dominant error | assessable now (5M/10M points): RAM exact, time slope slightly above the modelled 1.06 |
+
+Scaling: actual time is superlinear (slope 1.3-1.4) for sort_values, drop_duplicates, merge and concat, against a
+modelled ~1.0-1.06; linear for astype, groupby (except high-cardinality, 1.5) and read_csv. Because the size trend
+of the fold is -0.3 to -0.4 per decade for sort_values and drop_duplicates, **errors are smallest at small n and
+grow in the direction of under-prediction exactly where OOM and long-runtime risk matters**. RAM slopes are ~1.0 for most scenarios. Slopes of 0.17-0.66 sit on 2-3 points near the 32 MiB floor
+(baseline dominates; not sub-linear memory). Two three-point scenarios well above the floor are also below 0.9
+(drop_duplicates/strings 0.85, groupby/two_keys 0.82); they are unexplained here and not interpreted.
+
+Caveats: 2-3 sizes per scenario (merge/read_csv: two), one machine, one pandas/numpy build; exposed-v1 points
+are shown labelled and are for diagnosis only, never a final claim.
+
 ### Next steps
-1. Restore or re-create `benchmarks/results/full`, run `migrate-exposed`, `scrub-logs` and `diagnose` (commands above)
-   and commit `docs/benchmarks/full-v3/`.
-2. Decide Tier 0 formula fixes only after that, using dev + exposed-v1; keep `test-v2` sealed for the final claim.
+1. Phase 4 candidates, in order of leverage on the evidence above: (a) Tier 0 formula fixes that need no
+   statistics: merge RAM level, sort_values RAM factor, concat/drop_duplicates text weighting, time exponents
+   (~1.3-1.4) for sort/dedup/merge/concat; (b) Tier 1 statistics where the error follows data content: group
+   count / distinct count (groupby, astype to category, drop_duplicates with subset), key overlap and fan-out
+   (merge), dtype mix of a file header sample (read_csv time).
+2. Keep test-v2 sealed until models are frozen; any model change after seeing these diagnoses is fine, but the
+   final claim needs the sealed split.
+3. Tooling follow-up (not done here): `python -m benchmarks status` labelled the exposed-v1 rows still in
+   `sealed/` as "test-v2 (count only)" and, after migration, counts them under "dev". The run itself never
+   measured test-v2, but the label is misleading and should be fixed in `benchmarks/__main__.py`.

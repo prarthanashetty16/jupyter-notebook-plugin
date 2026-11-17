@@ -1,0 +1,19 @@
+op,metric,points,scenarios,bias_fold,data_spread_log10,trend_per_decade,sign_consistency,dev_bias_fold,exposed_bias_fold,classification,evidence
+astype,RAM,16,8,-1.5178851585757278,0.16169608458199214,0.00042658294686160616,1.0,-1.60540672,-1.2054300444444446,structural (constant factor),"median fold -1.52; scenario spread x1.45, size trend +0.00/decade"
+astype,TIME,11,5,1.418041932726841,0.34886222986481896,-0.019364373736416963,0.6,1.431384671485499,-1.3724726898684754,data-dependent,"median fold +1.42; scenario spread x2.23, size trend -0.02/decade"
+drop_duplicates,RAM,17,6,1.549816979147665,0.16911892953280233,0.06190837476232082,0.6666666666666666,1.5698868800564612,1.5357648446860257,structural (constant factor),"median fold +1.55; scenario spread x1.48, size trend +0.06/decade"
+drop_duplicates,TIME,17,7,-1.1327455699033286,0.4516308214570612,-0.3918871373011228,0.5714285714285714,-1.268159134708451,1.276341652014312,data-dependent,"median fold -1.13; scenario spread x2.83, size trend -0.39/decade"
+groupby,RAM,10,5,2.0632651370648585,0.28197666837208374,0.18415931481559933,1.0,2.567803796909174,1.5264998226103554,structural (scaling exponent),"median fold +2.06; scenario spread x1.91, size trend +0.18/decade"
+groupby,TIME,8,5,3.723864642667838,0.442206541095814,,0.8,4.777122100783173,2.9028288547697465,structural (constant factor),median fold +3.72; scenario spread x2.77
+merge,RAM,14,7,5.220395960153597,0.2253367829416826,,1.0,5.220395960153597,3.501296938113146,structural (constant factor),median fold +5.22; scenario spread x1.68
+merge,TIME,7,7,1.6295448679955893,0.25768874072007536,,0.8571428571428571,1.6458646695619523,-1.5181050344833615,structural (constant factor),median fold +1.63; scenario spread x1.81
+numpy.sort,RAM,7,4,-1.0030080000000001,0.00023526741429727855,,1.0,-1.0022653250440225,-1.0030080000000001,no dominant error,median fold -1.00; scenario spread x1.00
+numpy.sort,TIME,3,3,1.2081291047436329,0.006158281287178818,,1.0,1.1932848642332048,1.2187617041253151,no dominant error,median fold +1.21; scenario spread x1.01
+operator.matmul,RAM,9,2,-1.022201339128392,,0.02415057411653162,1.0,-1.0275372056397012,-1.022201339128392,no dominant error,"median fold -1.02; n/a (<3 scenarios), size trend +0.02/decade"
+operator.matmul,TIME,7,2,-1.0284189125085206,,0.11759082061956572,0.5,-1.0843885120592807,1.0219881754630826,no dominant error,"median fold -1.03; n/a (<3 scenarios), size trend +0.12/decade"
+pandas.concat,RAM,12,4,2.0139926193451307,0.17250268887017867,0.0016411408885955588,0.75,1.278285364040802,2.097742873045441,structural (constant factor),"median fold +2.01; scenario spread x1.49, size trend +0.00/decade"
+pandas.concat,TIME,6,4,1.0665691465857892,0.16441588578566557,,0.5,1.0639869271764755,1.0691576328550685,no dominant error,median fold +1.07; scenario spread x1.46
+pandas.read_csv,RAM,10,5,-1.8733805577653402,0.12577201552280087,,1.0,-2.6650740121251917,-1.5879190210379805,structural (constant factor),median fold -1.87; scenario spread x1.34
+pandas.read_csv,TIME,8,4,-2.388406082037729,0.38420078420861825,,0.75,-2.9229734505448848,1.2380345069986123,data-dependent,median fold -2.39; scenario spread x2.42
+sort_values,RAM,14,5,2.2736447217295064,0.01636797205691342,0.00016801740042887562,1.0,2.2767381953354104,2.2705554513205133,structural (constant factor),"median fold +2.27; scenario spread x1.04, size trend +0.00/decade"
+sort_values,TIME,11,5,-1.2005928651422673,0.20976502701908362,-0.3056302244725953,0.6,-1.2005928651422673,-1.008172664773213,structural (scaling exponent),"median fold -1.20; scenario spread x1.62, size trend -0.31/decade"

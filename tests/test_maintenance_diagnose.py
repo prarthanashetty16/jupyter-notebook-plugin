@@ -235,3 +235,20 @@ def test_read_csv_sources_in_the_suite_use_the_default_engine():
     for case in CASES:
         if case.op == "pandas.read_csv":
             assert "engine" not in case.source, case.name
+
+
+def test_upgrade_header_realigns_mixed_width_rows(tmp_path):
+    """Rows written under an old header and rows in the new layout must both survive."""
+    import csv
+
+    from benchmarks.maintenance import upgrade_header
+
+    path = tmp_path / "t.csv"
+    path.write_text("a,b\n1,2\n", encoding="utf-8")
+    with path.open("a", newline="", encoding="utf-8") as fh:
+        csv.writer(fh).writerow(["3", "x", "4", "y"])
+    assert upgrade_header(path, ["a", "x1", "b", "y1"]) is True
+    rows = list(csv.DictReader(path.open(newline="", encoding="utf-8")))
+    assert rows[0] == {"a": "1", "x1": "", "b": "2", "y1": ""}
+    assert rows[1] == {"a": "3", "x1": "x", "b": "4", "y1": "y"}
+    assert upgrade_header(path, ["a", "x1", "b", "y1"]) is False
