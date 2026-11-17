@@ -1,5 +1,7 @@
 """One-off repairs after the version-1 test split was exposed.
 
+``migrate-val3``: copy the former val-v3 rows (dev since split version 4) from
+``<src>/validation/`` into the top-level development files of another results directory.
 ``migrate-exposed``: move the exposed-v1 rows from ``<results>/sealed/`` into the development
 files (``actuals.csv``/``predictions.csv``) with ``split=exposed-v1``, so the sealed directory is
 left for test-v2 only. ``scrub-logs``: rewrite every log line that names an exposed-v1 or test-v2
@@ -7,6 +9,7 @@ point so that it keeps only the timestamp, index, point id, status and elapsed t
 
     python -m benchmarks.maintenance migrate-exposed benchmarks/results/full
     python -m benchmarks.maintenance scrub-logs      benchmarks/results/full
+    python -m benchmarks.maintenance migrate-val3    benchmarks/results/val-v3 <dev results dir>
 """
 
 from __future__ import annotations
@@ -17,7 +20,7 @@ import sys
 from pathlib import Path
 
 from benchmarks.runner import ACTUAL_FIELDS, PREDICTION_FIELDS, ResultStore, upgrade_header
-from benchmarks.split import SEALED_DIR, load_split
+from benchmarks.split import SEALED_DIR, VAL_DIR, load_split
 
 _STATUS = re.compile(
     r":\s+(?P<status>ok|error|timeout|memory_limit|died|actual kept \(\w+\)|already done \(\w+\)"
@@ -73,6 +76,34 @@ def migrate_exposed(results_dir: Path) -> dict[str, int]:
     return moved
 
 
+def migrate_val3(
+    src_results: Path, dest_results: Path, *, predictions: bool = True
+) -> dict[str, int]:
+    """Copy former val-v3 rows into ``dest_results``' development files (split=dev). Idempotent.
+
+    The source stays as it is (audit trail). Allowed only because split version 4 made val-v3 dev.
+    """
+    val3 = load_split().val3
+    dest_results.mkdir(parents=True, exist_ok=True)
+    copied = {"actuals": 0, "predictions": 0}
+    for name, fields, key in (
+        ("actuals", ACTUAL_FIELDS, ("point_id",)),
+        ("predictions", PREDICTION_FIELDS, ("point_id", "tier")),
+    ):
+        if name == "predictions" and not predictions:
+            continue
+        upgrade_header(dest_results / f"{name}.csv", fields)
+        dst = ResultStore(dest_results / f"{name}.csv", fields, key)
+        for r in _read(src_results / VAL_DIR / f"{name}.csv"):
+            if r["point_id"].split("|n=")[0] not in val3:
+                continue
+            r = {**r, "split": "dev"}
+            if dst.has(**{k: r[k] for k in key}) is None:
+                dst.add(r)
+                copied[name] += 1
+    return copied
+
+
 def redact_line(line: str) -> str:
     """Keep timestamp, index, point id, status and elapsed time of a point log line."""
     head = _PREFIX.match(line)
@@ -107,6 +138,9 @@ def scrub_logs(results_dir: Path) -> int:
 
 
 def main() -> None:
+    if len(sys.argv) == 4 and sys.argv[1] == "migrate-val3":
+        print(migrate_val3(Path(sys.argv[2]), Path(sys.argv[3])))
+        return
     if len(sys.argv) != 3 or sys.argv[1] not in ("migrate-exposed", "scrub-logs"):
         raise SystemExit(__doc__)
     results = Path(sys.argv[2])

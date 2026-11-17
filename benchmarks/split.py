@@ -1,4 +1,4 @@
-"""Frozen split of benchmark *configurations* into dev / test-v2 / val-v3, and the access guards.
+"""Frozen split of benchmark *configurations* into dev / test-v2 / val-v4, and the access guards.
 
 Unit of split = a *case* (operation + source + dataset configuration; all sizes of a case stay
 together).
@@ -9,8 +9,10 @@ together).
   split file reclassified exposed-v1 as dev; its case list is kept as ``provenance`` so reports can
   still say where a case came from.
 - ``test-v2``: sealed configurations for the final claim. Never run or evaluated so far.
-- ``val-v3``: the held-out validation split for Phases 4b-4d (new configurations, no generator
-  parameter or seed shared with dev or test-v2). It is measured by the runner into
+- ``val-v3``: was the held-out validation split of Phase 4b. Its report was read by the developer
+  and a reviewer, so split version 4 reclassified it as dev (list kept as ``provenance``).
+- ``val-v4``: the held-out validation split after Phase 4b.2 (new configurations, no generator
+  parameter or seed shared with dev, val-v3 or test-v2). It is measured by the runner into
   ``<results>/validation/`` with the same log redaction as test-v2 (id, status, elapsed only) and
   is read only by ``evaluate --val --reason "..."``, which logs each use in docs/PROGRESS.md.
 
@@ -39,7 +41,8 @@ VAL_DIR = "validation"  # val-v3 results
 DEV = "dev"
 EXPOSED = "exposed-v1"  # provenance label only: these cases are dev since split version 3
 TEST = "test-v2"
-VAL = "val-v3"
+VAL = "val-v4"
+VAL3 = "val-v3"  # provenance label only: these cases are dev since split version 4
 DEVELOPMENT_GROUPS = (DEV,)  # may be read by development tooling
 SEALED_GROUPS = (TEST, VAL)  # values never shown by logs, status or normal reports
 GROUPS = (DEV, TEST, VAL)
@@ -61,6 +64,7 @@ class Split:
     val: frozenset[str]  # held-out validation: val-v3
     exposed: frozenset[str]  # provenance: the former exposed-v1 cases (a subset of dev)
     meta: dict
+    val3: frozenset[str] = frozenset()  # provenance: the former val-v3 cases (a subset of dev)
 
     def of(self, case: str) -> str:
         if case in self.dev:
@@ -83,10 +87,12 @@ def load_split(path: Path = SPLIT_PATH) -> Split:
     """Load and verify the frozen split (digests, disjointness). Reads versions 2 and 3."""
     raw = json.loads(path.read_text(encoding="utf-8"))
     groups: dict[str, frozenset[str]] = {}
-    for name in (DEV, EXPOSED, TEST, VAL):
-        entry = raw["groups"].get(name)
+    in_file = raw["groups"]
+    held_out = VAL if VAL in in_file else VAL3  # a version-3 file calls its held-out group val-v3
+    for name in (DEV, EXPOSED, TEST, held_out):
+        entry = in_file.get(name)
         if entry is None:
-            if name in (EXPOSED, VAL):  # absent in newer / older files
+            if name in (EXPOSED, held_out):  # absent in newer / older files
                 groups[name] = frozenset()
                 continue
             raise ValueError(f"split.json has no group {name!r}")
@@ -96,13 +102,19 @@ def load_split(path: Path = SPLIT_PATH) -> Split:
         groups[name] = frozenset(cases)
     exposed = groups[EXPOSED]  # a version-2 file lists it as a group of its own: it is dev now
     dev = groups[DEV] | exposed
-    provenance = raw.get("provenance", {}).get(EXPOSED)
-    if provenance is not None:
-        prov = set(provenance["cases"])
-        if digest(prov) != provenance["sha256"]:
-            raise ValueError("split.json was modified after freezing (digest mismatch: provenance)")
-        exposed = frozenset(prov)
-    merged = {DEV: dev, TEST: groups[TEST], VAL: groups[VAL]}
+    provenance: dict[str, frozenset[str]] = {}
+    for label in (EXPOSED, VAL3):
+        entry = raw.get("provenance", {}).get(label)
+        if entry is not None:
+            prov = set(entry["cases"])
+            if digest(prov) != entry["sha256"]:
+                raise ValueError(
+                    "split.json was modified after freezing (digest mismatch: provenance)"
+                )
+            provenance[label] = frozenset(prov)
+    exposed = provenance.get(EXPOSED, exposed)
+    val3 = provenance.get(VAL3, frozenset())
+    merged = {DEV: dev, TEST: groups[TEST], VAL: groups[held_out]}
     named = tuple(merged)
     overlaps = [
         (a, b, sorted(merged[a] & merged[b]))
@@ -112,10 +124,10 @@ def load_split(path: Path = SPLIT_PATH) -> Split:
     ]
     if overlaps:
         raise ValueError(f"split.json: cases in two groups (both dev and test...): {overlaps}")
-    if not exposed <= dev:
+    if not (exposed <= dev and val3 <= dev):
         raise ValueError("split.json: provenance cases must belong to dev")
     meta = {k: v for k, v in raw.items() if k != "groups"}
-    return Split(dev, merged[TEST], merged[VAL], exposed, meta)
+    return Split(dev, merged[TEST], merged[VAL], exposed, meta, val3)
 
 
 def split_of(case: str) -> str:
@@ -224,6 +236,61 @@ def supersede_to_v3(val_cases: Iterable[str], note: str, path: Path = SPLIT_PATH
         },
         "groups": {
             DEV: {"cases": sorted(old.dev), "sha256": digest(old.dev), "status": "development"},
+            TEST: {"cases": sorted(old.test), "sha256": digest(old.test), "status": "sealed"},
+            VAL3: {
+                "cases": sorted(new),
+                "sha256": digest(new),
+                "status": "held-out validation (values hidden; `evaluate --val` logs each use)",
+            },
+        },
+    }
+    path.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def supersede_to_v4(val_cases: Iterable[str], note: str, path: Path = SPLIT_PATH) -> Path:
+    """One-off: turn the version-3 file into version 4.
+
+    The old held-out group ``val-v3`` (read by the developer and a reviewer) is merged into dev and
+    kept under ``provenance``; ``val_cases`` become the new held-out ``val-v4``. Version-3 digests
+    stay in ``history``. Refuses anything but a version-3 file.
+    """
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if raw.get("version") != 3:
+        raise ValueError("split.json is not a version-3 file; nothing to supersede")
+    old = load_split(path)
+    new = set(val_cases)
+    if new & (old.dev | old.test | old.val):
+        raise ValueError(
+            f"val-v4 reuses existing cases: {sorted(new & (old.dev | old.test | old.val))}"
+        )
+    dev = set(old.dev | old.val)
+    out = {
+        "version": 4,
+        "frozen": time.strftime("%Y-%m-%d"),
+        "rule": "dev = every case development tooling may read (Phases 3-3b cases, the former "
+        "exposed-v1 and the former val-v3, whose report was read); test-v2 = sealed, never run; "
+        "val-v4 = held-out validation after Phase 4b.2, new configurations, evaluated only by "
+        "`evaluate --val` (logged)",
+        "history": [
+            *raw["history"],
+            {
+                "version": 4,
+                "frozen": time.strftime("%Y-%m-%d"),
+                "event": note,
+                "sha256_v3": {k: v["sha256"] for k, v in raw["groups"].items()},
+            },
+        ],
+        "provenance": {
+            **raw.get("provenance", {}),
+            VAL3: {
+                "cases": sorted(old.val),
+                "sha256": digest(old.val),
+                "status": "former val-v3 (held-out in Phase 4b); dev since version 4",
+            },
+        },
+        "groups": {
+            DEV: {"cases": sorted(dev), "sha256": digest(dev), "status": "development"},
             TEST: {"cases": sorted(old.test), "sha256": digest(old.test), "status": "sealed"},
             VAL: {
                 "cases": sorted(new),

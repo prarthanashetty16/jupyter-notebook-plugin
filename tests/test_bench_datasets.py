@@ -105,7 +105,7 @@ def test_estimate_frame_bytes_is_positive_and_scales():
 
 def test_suite_grid_is_well_formed():
     for suite, spec in SUITES.items():
-        grid = build_grid(suite, splits=("dev", "test-v2", "val-v3"))
+        grid = build_grid(suite, splits=("dev", "test-v2", "val-v4"))
         ids = [p.id for p in grid]
         assert len(ids) == len(set(ids))
         assert {p.case for p in grid} == {c.name for c in CASES}

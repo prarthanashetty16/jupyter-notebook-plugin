@@ -1,7 +1,7 @@
 {
-  "version": 3,
+  "version": 4,
   "frozen": "2026-11-17",
-  "rule": "dev = every case development tooling may read (Phases 3-3b cases plus the former exposed-v1, which influenced a Phase 4a model change); test-v2 = sealed, never run; val-v3 = held-out validation for Phases 4b-4d, new configurations, evaluated only by `evaluate --val` (logged)",
+  "rule": "dev = every case development tooling may read (Phases 3-3b cases, the former exposed-v1 and the former val-v3, whose report was read); test-v2 = sealed, never run; val-v4 = held-out validation after Phase 4b.2, new configurations, evaluated only by `evaluate --val` (logged)",
   "history": [
     {
       "version": 1,
@@ -25,6 +25,16 @@
         "dev": "0031cc05cb818a6c8fbc336550f50e860d1665bf52d59c023ecaa5976621a36b",
         "exposed-v1": "60afd8697647c316778b9d0b3fd3a42b39ebde1c8549d47a6bc893a569d55b01",
         "test-v2": "597a5180924bcc484564337492775f171b7d600d3624ac7af90cbe98f7f1d296"
+      }
+    },
+    {
+      "version": 4,
+      "frozen": "2026-11-17",
+      "event": "reclassify val-v3 as dev (its report was read by the developer and a reviewer in Phase 4b.2); freeze val-v4 as the new held-out validation split",
+      "sha256_v3": {
+        "dev": "5195edbd6f492566b73aa012ecf184fbe90b32e859cf6b95f1024f3c16f0d8ad",
+        "test-v2": "597a5180924bcc484564337492775f171b7d600d3624ac7af90cbe98f7f1d296",
+        "val-v3": "194a5bf248a6885d26887040432629bf1097d59ac65443289de78fe970f1731c"
       }
     }
   ],
@@ -52,6 +62,48 @@
       ],
       "sha256": "60afd8697647c316778b9d0b3fd3a42b39ebde1c8549d47a6bc893a569d55b01",
       "status": "former exposed-v1 (version-1 test split); dev since version 3"
+    },
+    "val-v3": {
+      "cases": [
+        "v3/astype/float_to_str",
+        "v3/astype/int_to_category_card0p04",
+        "v3/astype/int_to_int16",
+        "v3/astype/str_to_category_card0p75",
+        "v3/astype/str_to_category_card12000",
+        "v3/astype/str_to_category_card25",
+        "v3/concat/four_frames_light_nulls",
+        "v3/concat/two_numeric_unequal",
+        "v3/concat/two_strings_long",
+        "v3/drop_duplicates/high_survivor_subset_i0_d0",
+        "v3/drop_duplicates/null_heavy_full",
+        "v3/drop_duplicates/null_subset_f0_s0",
+        "v3/drop_duplicates/numeric_wide_nulls",
+        "v3/groupby/int_card20000_mean",
+        "v3/groupby/str_card0p04_two_values",
+        "v3/groupby/str_card0p75_sum",
+        "v3/groupby/str_card12_sum",
+        "v3/groupby/two_keys_card800",
+        "v3/groupby/zipf_int_card0p0004",
+        "v3/matmul/float32_square",
+        "v3/matmul/wide_rect",
+        "v3/merge/inner_bigright_fanout8",
+        "v3/merge/inner_overlap25_fanout6",
+        "v3/merge/left_overlap90_fanout1p2",
+        "v3/merge/outer_overlap65_zipf",
+        "v3/merge/right_overlap05_text",
+        "v3/np_sort/float32_reverse",
+        "v3/np_sort/int32_random",
+        "v3/read_csv/float_heavy",
+        "v3/read_csv/long_distinct_strings",
+        "v3/read_csv/mixed_nulls_dates",
+        "v3/read_csv/short_ints",
+        "v3/read_csv/two_columns",
+        "v3/sort_values/float_desc_nulls",
+        "v3/sort_values/int_datetime_lowcard",
+        "v3/sort_values/two_str_keys"
+      ],
+      "sha256": "194a5bf248a6885d26887040432629bf1097d59ac65443289de78fe970f1731c",
+      "status": "former val-v3 (held-out in Phase 4b); dev since version 4"
     }
   },
   "groups": {
@@ -103,36 +155,7 @@
         "sort_values/by_int",
         "sort_values/by_int_float",
         "sort_values/by_str",
-        "sort_values/by_str_desc_nulls"
-      ],
-      "sha256": "5195edbd6f492566b73aa012ecf184fbe90b32e859cf6b95f1024f3c16f0d8ad",
-      "status": "development"
-    },
-    "test-v2": {
-      "cases": [
-        "v2/astype/float_to_int64",
-        "v2/astype/int_to_category_lowcard",
-        "v2/concat/five_small_frames",
-        "v2/concat/unequal_variable_strings",
-        "v2/drop_duplicates/clustered_nulls_varstr_dup60",
-        "v2/drop_duplicates/subset_f0_d0_wide_floats",
-        "v2/groupby/int_key_heavy_zipf_mean",
-        "v2/groupby/two_str_keys_multi_agg",
-        "v2/matmul/tall_skinny",
-        "v2/merge/big_right_low_overlap",
-        "v2/merge/zipf_right_left_join",
-        "v2/np_sort/int64_few_unique",
-        "v2/np_sort/nearly_sorted",
-        "v2/read_csv/category_heavy_dates",
-        "v2/read_csv/variable_strings_clustered_nulls",
-        "v2/sort_values/block_sorted_int",
-        "v2/sort_values/multikey_str_float_desc"
-      ],
-      "sha256": "597a5180924bcc484564337492775f171b7d600d3624ac7af90cbe98f7f1d296",
-      "status": "sealed"
-    },
-    "val-v3": {
-      "cases": [
+        "sort_values/by_str_desc_nulls",
         "v3/astype/float_to_str",
         "v3/astype/int_to_category_card0p04",
         "v3/astype/int_to_int16",
@@ -170,7 +193,76 @@
         "v3/sort_values/int_datetime_lowcard",
         "v3/sort_values/two_str_keys"
       ],
-      "sha256": "194a5bf248a6885d26887040432629bf1097d59ac65443289de78fe970f1731c",
+      "sha256": "a00a733e10ed9d80fc3be7a2330d98e5da63b17ae4f0f425bc6bdf45e4db3de5",
+      "status": "development"
+    },
+    "test-v2": {
+      "cases": [
+        "v2/astype/float_to_int64",
+        "v2/astype/int_to_category_lowcard",
+        "v2/concat/five_small_frames",
+        "v2/concat/unequal_variable_strings",
+        "v2/drop_duplicates/clustered_nulls_varstr_dup60",
+        "v2/drop_duplicates/subset_f0_d0_wide_floats",
+        "v2/groupby/int_key_heavy_zipf_mean",
+        "v2/groupby/two_str_keys_multi_agg",
+        "v2/matmul/tall_skinny",
+        "v2/merge/big_right_low_overlap",
+        "v2/merge/zipf_right_left_join",
+        "v2/np_sort/int64_few_unique",
+        "v2/np_sort/nearly_sorted",
+        "v2/read_csv/category_heavy_dates",
+        "v2/read_csv/variable_strings_clustered_nulls",
+        "v2/sort_values/block_sorted_int",
+        "v2/sort_values/multikey_str_float_desc"
+      ],
+      "sha256": "597a5180924bcc484564337492775f171b7d600d3624ac7af90cbe98f7f1d296",
+      "status": "sealed"
+    },
+    "val-v4": {
+      "cases": [
+        "v4/astype/float_to_str_nulls",
+        "v4/astype/int_to_category_card15000",
+        "v4/astype/int_to_str_card1500",
+        "v4/astype/str_to_category_card0p12",
+        "v4/astype/str_to_category_card150000",
+        "v4/astype/str_to_category_card40000",
+        "v4/astype/str_to_category_card400_long",
+        "v4/astype/str_to_category_card6000",
+        "v4/concat/three_uneven",
+        "v4/concat/two_category_heavy",
+        "v4/drop_duplicates/int_subset_lowdup",
+        "v4/drop_duplicates/no_nulls_full",
+        "v4/drop_duplicates/null_heavy_full",
+        "v4/drop_duplicates/null_subset_cat_date",
+        "v4/drop_duplicates/null_subset_floats",
+        "v4/drop_duplicates/null_subset_texts",
+        "v4/drop_duplicates/numeric_wide_nulls12",
+        "v4/groupby/int_card40000_mean",
+        "v4/groupby/str_card0p003_two_values",
+        "v4/groupby/str_card0p9_mean",
+        "v4/groupby/str_card3_sum",
+        "v4/groupby/two_keys_card60",
+        "v4/groupby/two_keys_card6000",
+        "v4/groupby/zipf_int_card0p006",
+        "v4/matmul/float32_thin",
+        "v4/matmul/three_quarter_rect",
+        "v4/merge/inner_overlap20_fanout10",
+        "v4/merge/inner_overlap35_fanout7",
+        "v4/merge/inner_overlap55_fanout4p5",
+        "v4/merge/inner_overlap95_fanout1p1",
+        "v4/merge/left_overlap40_fanout9",
+        "v4/merge/outer_overlap70_zipf1p5",
+        "v4/merge/right_overlap15_text",
+        "v4/np_sort/float32_nearly_sorted",
+        "v4/np_sort/int64_random",
+        "v4/read_csv/dates_ints",
+        "v4/read_csv/text_nulls",
+        "v4/read_csv/wide_floats",
+        "v4/sort_values/float_int_lowcard",
+        "v4/sort_values/str_desc_nulls"
+      ],
+      "sha256": "63cb9e48a7f3ae51fa5d16f47c7f499c31a57d6c4365a9e08612d1ef7450a3fd",
       "status": "held-out validation (values hidden; `evaluate --val` logs each use)"
     }
   }

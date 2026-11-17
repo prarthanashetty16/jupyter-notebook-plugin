@@ -22,7 +22,7 @@ from benchmarks.runner import (
 MB = 2**20
 DEV_CASE = "drop_duplicates/mixed_dup0"
 EXPOSED_CASE = "drop_duplicates/realistic_nulls_dup30"  # dev since split v3
-VAL_CASE = "v3/drop_duplicates/null_heavy_full"
+VAL_CASE = "v4/drop_duplicates/null_heavy_full"
 TEST_CASE = "v2/drop_duplicates/clustered_nulls_varstr_dup60"
 
 

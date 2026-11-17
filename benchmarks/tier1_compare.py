@@ -1,4 +1,4 @@
-"""Tier 0 vs Tier 1 comparison on one measured group (dev, or val-v3 through ``evaluate --val``).
+"""Tier 0 vs Tier 1 comparison on one measured group (dev, or val-v4 through ``evaluate --val``).
 
 Takes the joined frame that ``benchmarks.evaluate`` builds (one row per grid point and tier) and
 reports, per operation and metric (RAM, time):
@@ -168,7 +168,7 @@ PCT = (
 
 
 def markdown(df: pd.DataFrame, title: str, group: str) -> str:
-    """Report section for one measured group (``group`` is a label such as 'dev' or 'val-v3')."""
+    """Report section for one measured group (``group`` is a label such as 'dev' or 'val-v4')."""
     d = prepare(df)
     lines = [f"# {title}", ""]
     if d.empty or 1 not in set(d["tier"]):

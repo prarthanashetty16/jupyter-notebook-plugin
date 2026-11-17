@@ -1,4 +1,4 @@
-"""Frozen dev / test-v2 / val-v3 split (version 3), the guards, and log redaction."""
+"""Frozen dev / test-v2 / val-v4 split (version 3), the guards, and log redaction."""
 
 from __future__ import annotations
 
@@ -35,6 +35,7 @@ from benchmarks.split import (
     seen_cases,
     supersede_to_v2,
     supersede_to_v3,
+    supersede_to_v4,
 )
 from benchmarks.suite import (
     BASE,
@@ -53,7 +54,7 @@ MB = 2**20
 DEV_CASE = "drop_duplicates/mixed_dup0"
 EXPOSED_CASE = "drop_duplicates/realistic_nulls_dup30"  # former exposed-v1: dev since v3
 TEST_CASE = "v2/drop_duplicates/clustered_nulls_varstr_dup60"
-VAL_CASE = "v3/drop_duplicates/null_heavy_full"
+VAL_CASE = "v4/drop_duplicates/null_heavy_full"
 
 
 # -- the frozen split ----------------------------------------------------------------------------
@@ -62,47 +63,60 @@ def test_split_loads_and_covers_every_case_exactly_once():
     names = {c.name for c in CASES}
     assert sp.dev | sp.test | sp.val == names
     assert not (sp.dev & sp.test) and not (sp.dev & sp.val) and not (sp.test & sp.val)
-    assert (len(sp.dev), len(sp.test), len(sp.val)) == (47, 17, 36)
-    assert all(n.startswith("v2/") for n in sp.test) and all(n.startswith("v3/") for n in sp.val)
+    assert (len(sp.dev), len(sp.test), len(sp.val)) == (83, 17, 40)
+    assert all(n.startswith("v2/") for n in sp.test) and all(n.startswith("v4/") for n in sp.val)
     assert len(sp.exposed) == 18 and sp.exposed <= sp.dev  # exposed-v1 is dev, kept as provenance
     assert sp.of(EXPOSED_CASE) == DEV
 
 
-def test_every_operation_has_dev_test_v2_and_val_v3_configurations():
+def test_every_operation_has_dev_test_v2_and_val_v4_configurations():
     sp = load_split()
     for op in {c.op for c in CASES}:
         for group in (sp.dev, sp.test, sp.val):
             assert any(c.op == op and c.name in group for c in CASES), (op, sorted(group)[:1])
 
 
-def test_val_v3_covers_the_scenario_types_where_trouble_was_seen():
+def test_val_v4_covers_the_failing_families_and_the_ones_that_worked():
     names = sorted(load_split().val)
     for needle in (
-        "drop_duplicates/null_",
-        "astype/str_to_category_card25",
-        "astype/str_to_category_card12000",
-        "astype/str_to_category_card0p75",
-        "merge/inner_overlap25",
-        "merge/left_overlap90",
-        "merge/outer_overlap65_zipf",
-        "groupby/str_card12",
-        "groupby/int_card20000",
-        "groupby/str_card0p75",
-        "read_csv/float_heavy",
-        "read_csv/short_ints",
-        "read_csv/long_distinct_strings",
+        "astype/str_to_category_card6000",
+        "astype/str_to_category_card40000",
+        "astype/str_to_category_card150000",
+        "astype/int_to_category",
+        "groupby/str_card3",
+        "groupby/str_card0p003",
+        "groupby/two_keys_card60",
+        "groupby/two_keys_card6000",
+        "merge/inner_overlap35_fanout7",
+        "merge/inner_overlap20_fanout10",
+        "merge/left_overlap40_fanout9",
+        "drop_duplicates/null_heavy_full",
+        "drop_duplicates/null_subset_floats",
+        "drop_duplicates/null_subset_texts",
+        "drop_duplicates/null_subset_cat_date",
+        "read_csv/wide_floats",
+        "concat/three_uneven",
+        "sort_values/str_desc_nulls",
+        "matmul/float32_thin",
+        "np_sort/int64_random",
     ):
         assert any(needle in n for n in names), needle
+    assert len(names) >= 36
 
 
-def test_history_records_the_exposure_and_the_reclassification():
+def test_history_records_the_exposure_and_the_reclassifications():
     meta = load_split().meta
-    assert meta["version"] == 3 and len(meta["history"]) == 3
+    assert meta["version"] == 4 and len(meta["history"]) == 4
     old = meta["history"][0]["sha256"]["test"]
     assert old == digest(load_split().exposed)  # exposed-v1 is exactly the old sealed list
     assert "exposure" in meta["history"][1]["event"] or "exposed" in meta["history"][1]["event"]
     assert "reclassify exposed-v1 as dev" in meta["history"][2]["event"]
+    assert "reclassify val-v3 as dev" in meta["history"][3]["event"]
     assert meta["provenance"]["exposed-v1"]["sha256"] == digest(load_split().exposed)
+    sp = load_split()
+    assert meta["provenance"]["val-v3"]["sha256"] == digest(sp.val3)
+    assert len(sp.val3) == 36 and sp.val3 <= sp.dev and not (sp.val3 & sp.val)  # val-v3 is dev now
+    assert all(n.startswith("v3/") for n in sp.val3)
 
 
 def test_test_v2_cases_were_never_seen_in_any_committed_report():
@@ -189,7 +203,7 @@ def test_fresh_splits_differ_from_every_other_configuration(fresh):
     assert not (s_mine & s_other), s_mine & s_other
 
 
-def test_val_v3_shares_no_generator_parameter_value_or_seed_with_dev_or_test_v2():
+def test_val_v4_shares_no_generator_parameter_value_or_seed_with_dev_or_test_v2():
     sp = load_split()
     shared = _knob_values(sp.val) & _knob_values(sp.dev | sp.test)
     assert not shared, sorted(map(str, shared))
@@ -197,8 +211,8 @@ def test_val_v3_shares_no_generator_parameter_value_or_seed_with_dev_or_test_v2(
     _, other_seeds = _configs(sp.dev | sp.test)
     assert not (val_seeds & other_seeds)
     assert (
-        min(val_seeds - {0, 1}) >= 301
-    )  # outside every dev (<=1) and test-v2 (100-122, 1103+) seed
+        min(val_seeds - {0, 1}) >= 401
+    )  # outside every dev (<=1, 301-351 incl. former val-v3) and test-v2 (100-122, 1103+) seed
 
 
 def test_most_test_v2_cases_use_generator_knobs_no_dev_case_uses():
@@ -220,8 +234,8 @@ def test_most_test_v2_cases_use_generator_knobs_no_dev_case_uses():
             )
             uses += novel
     assert uses >= 10
-    for c in CASES:  # and none of those knobs appears in dev
-        if c.name not in load_split().dev:
+    for c in CASES:  # and none of those knobs appears in dev (the val-v3 cases are dev now)
+        if c.name not in load_split().dev or c.name in load_split().val3:
             continue
         for spec in _specs(c):
             cfg = getattr(spec, "cfg", None) or getattr(spec, "left", None)
@@ -418,14 +432,14 @@ def test_protected_loading_needs_a_logged_token_of_the_right_group(results, tmp_
         load_validation(results, None, test_token)
     assert set(load_validation(results, None, val_token)["case"]) == {VAL_CASE}
     log = progress.read_text(encoding="utf-8")
-    assert "| val-v3 |" in log and "| test-v2 |" in log
+    assert "| val-v4 |" in log and "| test-v2 |" in log
 
 
-def test_normal_report_shows_dev_but_hides_test_v2_and_val_v3(results):
+def test_normal_report_shows_dev_but_hides_test_v2_and_val_v4(results):
     text = write_report(results).read_text(encoding="utf-8")
     assert "## Dev split" in text and "Exposed-v1 split" not in text
     assert "Test-v2 split (sealed)" in text and "1 test-v2 points measured" in text
-    assert "Val-v3 split (held-out validation)" in text and "1 val-v3 points measured" in text
+    assert "Val-v4 split (held-out validation)" in text and "1 val-v4 points measured" in text
     assert TEST_CASE not in text and VAL_CASE not in text
     assert DEV_CASE in text and EXPOSED_CASE in text
     for csv_file in results.glob("*.csv"):
@@ -440,9 +454,9 @@ def test_validation_report_requires_a_reason_and_logs_every_use(results, tmp_pat
         write_validation_report(results, " ", progress_path=progress)
     report = write_validation_report(results, "first look", progress_path=progress, command="c1")
     text = report.read_text(encoding="utf-8")
-    assert "## Val-v3 split" in text and VAL_CASE in text and TEST_CASE not in text
+    assert "## Val-v4 split" in text and VAL_CASE in text and TEST_CASE not in text
     log = progress.read_text(encoding="utf-8")
-    assert log.count("- 20") == 1 and "| val-v3 |" in log and "first look" in log
+    assert log.count("- 20") == 1 and "| val-v4 |" in log and "first look" in log
 
 
 def test_final_report_requires_a_reason_and_logs_every_use(results, tmp_path):
@@ -488,7 +502,7 @@ def test_runner_routes_groups_and_redacts_sealed_log_lines(tmp_path, caplog):
         _grid_point(DEV_CASE, DEV),
         _grid_point(EXPOSED_CASE, DEV, null_rate=0.05),
         _grid_point(TEST_CASE, TEST, null_rate=0.05, seed=101),
-        _grid_point(VAL_CASE, VAL, null_rate=0.35, seed=301),
+        _grid_point(VAL_CASE, VAL, null_rate=0.35, seed=401),
     ]
     with caplog.at_level(logging.INFO, logger="benchmarks"):
         run_suite(RunConfig(suite="small", out_dir=out, calibrate=False), points)
@@ -526,7 +540,7 @@ def test_sealed_harness_errors_log_no_message_or_traceback(tmp_path, caplog, mon
     with caplog.at_level(logging.INFO, logger="benchmarks"):
         run_suite(
             RunConfig(suite="small", out_dir=out, calibrate=False),
-            [_grid_point(TEST_CASE, TEST, seed=101), _grid_point(VAL_CASE, VAL, seed=301)],
+            [_grid_point(TEST_CASE, TEST, seed=101), _grid_point(VAL_CASE, VAL, seed=401)],
         )
     text = " ".join(r.getMessage() for r in caplog.records) + " ".join(
         str(r.exc_info) for r in caplog.records
@@ -550,7 +564,7 @@ def test_status_command_shows_counts_only_for_the_sealed_group(results, capsys):
     )
     cmd_status(argparse.Namespace(results=results))
     out = capsys.readouterr().out
-    assert "test-v2 (count only)" in out and "val-v3 (count only)" in out
+    assert "test-v2 (count only)" in out and "val-v4 (count only)" in out
     assert out.count("{'ok': 1}") == 2 and "exposed" not in out
     assert "MB" not in out and "ram" not in out.lower().replace("results", "")
 
@@ -596,7 +610,7 @@ def test_validation_report_works_without_dev_results_and_says_dev_was_omitted(tm
     text = write_validation_report(out, "why", progress_path=progress).read_text(encoding="utf-8")
     assert "Omitted:" in text and "no development results" in text
     assert VAL_CASE in text and TEST_CASE not in text
-    assert progress.read_text(encoding="utf-8").count("| val-v3 |") == 1
+    assert progress.read_text(encoding="utf-8").count("| val-v4 |") == 1
 
 
 def test_a_failed_validation_attempt_leaves_no_access_log_entry(tmp_path):
@@ -604,7 +618,7 @@ def test_a_failed_validation_attempt_leaves_no_access_log_entry(tmp_path):
     progress.write_text(f"# P\n\n{LOG_HEADING}\n\n", encoding="utf-8")
     with pytest.raises(FileNotFoundError):
         write_validation_report(tmp_path / "empty", "why", progress_path=progress)
-    assert "| val-v3 |" not in progress.read_text(encoding="utf-8")
+    assert "| val-v4 |" not in progress.read_text(encoding="utf-8")
 
 
 def test_a_memory_limit_hit_counts_as_an_actual_at_least_the_cap(tmp_path):
@@ -632,3 +646,42 @@ def test_run_summary_does_not_crash_when_no_run_produced_a_time():
 
     text = _summary(Measurement(status="memory_limit", error="killed"))
     assert "ram=n/a" in text and "t=n/a" in text
+
+
+def test_supersede_to_v4_merges_val_v3_into_dev_and_keeps_provenance(tmp_path):
+    v1 = {"version": 1, "frozen": "2026-01-01", "dev": ["a/1"], "test": ["b/1"],
+          "sha256": {"dev": digest(["a/1"]), "test": digest(["b/1"])}}  # fmt: skip
+    path = tmp_path / "split.json"
+    path.write_text(json.dumps(v1))
+    with pytest.raises(ValueError, match="not a version-3"):
+        supersede_to_v4(["e/1"], "too early", path=path)
+    supersede_to_v2(["c/1"], "v2", path=path)
+    supersede_to_v3(["d/1"], "v3", path=path)
+    assert load_split(path).val == {"d/1"}  # a version-3 file calls it val-v3
+    with pytest.raises(ValueError, match="reuses existing"):
+        supersede_to_v4(["d/1"], "bad", path=path)
+    supersede_to_v4(["e/1"], "reclassify val-v3 as dev", path=path)
+    sp = load_split(path)
+    assert (sp.dev, sp.test, sp.val, sp.val3) == ({"a/1", "b/1", "d/1"}, {"c/1"}, {"e/1"}, {"d/1"})
+    assert sp.meta["version"] == 4 and len(sp.meta["history"]) == 4
+    with pytest.raises(ValueError, match="not a version-3"):
+        supersede_to_v4(["f/1"], "again", path=path)
+
+
+def test_migrate_val3_copies_only_former_val_v3_rows_into_dev_files(tmp_path):
+    from benchmarks.maintenance import migrate_val3
+
+    val3_case = sorted(load_split().val3)[0]
+    src, dest = tmp_path / "src", tmp_path / "dest"
+    arows, prows = [], []
+    for case in (val3_case, VAL_CASE):
+        a, p = _point(case, 1_000_000)
+        arows.append({**a, "split": "val-v3"})
+        prows.append({**p, "split": "val-v3"})
+    _write(src / "validation" / "actuals.csv", ACTUAL_FIELDS, arows)
+    _write(src / "validation" / "predictions.csv", PREDICTION_FIELDS, prows)
+    assert migrate_val3(src, dest) == {"actuals": 1, "predictions": 1}
+    assert migrate_val3(src, dest) == {"actuals": 0, "predictions": 0}  # idempotent
+    rows = list(csv.DictReader((dest / "actuals.csv").open(encoding="utf-8")))
+    assert [r["case"] for r in rows] == [val3_case] and rows[0]["split"] == "dev"
+    assert VAL_CASE not in (dest / "actuals.csv").read_text(encoding="utf-8")  # val-v4 stays out

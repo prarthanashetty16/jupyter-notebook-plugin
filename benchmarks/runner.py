@@ -298,7 +298,7 @@ def _summary(m: Measurement) -> str:
 
 
 class Stores:
-    """dev results in ``out/``; test-v2 in ``out/sealed/``; val-v3 in ``out/validation/``.
+    """dev results in ``out/``; test-v2 in ``out/sealed/``; val-v4 in ``out/validation/``.
 
     Development tooling reads only ``out/actuals.csv`` and ``out/predictions.csv``.
     """

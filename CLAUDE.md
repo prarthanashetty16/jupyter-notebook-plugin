@@ -92,15 +92,16 @@ python -m benchmarks full   --mem-limit-gb 2.5 --max-size 10000000      # dev on
 python -m benchmarks status benchmarks/results/full
 python -m benchmarks evaluate benchmarks/results/full          # dev split only
 ```
-The cap must stay well below free RAM. **Splits (`benchmarks/split.json` version 3, frozen, digest-checked):** `dev`
-(47 cases, including the former exposed-v1, which influenced a Phase 4a model change) may be read by all tooling
-(`load_joined`, reports, `diagnose`). Two groups are protected and opt-in (`--splits test-v2` / `--splits val-v3`);
-runner/log/console/status output for them shows only point id, status and elapsed time. `test-v2` (17 cases, sealed,
-never run; results in `<results>/sealed/`) is read only by `evaluate <dir> --final --reason "..."`. `val-v3` (36 cases,
-the held-out validation split for Phases 4b-4d; results in `<results>/validation/`) is read only by
-`evaluate <dir> --val --reason "..."`. Every use of either is logged in the "Test-split access log" in
-docs/PROGRESS.md. Never print, plot or paste protected values anywhere; never edit `split.json` (create a new version
-instead); never read `sealed/` or `validation/` directly. Develop and tune on dev, check on val-v3, run test-v2 only
+The cap must stay well below free RAM. **Splits (`benchmarks/split.json` version 4, frozen, digest-checked):** `dev`
+(83 cases: the Phase 3-3b cases, the former exposed-v1 and the former val-v3, whose report was read in Phase 4b.2;
+both lists are kept as `provenance`) may be read by all tooling (`load_joined`, reports, `diagnose`). Two groups are
+protected and opt-in (`--splits test-v2` / `--splits val-v4`); runner/log/console/status output for them shows only
+point id, status and elapsed time. `test-v2` (17 cases, sealed, never run; results in `<results>/sealed/`) is read only
+by `evaluate <dir> --final --reason "..."`. `val-v4` (40 cases, the held-out validation split after Phase 4b.2; results
+in `<results>/validation/`) is read only by `evaluate <dir> --val --reason "..."`. Every use of either is logged in the
+"Test-split access log" in docs/PROGRESS.md. Never print, plot or paste protected values anywhere; never edit
+`split.json` (create a new version instead); never read `sealed/` or `validation/` directly. Develop and tune on dev,
+check on val-v4 (once per frozen model state; once read, it becomes dev and a new group is needed), run test-v2 only
 once models are frozen.
 
 ### Commit message style

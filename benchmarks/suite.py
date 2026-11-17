@@ -257,6 +257,195 @@ def _concat3(n: int, **kw: Any) -> tuple[InputSpec, ...]:
     )
 
 
+def _add_val_v4(add: Callable[[Case], None]) -> None:
+    """The val-v4 configurations (kept apart from ``_cases`` for readability)."""
+    merge = 'df.merge(right, on="k", how="{how}")'
+    # ---- val-v4: held-out validation after Phase 4b.2 (seeds >= 401; every non-default generator
+    # value, join ratio and array dtype/pattern is new relative to dev (incl. the former val-v3) and
+    # test-v2). Targets the families that failed on val-v3 (high-cardinality category conversion,
+    # low-cardinality text and two-key groupby, moderate-overlap high-fan-out merges, null-heavy
+    # drop_duplicates) and repeats the families that worked, so regressions show. ----
+    for name, src, kw in (
+        ("str_to_category_card6000", 'df["s0"].astype("category")', {"cardinality": 6000, "seed": 401}),
+        ("str_to_category_card40000", 'df["s0"].astype("category")', {"cardinality": 40000, "seed": 402}),
+        ("str_to_category_card150000", 'df["s0"].astype("category")',
+         {"cardinality": 150000, "seed": 403}),
+        ("str_to_category_card0p12", 'df["s0"].astype("category")', {"cardinality": 0.12, "seed": 404}),
+        ("str_to_category_card400_long", 'df["s0"].astype("category")',
+         {"cardinality": 400, "str_len": 22, "seed": 405}),
+        ("int_to_category_card15000", 'df["i0"].astype("category")', {"cardinality": 15000, "seed": 406}),
+        ("float_to_str_nulls", 'df["f0"].astype(str)',
+         {"distribution": "real_like", "null_rate": 0.04, "seed": 407}),
+        ("int_to_str_card1500", 'df["i0"].astype(str)', {"cardinality": 1500, "seed": 408}),
+    ):  # fmt: skip
+        add(Case(f"v4/astype/{name}", "astype", src, lambda n, kw=kw: _frame(n, **kw), 3.0))
+    for name, src, kw in (
+        ("str_card3_sum", 'df.groupby("s0")["f0"].sum()', {"cardinality": 3, "seed": 409}),
+        ("str_card0p003_two_values", 'df.groupby("s0")[["f0", "f1"]].sum()',
+         {"cardinality": 0.003, "seed": 410}),
+        ("two_keys_card60", 'df.groupby(["i0", "s0"])["f0"].sum()', {"cardinality": 60, "seed": 411}),
+        ("two_keys_card6000", 'df.groupby(["i0", "s0"])["f0"].sum()',
+         {"cardinality": 6000, "seed": 412}),
+        ("int_card40000_mean", 'df.groupby("i0")["f0"].mean()', {"cardinality": 40000, "seed": 413}),
+        ("zipf_int_card0p006", 'df.groupby("i0")["f0"].sum()',
+         {"cardinality": 0.006, "distribution": "real_like", "zipf_exponent": 1.5, "seed": 414}),
+        ("str_card0p9_mean", 'df.groupby("s0")["f0"].mean()', {"cardinality": 0.9, "seed": 415}),
+    ):  # fmt: skip
+        add(Case(f"v4/groupby/{name}", "groupby", src, lambda n, kw=kw: _frame(n, **kw), 3.0))
+    for name, how, kw in (
+        ("inner_overlap35_fanout7", "inner",
+         {"overlap": 0.35, "fanout": 7.0, "right_ratio": 0.4, "right_seed": 2416, "seed": 416}),
+        ("inner_overlap20_fanout10", "inner",
+         {"overlap": 0.2, "fanout": 10.0, "right_ratio": 0.15, "right_seed": 2417, "seed": 417}),
+        ("inner_overlap55_fanout4p5", "inner",
+         {"overlap": 0.55, "fanout": 4.5, "right_ratio": 0.9, "right_seed": 2418, "seed": 418}),
+        ("left_overlap40_fanout9", "left",
+         {"overlap": 0.4, "fanout": 9.0, "right_ratio": 0.45, "right_seed": 2419, "seed": 419}),
+        ("outer_overlap70_zipf1p5", "outer",
+         {"overlap": 0.7, "fanout": 3.5, "right_key_dist": "zipf", "right_seed": 2420,
+          "right_ratio": 1.2, "zipf_exponent": 1.5, "seed": 420}),
+        ("right_overlap15_text", "right",
+         {"overlap": 0.15, "fanout": 1.8, "right_seed": 2421, "right_ratio": 3.0, "seed": 421,
+          "n_object": 3, "str_len": 28}),
+        ("inner_overlap95_fanout1p1", "inner",
+         {"overlap": 0.95, "fanout": 1.1, "right_ratio": 0.65, "right_seed": 2422, "seed": 422}),
+    ):  # fmt: skip
+        add(
+            Case(
+                f"v4/merge/{name}",
+                "merge",
+                merge.format(how=how),
+                lambda n, kw=kw: _join(n, **kw),
+                5.0,
+                meta={"how": how},
+            )
+        )
+    for name, src, kw in (
+        ("null_heavy_full", "df.drop_duplicates()",
+         {"dup_rate": 0.1, "cardinality": 0.12, "null_rate": 0.45, "str_len": 15, "seed": 423}),
+        ("null_subset_floats", 'df.drop_duplicates(subset=["f0", "f1"])',
+         {"dup_rate": 0.35, "cardinality": 0.6, "null_rate": 0.28, "seed": 424}),
+        ("null_subset_texts", 'df.drop_duplicates(subset=["s0", "s1"])',
+         {"dup_rate": 0.25, "cardinality": 8000, "null_rate": 0.55, "str_len": 22, "seed": 425}),
+        ("null_subset_cat_date", 'df.drop_duplicates(subset=["c0", "d0"])',
+         {"dup_rate": 0.2, "cardinality": 1500, "null_rate": 0.18, "seed": 426}),
+        ("numeric_wide_nulls12", "df.drop_duplicates()",
+         {"n_int": 4, "n_float": 8, "n_object": 0, "n_category": 0, "n_datetime": 0,
+          "dup_rate": 0.45, "null_rate": 0.12, "cardinality": 0.15, "seed": 427}),
+        ("no_nulls_full", "df.drop_duplicates()",
+         {"dup_rate": 0.55, "cardinality": 0.6, "str_len": 13, "seed": 428}),
+        ("int_subset_lowdup", 'df.drop_duplicates(subset=["i0"])',
+         {"dup_rate": 0.05, "cardinality": 6000, "seed": 429}),
+    ):  # fmt: skip
+        add(Case(f"v4/drop_duplicates/{name}", "drop_duplicates", src,
+                 lambda n, kw=kw: _frame(n, **kw), 3.0))  # fmt: skip
+    add(
+        Case(
+            "v4/sort_values/str_desc_nulls",
+            "sort_values",
+            'df.sort_values("s0", ascending=False)',
+            lambda n: _frame(n, null_rate=0.04, str_len=13, seed=430),
+            3.0,
+        )
+    )
+    add(
+        Case(
+            "v4/sort_values/float_int_lowcard",
+            "sort_values",
+            'df.sort_values(["f0", "i0"])',
+            lambda n: _frame(n, cardinality=0.003, seed=431),
+            3.0,
+        )
+    )
+    add(
+        Case(
+            "v4/concat/three_uneven",
+            "pandas.concat",
+            "pd.concat([df, df2, df3])",
+            lambda n: _concat_parts(
+                n, (0.5, 0.3, 0.2), (432, 433, 434), null_rate=0.01, str_len=13
+            ),
+            3.0,
+        )
+    )
+    add(
+        Case(
+            "v4/concat/two_category_heavy",
+            "pandas.concat",
+            "pd.concat([df, df2], ignore_index=True)",
+            lambda n: _concat_parts(n, (0.5, 0.5), (435, 436), n_category=3, n_object=0),
+            3.0,
+        )
+    )
+    for name, kw in (
+        ("wide_floats", {"n_int": 1, "n_float": 14, "n_object": 0, "n_category": 0,
+                         "n_datetime": 0, "seed": 437}),
+        ("text_nulls", {"n_int": 1, "n_float": 1, "n_object": 3, "n_category": 0,
+                        "n_datetime": 0, "str_len": 13, "null_rate": 0.12, "cardinality": 0.15,
+                        "seed": 438}),
+        ("dates_ints", {"n_int": 4, "n_float": 0, "n_object": 0, "n_category": 0,
+                        "n_datetime": 3, "seed": 439}),
+    ):  # fmt: skip
+        add(
+            Case(
+                f"v4/read_csv/{name}",
+                "pandas.read_csv",
+                "pd.read_csv({csv!r})",
+                lambda n, kw=kw: (CsvInput(BASE.with_(n_rows=n, **kw)),),
+                4.0,
+                max_size=3_000_000,
+            )
+        )
+    add(
+        Case(
+            "v4/matmul/three_quarter_rect",
+            "operator.matmul",
+            "a @ b",
+            lambda d: (
+                ArrayInput((d, 3 * d // 4), "a", seed=452),
+                ArrayInput((3 * d // 4, d // 2), "b", seed=453),
+            ),
+            4.0,
+            size_kind="dim",
+            full_sizes=MATMUL_FULL_DIMS,
+        )
+    )
+    add(
+        Case(
+            "v4/matmul/float32_thin",
+            "operator.matmul",
+            "a @ b",
+            lambda d: (
+                ArrayInput((d, d // 4), "a", seed=454, dtype="float32"),
+                ArrayInput((d // 4, d), "b", seed=455, dtype="float32"),
+            ),
+            4.0,
+            size_kind="dim",
+            full_sizes=MATMUL_FULL_DIMS,
+        )
+    )
+    add(
+        Case(
+            "v4/np_sort/int64_random",
+            "numpy.sort",
+            "np.sort(a)",
+            lambda n: (ArrayInput((n,), dtype="int64", seed=450),),
+            3.0,
+            full_sizes=NP_SORT_SIZES,
+        )
+    )
+    add(
+        Case(
+            "v4/np_sort/float32_nearly_sorted",
+            "numpy.sort",
+            "np.sort(a)",
+            lambda n: (ArrayInput((n,), pattern="nearly_sorted", dtype="float32", seed=451),),
+            3.0,
+            full_sizes=NP_SORT_SIZES,
+        )
+    )
+
+
 def _cases() -> list[Case]:
     c: list[Case] = []
     add = c.append
@@ -1031,6 +1220,8 @@ def _cases() -> list[Case]:
             full_sizes=NP_SORT_SIZES,
         )
     )
+
+    _add_val_v4(add)
     return c
 
 

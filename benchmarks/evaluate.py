@@ -35,6 +35,7 @@ from benchmarks.split import (
     SEALED_DIR,
     TEST,
     VAL,
+    VAL3,
     VAL_DIR,
     SealedAccessError,
     group_of,
@@ -151,7 +152,7 @@ def _read_split(directory: Path, floors: Floors) -> pd.DataFrame:
 
 
 def load_joined(results_dir: Path, floors: Floors | None = None) -> pd.DataFrame:
-    """DEVELOPMENT rows (group ``dev``), tagged in ``split``; ``origin`` keeps ``exposed-v1``.
+    """DEVELOPMENT rows (group ``dev``), tagged in ``split``; ``origin`` keeps ``exposed-v1`` / ``val-v3``.
 
     One row per (grid point, tier); tier NaN if no prediction ran. Reads ``actuals.csv`` and
     ``predictions.csv`` only (never ``sealed/``) and refuses data containing a sealed test-v2
@@ -160,9 +161,10 @@ def load_joined(results_dir: Path, floors: Floors | None = None) -> pd.DataFrame
     """
     df = _read_split(results_dir, floors or Floors())
     df["split"] = df["case"].map(group_of)
-    exposed = load_split().exposed
+    sp = load_split()
     df["origin"] = [
-        EXPOSED if c in exposed else g for c, g in zip(df["case"], df["split"], strict=True)
+        EXPOSED if c in sp.exposed else VAL3 if c in sp.val3 else g
+        for c, g in zip(df["case"], df["split"], strict=True)
     ]
     leaked = sorted(set(df.loc[df["split"].isin([TEST, VAL]), "case"]))
     if leaked:
@@ -186,7 +188,7 @@ def load_sealed(results_dir: Path, floors: Floors | None, token: object) -> pd.D
 
 
 def load_validation(results_dir: Path, floors: Floors | None, token: object) -> pd.DataFrame:
-    """VALIDATION (val-v3) rows. Only reachable with the token from ``open_validation_split``."""
+    """VALIDATION (val-v4) rows. Only reachable with the token from ``open_validation_split``."""
     require_token(token, VAL)
     directory = results_dir / VAL_DIR
     if not (directory / "actuals.csv").exists():
@@ -194,7 +196,7 @@ def load_validation(results_dir: Path, floors: Floors | None, token: object) -> 
     df = _read_split(directory, floors or Floors())
     wrong = sorted(set(df["case"]) - load_split().val)
     if wrong:
-        raise SealedAccessError(f"non-val-v3 cases found in the validation files: {wrong}")
+        raise SealedAccessError(f"non-val-v4 cases found in the validation files: {wrong}")
     df["split"] = VAL
     df["origin"] = VAL
     return df
@@ -571,7 +573,7 @@ def _sealed_count(results_dir: Path) -> int:
 
 
 def _validation_count(results_dir: Path) -> int:
-    """Number of val-v3 points measured so far: a count only, no metrics."""
+    """Number of val-v4 points measured so far: a count only, no metrics."""
     path = results_dir / VAL_DIR / "actuals.csv"
     if not path.exists():
         return 0
@@ -581,15 +583,15 @@ def _validation_count(results_dir: Path) -> int:
 def write_report(
     results_dir: Path, tiers: list[int] | None = None, floors: Floors | None = None
 ) -> Path:
-    """Development report (dev only). test-v2 and val-v3 are protected (counts only)."""
+    """Development report (dev only). test-v2 and val-v4 are protected (counts only)."""
     floors = floors or Floors()
     df = load_joined(results_dir, floors)
     lines = _header(_meta(results_dir), floors, results_dir, "NEXUS benchmark report (development)")
     dev = df[df["split"] == DEV]
     lines += _report_lines(dev, results_dir, floors, tiers, "", "## Dev split")
-    lines.append("\n## Val-v3 split (held-out validation)\n")
+    lines.append("\n## Val-v4 split (held-out validation)\n")
     lines.append(
-        f"{_validation_count(results_dir)} val-v3 points measured. Values are not shown here: "
+        f"{_validation_count(results_dir)} val-v4 points measured. Values are not shown here: "
         'they are evaluated only by `python -m benchmarks evaluate <dir> --val --reason "..."`, '
         "which logs every use in docs/PROGRESS.md.\n"
     )
@@ -650,11 +652,11 @@ def write_validation_report(
     floors: Floors | None = None,
     progress_path: Path | None = None,
 ) -> Path:
-    """dev (if present) and val-v3 in separate sections.
+    """dev (if present) and val-v4 in separate sections.
 
     The access is logged only after both the validation files and the dev files (when there are
     any) have been found and parsed, so a failed attempt leaves no log entry. A results directory
-    from a val-v3-only run has no development files: the dev section is then reported as omitted.
+    from a val-v4-only run has no development files: the dev section is then reported as omitted.
     """
     floors = floors or Floors()
     if not (results_dir / VAL_DIR / "actuals.csv").exists():
@@ -669,8 +671,8 @@ def write_validation_report(
         progress_path=progress_path or PROGRESS_PATH,
     )
     val = load_validation(results_dir, floors, token)
-    lines = _header(_meta(results_dir), floors, results_dir, "NEXUS VALIDATION report (val-v3)")
-    lines.append(f"val-v3 opened {token.timestamp}; reason: {token.reason}\n")
+    lines = _header(_meta(results_dir), floors, results_dir, "NEXUS VALIDATION report (val-v4)")
+    lines.append(f"val-v4 opened {token.timestamp}; reason: {token.reason}\n")
     lines.append(
         "A point killed by the harness memory cap counts as a RAM actual >= the cap "
         "(`ram_lower_bound`), stays in coverage and in the above-high count; its time is not scored.\n"
@@ -681,22 +683,22 @@ def write_validation_report(
     else:
         lines.append(
             "\n## Dev split\n\n**Omitted:** this results directory has no development "
-            "results (a val-v3-only run); nothing is shown for dev.\n"
+            "results (a val-v4-only run); nothing is shown for dev.\n"
         )
     if val.empty:
-        lines.append("\n## Val-v3 split\n\nno val-v3 points measured.\n")
+        lines.append("\n## Val-v4 split\n\nno val-v4 points measured.\n")
     else:
-        lines += _report_lines(val, results_dir, floors, tiers, "_val", "## Val-v3 split")
+        lines += _report_lines(val, results_dir, floors, tiers, "_val", "## Val-v4 split")
         from benchmarks import tier1_compare  # local import: tier1_compare imports this module
 
-        lines.append(tier1_compare.markdown(val, "Tier 0 vs Tier 1 on val-v3", "val-v3"))
+        lines.append(tier1_compare.markdown(val, "Tier 0 vs Tier 1 on val-v4", "val-v4"))
         if dev is not None:
             lines.append(tier1_compare.markdown(dev, "Tier 0 vs Tier 1 on dev", "dev"))
         else:
             lines.append(
                 "## Tier 0 vs Tier 1 on dev\n\n**Omitted:** no development results here.\n"
             )
-        tier1_compare.write(val, results_dir / "tier1_val", "Tier 0 vs Tier 1 on val-v3", "val-v3")
+        tier1_compare.write(val, results_dir / "tier1_val", "Tier 0 vs Tier 1 on val-v4", "val-v4")
     lines.append("\n## Measurement caveats\n")
     lines.append(CAVEATS)
     report = results_dir / "validation_report.md"
