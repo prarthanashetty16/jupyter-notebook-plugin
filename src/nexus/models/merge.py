@@ -119,6 +119,8 @@ class MergeModel(OperationModel):
         left_elided: bool = False,
         right_distinct: float | None = None,
         right_unique: bool = True,
+        left_distinct: float | None = None,
+        overlap: float | None = None,
     ) -> float:
         nl, nr = features["n_left"], features["n_right"]
         row_l = features.get("moved_left", features["bytes_left"]) / max(nl, 1)
@@ -130,9 +132,19 @@ class MergeModel(OperationModel):
             table = khash_presized_bytes(
                 nr if right_distinct is None else right_distinct, max(nl, nr)
             )
-        phase1 = table + 8 * nr + 8 * nl + nl + 16 * m
-        if not right_unique:  # sort-based join: groupsort indexers of both sides (probe: ~+10%)
-            phase1 += 8 * nr + 4 * nl
+        if right_unique:
+            phase1 = table + 8 * nr + 8 * nl + nl + 16 * m
+        else:
+            # Sort-based join: ``_factorize_keys`` runs ONE factorizer over both sides, so the hash
+            # table holds the UNION of the left and right keys (not just the right ones), both code
+            # arrays stay alive, and the group-sort step adds the sorters and per-group counts.
+            # Derived from 27 probes (docs/benchmarks/val-v3-diagnosis/probes/pc3): table over the
+            # union + 16 B x (nl + nr) + 8 B x union + 16 B x M, measured/formula 1.02 (0.83-1.17).
+            ld = float(nl if left_distinct is None else left_distinct)
+            rd = float(nr if right_distinct is None else right_distinct)
+            matched = 0.0 if overlap is None else min(rd, overlap * ld)
+            union = ld + max(rd - matched, 0.0)
+            phase1 = u.khash_table_bytes(union) + 16 * (nl + nr) + 8 * union + 16 * m
         left_copy = 0.0 if left_elided else m * row_l
         phase2 = (8 if left_elided else 16) * m + left_copy + m * row_r
         if how == "outer":  # _maybe_add_join_keys: two filled takes of the key + a combined copy
@@ -158,6 +170,8 @@ class MergeModel(OperationModel):
             "out_rows": (o.low, o.value, o.high),
             "out_rows_source": "tier1",
             "right_distinct": (d.low, d.value, d.high),
+            "left_distinct": (jp.left_distinct.low, jp.left_distinct.value, jp.left_distinct.high),
+            "overlap": jp.overlap.value,
             "left_elided": bool(elided),
             "right_unique": bool(jp.right_keys_unique),
             "left_elided_certain": bool(o.exact),
@@ -186,24 +200,36 @@ class MergeModel(OperationModel):
             el = features.get("left_elided", False)
             rd = features.get("right_distinct") or (nr, nr, nr)
             ru = features.get("right_unique", True)
+            ld = features.get("left_distinct") or (nl, nl, nl)
+            ov = features.get("overlap")
             ram = (
-                self.ram_at(features, lo, left_elided=el, right_distinct=rd[0], right_unique=ru)
+                self.ram_at(
+                    features, lo, left_elided=el, right_distinct=rd[0], right_unique=ru,
+                    left_distinct=ld[0], overlap=ov,
+                )
                 * MODEL_LOW_BAND,
-                self.ram_at(features, mid, left_elided=el, right_distinct=rd[1], right_unique=ru),
+                self.ram_at(
+                    features, mid, left_elided=el, right_distinct=rd[1], right_unique=ru,
+                    left_distinct=ld[1], overlap=ov,
+                ),
                 self.ram_at(
                     features,
                     hi,
                     left_elided=el and features.get("left_elided_certain", False),
                     right_distinct=rd[2],
                     right_unique=ru,
+                    left_distinct=ld[2],
+                    overlap=None,
                 )
                 * MODEL_HIGH_BAND,
-            )
+            )  # fmt: skip
         else:
             ram = (
                 self.ram_at(features, lo, left_elided=True) * MODEL_LOW_BAND,
                 self.ram_at(features, mid),
-                self.ram_at(features, hi),
+                max(  # key uniqueness is unknown: the sort-based path may apply
+                    self.ram_at(features, hi), self.ram_at(features, hi, right_unique=False)
+                ),
             )
         return u.build(
             ram,

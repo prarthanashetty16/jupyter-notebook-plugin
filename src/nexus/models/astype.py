@@ -28,9 +28,9 @@ LEGACY_CATEGORY_FRACTION = 0.1
 # Characters of the decimal/ISO string form, Tier 0 range by source kind (Tier 1 narrows it).
 STR_LEN_RANGE = {"int": (1, 20), "float": (3, 24), "datetime": (10, 29), "bool": (4, 5)}
 
-# Peak bytes/row of ``astype("category")`` at the two extremes of the distinct count, measured with
-# isolated probes at n = 1M, 2M and 4M rows (constant across n; see the class docstring).
-CATEGORY_PEAK = {"text": (24.0, 83.0), "numeric": (16.0, 59.0)}
+# Error band of the hash-table model (measured / model over the validation probes, see the class
+# docstring) applied to the Tier 1 range ends.
+CATEGORY_BAND = (0.92, 1.12)
 
 
 def str_object_bytes(length: int) -> int:
@@ -95,14 +95,19 @@ class AstypeModel(OperationModel):
       72.4 and 56.3 (formula 72, 56); datetime of 19 characters 72.4 (72). Text -> str copies the
       pointer array only (not probed).
     * -> ``category`` (``Categorical``: ``factorize`` into a hash table, remap of the codes after
-      sorting the categories, codes narrowed to int8/16/32): the peak depends on the number of
-      distinct values U, which Tier 0 cannot see. At the extremes it is constant per row,
-      independent of n (measured at 1M, 2M and 4M rows): few distinct values need about 24 (text)
-      or 16 (numeric) B/row, all-distinct about 83 / 59. In between the cost is not linear in U/n
-      (measured at U/n = 0.05..0.5), so Tier 0 reports the two extremes as ``low`` and ``high``
-      and the geometric middle as ``expected``; ``distinct_fraction`` (Tier 1) interpolates
-      linearly, which under-predicts mid fractions (by up to ~30% around U/n = 0.05-0.1): a known
-      approximation.
+      sorting the categories, codes narrowed to int8/16/32): the peak is
+      ``base * n + resident table pages + 8 * distinct`` (``_util.factorize_peak_bytes``). The
+      table is presized for ``min(n, 2**20 + 7)`` entries whatever the distinct count U, and a
+      page of it becomes resident only when a key hashes into it: random keys touch a share
+      ``1 - exp(-U / pages)`` of each array, sequential keys (``value_000000123``, ints 0..U-1)
+      cluster into few pages, and a table that has to grow is fully resident. Phase 4a had measured
+      one curve on 2M-row columns of SEQUENTIAL keys; the diagnosis of the val-v3 failures
+      (docs/benchmarks/val-v3-diagnosis.md) found that random strings cost up to 38 MiB more at
+      U/n = 0.006 and that the n-dependence is the presize cap, not a 15% effect. The model matches
+      22 isolated probes (text, 300k-4M rows, U = 12 .. 2M) within 3%; ``hash_scatter`` (Tier 1)
+      replays khash's string / int64 hash over the sampled distinct values to tell random from
+      clustered keys. Tier 0 knows neither U nor the layout: ``low`` is few distinct values, ``high``
+      all distinct with random keys, ``expected`` their geometric mean.
 
     Time: unchanged first-draft model (hashing for category, per-element conversion for str).
     """
@@ -147,10 +152,12 @@ class AstypeModel(OperationModel):
         target, source = features["target"], features["source_dtype"]
         if target == "category":
             d = stats.distinct_count(series, deadline=ctx.deadline)
+            sc = stats.hash_scatter(series, text=u.is_text(source), deadline=ctx.deadline)
             return {
                 "distinct_fraction": d.value / n,
                 "distinct_fraction_low": d.low / n,
                 "distinct_fraction_high": d.high / n,
+                "hash_scatter": (sc.low, sc.value, sc.high),
                 "tier1": {"sample": d.sample, "confidence": d.confidence, "method": d.method},
             }
         kind = _kind(source)
@@ -183,18 +190,24 @@ class AstypeModel(OperationModel):
         out = 0.0
         time_out = 0.0  # bytes in the (unchanged) time term
         if target == "category":
-            lo, hi = CATEGORY_PEAK["text" if source_text else "numeric"]
+            kind = "text" if source_text else "numeric"
             frac = features.get("distinct_fraction")
-            if frac is None:
-                ram_range = (lo * n, math.sqrt(lo * hi) * n, hi * n)
-            else:  # Tier 1: the measured curve at the estimated distinct fraction and its bounds
-                kind = "text" if source_text else "numeric"
-                at = (
-                    u.factorize_peak_per_row(kind, features.get("distinct_fraction_low", frac)),
-                    u.factorize_peak_per_row(kind, frac),
-                    u.factorize_peak_per_row(kind, features.get("distinct_fraction_high", frac)),
+            if frac is None:  # Tier 0: distinct count and key layout unknown
+                lo = u.factorize_peak_bytes(kind, n, 1.0, scatter=0.0)
+                hi = u.factorize_peak_bytes(kind, n, n, scatter=1.0)
+                ram_range = (lo, math.sqrt(lo * hi), hi)
+            else:  # Tier 1: the hash-table model at the estimated distinct count and key scatter
+                fl, fh = (
+                    features.get("distinct_fraction_low", frac),
+                    features.get("distinct_fraction_high", frac),
                 )
-                ram_range = (at[0] * n * 0.8, at[1] * n, at[2] * n * 1.25)
+                sl, sv, sh = features.get("hash_scatter") or (1.0, 1.0, 1.0)
+                at = (
+                    u.factorize_peak_bytes(kind, n, fl * n, sl),
+                    u.factorize_peak_bytes(kind, n, frac * n, sv),
+                    u.factorize_peak_bytes(kind, n, fh * n, sh),
+                )
+                ram_range = (at[0] * CATEGORY_BAND[0], at[1], at[2] * CATEGORY_BAND[1])
             hash_s = u.machine().text_hash_s if source_text else u.machine().num_hash_s
             seconds = n * hash_s
             time_out = 4 * n + LEGACY_CATEGORY_FRACTION * n * (

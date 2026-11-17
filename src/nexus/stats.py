@@ -189,6 +189,88 @@ def distinct_count(
     return distinct_from_counts(counts, n)
 
 
+# -- how uniformly keys hash over a table ------------------------------------------------------------
+SCATTER_REFERENCE_BUCKETS = 1 << 21
+SCATTER_SAMPLE_ROWS = 20_000
+SCATTER_MAX_DISTINCT = 8_000  # distinct values replayed through the hash replica
+SCATTER_MARGIN = 0.15  # sampling noise allowance on both sides of the point estimate
+_PAGE = 4096
+
+
+def _x31(strings: list[str]) -> np.ndarray:
+    """khash's X31 string hash (``h = 31 * h + byte``) as pandas' ``StringHashTable`` uses it."""
+    raw = [s.encode("utf-8", "surrogatepass")[:256] for s in strings]
+    width = max((len(b) for b in raw), default=1) or 1
+    mat = np.zeros((len(raw), width), dtype=np.uint64)
+    lens = np.fromiter((len(b) for b in raw), dtype=np.int64, count=len(raw))
+    for i, b in enumerate(raw):
+        mat[i, : len(b)] = np.frombuffer(b, dtype=np.uint8)
+    h = mat[:, 0].copy()
+    for j in range(1, width):
+        nxt = (h * np.uint64(31) + mat[:, j]) & np.uint64(0xFFFFFFFF)
+        h = np.where(j < lens, nxt, h)
+    return h
+
+
+def _int64_hash(values: np.ndarray) -> np.ndarray:
+    """khash's int64 hash ``(k >> 33) ^ k ^ (k << 11)`` (low 32 bits)."""
+    k = values.astype(np.uint64)
+    return ((k >> np.uint64(33)) ^ k ^ (k << np.uint64(11))) & np.uint64(0xFFFFFFFF)
+
+
+def hash_scatter(
+    values: Any, *, text: bool, deadline: Deadline | None = None, seed: int = 0
+) -> Bounded:
+    """How uniformly the distinct values of a column hash over a presized pandas hash table.
+
+    Returns the share of table pages the sampled distinct values touch relative to what the same
+    number of RANDOMLY hashed keys would touch (1.0: random keys; ~0.05: sequential strings such as
+    ``user_000123``; ~0.7: dense integers 0..U-1). The pandas tables only make a page resident when
+    a key lands in it, so this share scales the resident size of a presized table. The hash
+    functions are replicas of khash's (validated against measured resident growth:
+    docs/benchmarks/val-v3-diagnosis/probes/pb6, pb7). Non-numeric, non-string objects hash through
+    Python's randomised ``hash``: reported as 1.0.
+    """
+    n = len(values)
+    if n == 0:
+        return exact(1.0, 0, "empty")
+    sample = take(values, sample_positions(n, min(SCATTER_SAMPLE_ROWS, n), seed))
+    if deadline is not None:
+        deadline.check()
+    uniq = pd.unique(sample.to_numpy())
+    uniq = uniq[: SCATTER_MAX_DISTINCT * 4]
+    uniq = uniq[~pd.isna(uniq)] if uniq.dtype == object or uniq.dtype.kind == "f" else uniq
+    uniq = uniq[:SCATTER_MAX_DISTINCT]
+    m = len(uniq)
+    if m < 200:  # a small table: its pages hardly matter
+        return Bounded(1.0, 1.0, 1.0, m, n, 1.0, "few-distinct")
+    kind = uniq.dtype.kind
+    if text:
+        if not all(isinstance(v, str) for v in uniq):
+            return Bounded(1.0, 1.0, 1.0, m, n, 0.5, "non-string-objects")
+        h = _x31(list(uniq))
+        strides = (16, 8)
+    elif kind in "iub":
+        h, strides = _int64_hash(uniq.astype(np.int64)), (8, 8)
+    elif kind in "fM":
+        bits = uniq.astype(np.float64).view(np.int64) if kind == "f" else uniq.view(np.int64)
+        h, strides = _int64_hash(bits), (8, 8)
+    else:
+        return Bounded(1.0, 1.0, 1.0, m, n, 0.5, "unhashed-kind")
+    idx = (h & np.uint64(SCATTER_REFERENCE_BUCKETS - 1)).astype(np.int64)
+    seen = expect = 0.0
+    for stride in strides:
+        per_page = _PAGE // stride
+        pages = SCATTER_REFERENCE_BUCKETS / per_page
+        seen += len(np.unique(idx // per_page))
+        expect += pages * (1.0 - math.exp(-m / pages))
+    value = min(1.0, seen / expect)
+    return Bounded(
+        value, max(0.0, value - SCATTER_MARGIN), min(1.0, value + SCATTER_MARGIN), m, n, 0.9,
+        "khash-replica",
+    )  # fmt: skip
+
+
 def distinct_rows(
     columns: list[Any],
     *,
@@ -422,6 +504,7 @@ class JoinProfile:
     overlap: Bounded  # share of left rows whose key exists on the right
     right_unique: Bounded  # share of right keys that occur once
     right_distinct: Bounded  # distinct right keys
+    left_distinct: Bounded  # distinct left keys (the merge's factorizer sees both sides)
     left_all_matched_once: bool  # every sampled left row matched exactly one right row
     right_keys_unique: bool  # no sampled right key repeats (the sample cannot see rare repeats)
     heavy_keys: int
@@ -505,6 +588,13 @@ def join_profile(  # noqa: C901
         d_r, max(float(keys_r_light + (hb > 0).sum()), d_r - Z95 * se_d), min(float(nr), d_r + Z95 * se_d),
         keys_r_light, nr, _confidence(d_r - Z95 * se_d, d_r + Z95 * se_d), "coordinated+heavy", p == 1.0,
     )  # fmt: skip
+    keys_l_light = int((a > 0).sum())
+    d_l = keys_l_light / p + float((ha > 0).sum())
+    se_l = math.sqrt(keys_l_light * (1 - p)) / p
+    left_distinct = Bounded(
+        d_l, max(float(keys_l_light + (ha > 0).sum()), d_l - Z95 * se_l), min(float(nl), d_l + Z95 * se_l),
+        keys_l_light, nl, _confidence(d_l - Z95 * se_l, d_l + Z95 * se_l), "coordinated+heavy", p == 1.0,
+    )  # fmt: skip
     right_unique = (
         proportion(int((b == 1).sum()), keys_r_light, None) if keys_r_light else proportion(0, 0)
     )
@@ -512,7 +602,7 @@ def join_profile(  # noqa: C901
     once = bool(len(a) and (b[a > 0] == 1).all() and (a[a > 0] > 0).all() and heavy_ok)
     unique = bool((b <= 1).all() and (hb <= 1).all())
     return JoinProfile(
-        out_rows, overlap, right_unique, right_distinct, once, unique,
+        out_rows, overlap, right_unique, right_distinct, left_distinct, once, unique,
         len(heavy), len(joined), p,
     )  # fmt: skip
 

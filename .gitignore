@@ -57,3 +57,4 @@ Thumbs.db
 
 # probe frame cache
 docs/benchmarks/tier0-v2/probes/probe_cache/
+docs/benchmarks/val-v3-diagnosis/probes/probe_cache/

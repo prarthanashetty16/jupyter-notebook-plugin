@@ -15,9 +15,10 @@ from nexus.state import Inspection
 
 CATEGORY_KEY_BYTES = 9.8  # peak B/row of a categorical key, independent of the group count (probe)
 RESULT_BYTES_PER_GROUP = 40.0  # per group: key values, index and sort temporaries (probe: G = n)
-MULTI_KEY_EXTRA = (0.0, 8.0, 16.0)  # B/row per additional key beyond the sum of the key curves
-MODEL_LOW_BAND = 0.8  # probes at n = 1M/3M/6M: measured / curve between 0.78 and 1.5
-MODEL_HIGH_BAND = 1.25  # same probes: up to +50% at one (n, G/n); +25% covers 6 of 7 cells
+COMBO_SCATTER = (0.3, 0.72, 1.0)  # how the combined group ids hash (dense ints measure ~0.72)
+COMBO_COEXIST = 0.5  # share of the smaller of (key table, combined-id table) alive with the larger
+MODEL_LOW_BAND = 0.92  # measured / model band of the hash-table model (see the class docstring)
+MODEL_HIGH_BAND = 1.12
 VALUE_COLUMN_FRACTIONS = (0.0, 0.3, 1.0)  # share of value columns aggregated (Tier 0 prior)
 
 NUMERIC_KINDS = ("int", "uint", "float", "bool")
@@ -38,12 +39,16 @@ class GroupByModel(OperationModel):
     not overlap, because the factorize temporaries are freed before the result is built:
 
     1. *Factorizing the keys.* Each key column is run through ``factorize`` (codes, a hash table,
-       the sorted uniques and a remapped code array). The peak depends only on the key's dtype and
-       its number of distinct values G, and follows the same curve as ``astype("category")``
-       (``_util.FACTORIZE_KNOTS``: text 24 -> 83 B/row, numeric 16 -> 58 as G/n goes 0 -> 1). A
-       categorical key reuses its codes and costs ~10 B/row at any G. Several keys add roughly
-       8-16 B/row per additional key for combining the codes (measured +0.9 .. +16.6 over the sum of
-       the single-key curves, and -17 at G = n, hence the 0.85 low band).
+       the sorted uniques and a remapped code array). A single key follows the hash-table model of
+       ``_util.factorize_peak_bytes`` (the same as ``astype("category")``: ``base * n`` plus the
+       RESIDENT pages of a table presized for ``min(n, 2**20 + 7)`` entries, which depend on the
+       distinct count and on how uniformly the keys hash; see the ``astype`` docstring). A
+       categorical key reuses its codes and costs ~10 B/row at any G. Several keys keep every
+       key's codes alive (``base``), the largest key table, two int64 id arrays and a table over the
+       combined group ids (``COMBO_SCATTER``); the combined table and the key tables partly coexist
+       (``COMBO_COEXIST``, the one constant fitted to four two-key probes of 1M rows: 55.9, 80.4,
+       101.5 and 101.9 MiB measured vs 67.6, 84.1, 99.5, 101.3 modelled; docs/benchmarks/
+       val-v3-diagnosis/probes/pb8).
     2. *Building the result.* The codes (8 B/row) stay alive while the result has G rows with the
        aggregated columns (8 B each) and ~40 B/group of key and index storage (probe at G = n: peak
        = 48.4 + 8 x columns B/row: 57.5, 80.4, 128.4 for 1, 4 and 10 columns).
@@ -103,7 +108,15 @@ class GroupByModel(OperationModel):
         else:
             combined = per_key[0]
         agg = _aggregated_columns(ctx.source, op, df, keys)
+        kinds = features.get("key_kinds") or ["text"] * len(keys)
+        scatter = [
+            stats.hash_scatter(df[k], text=(kind == "text"), deadline=ctx.deadline)
+            if kind != "category"
+            else stats.exact(1.0, n)
+            for k, kind in zip(keys, kinds, strict=False)
+        ]
         out: dict[str, Any] = {
+            "key_scatter": [(sc.low, sc.value, sc.high) for sc in scatter],
             "key_fractions": [(d.low / n, d.value / n, d.high / n) for d in per_key],
             "groups_fraction": (combined.low / n, combined.value / n, combined.high / n),
             "tier1": {
@@ -124,16 +137,44 @@ class GroupByModel(OperationModel):
         groups_frac: float,
         cols: int,
         spread: int = 1,
+        scatter: list[float] | None = None,
     ) -> float:
-        """Peak bytes for given per-key distinct fractions, group fraction and aggregated columns."""
+        """Peak bytes for given per-key distinct fractions, group fraction and aggregated columns.
+
+        ``spread`` selects the multi-key assumption: 0 low, 1 expected, 2 high. ``scatter`` is the
+        per-key hash scatter (1.0: random keys).
+        """
         n = features["n_rows"]
         kinds = features["key_kinds"]
-        per_key = 0.0
-        for kind, frac in zip(kinds, key_fracs, strict=False):
-            per_key += (
-                CATEGORY_KEY_BYTES if kind == "category" else u.factorize_peak_per_row(kind, frac)
+        scatter = scatter or [1.0] * len(kinds)
+        if len(kinds) == 1:
+            kind = kinds[0]
+            phase1 = (
+                CATEGORY_KEY_BYTES * n
+                if kind == "category"
+                else u.factorize_peak_bytes(kind, n, key_fracs[0] * n, scatter[0])
             )
-        phase1 = (per_key + MULTI_KEY_EXTRA[spread] * (len(kinds) - 1)) * n
+        else:
+            bases = tables = 0.0
+            for kind, frac, sc in zip(kinds, key_fracs, scatter, strict=False):
+                if kind == "category":
+                    bases += CATEGORY_KEY_BYTES * n
+                    continue
+                base = max(u.FACTORIZE_BASE[kind], u.FACTORIZE_FLOOR[kind]) * n
+                bases += base
+                tables = max(tables, u.factorize_peak_bytes(kind, n, frac * n, sc) - base)
+            sc_combo = COMBO_SCATTER[spread]
+            combo = u.factorize_peak_bytes("numeric", n, groups_frac * n, sc_combo) - (
+                u.FACTORIZE_FLOOR["numeric"] * n
+            )
+            ids = (8.0 if spread == 0 else 16.0) * n  # group index + compressed ids
+            if spread == 2:
+                held = tables + combo  # both tables alive: the upper bound
+            else:
+                held = max(tables, combo) + (COMBO_COEXIST if spread == 1 else 0.0) * min(
+                    tables, combo
+                )
+            phase1 = bases + ids + held
         phase2 = 8 * n + groups_frac * n * (RESULT_BYTES_PER_GROUP + 8 * cols)
         return max(phase1, phase2)
 
@@ -146,7 +187,7 @@ class GroupByModel(OperationModel):
         gf = features.get("groups_fraction")
         agg_known = "aggregated_columns" in features
         if gf is None:  # Tier 0: G unknown, spans none-repeated .. all-distinct
-            low = self.ram_at(features, [0.0] * len(kinds), 0.0, 1, 0)
+            low = self.ram_at(features, [0.0] * len(kinds), 0.0, 1, 0, [0.0] * len(kinds))
             high = self.ram_at(features, [1.0] * len(kinds), 1.0, cols, 2)
             mid = math.sqrt(low * high)
             ram = (low * MODEL_LOW_BAND, mid, high)
@@ -155,11 +196,15 @@ class GroupByModel(OperationModel):
             cols_lo = cols if agg_known else max(1, round(VALUE_COLUMN_FRACTIONS[1] * cols))
             cols_hi = cols
             fr = fr or [gf] * len(kinds)
+            sc = features.get("key_scatter") or [(1.0, 1.0, 1.0)] * len(kinds)
             at = [
-                self.ram_at(features, [f[0] for f in fr], gf[0], cols_lo, 0),
-                self.ram_at(features, [f[1] for f in fr], gf[1], cols if agg_known else cols_lo, 1),
-                self.ram_at(features, [f[2] for f in fr], gf[2], cols_hi, 2),
-            ]
+                self.ram_at(features, [f[0] for f in fr], gf[0], cols_lo, 0, [x[0] for x in sc]),
+                self.ram_at(
+                    features, [f[1] for f in fr], gf[1], cols if agg_known else cols_lo, 1,
+                    [x[1] for x in sc],
+                ),
+                self.ram_at(features, [f[2] for f in fr], gf[2], cols_hi, 2, [x[2] for x in sc]),
+            ]  # fmt: skip
             ram = (at[0] * MODEL_LOW_BAND, at[1], at[2] * MODEL_HIGH_BAND)
             why = f"estimated groups {gf[1] * n:,.0f} of {n:,} rows ({features['tier1']['method']})"
         seconds = (

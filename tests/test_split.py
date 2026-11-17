@@ -621,23 +621,64 @@ def test_a_failed_validation_attempt_leaves_no_access_log_entry(tmp_path):
     assert "| val-v4 |" not in progress.read_text(encoding="utf-8")
 
 
-def test_a_memory_limit_hit_counts_as_an_actual_at_least_the_cap(tmp_path):
-    from benchmarks.evaluate import Floors, accuracy_table, classify_points
-
-    out = _val_only_dir(tmp_path, status="memory_limit")
+def test_a_memory_limit_hit_counts_as_a_lower_bound_of_the_incremental_peak():
     import pandas as pd
 
-    from benchmarks.evaluate import _read_split
+    from benchmarks.evaluate import Floors, accuracy_table, classify_points
 
-    df = _read_split(out / "validation", Floors())
-    row = df.iloc[0]
-    assert row["ram_class"] == "valid" and row["ram_value"] == 2 * 1024**3
-    assert bool(row["ram_lower_bound"]) and pd.isna(row["time_value"]) and row["time_class"] is None
-    df = classify_points(df, Floors()).assign(tier=0.0, has_estimate=True)
-    # prediction high (300 MB) is far below the cap: counted as above-high, not dropped
-    acc = accuracy_table(df.assign(ram_expected=1e8, ram_low=5e7, ram_high=3e8), ["op"])
-    assert acc.iloc[0]["ram_n"] == 1 and acc.iloc[0]["ram_above_high"] == 1.0
-    assert acc.iloc[0]["ram_cov"] == 0.0 and acc.iloc[0]["ram_lower_bound"] == 1
+    def row(size, status, baseline, error=""):
+        return {"point_id": f"c|n={size}", "case": "c", "op": "o", "size": size, "status": status,
+                "baseline_bytes": baseline, "error": error, "cap_bytes": 2 * 1024**3,
+                "ram_delta_all": json.dumps([200 * MB, 201 * MB] if status == "ok" else []),
+                "time_s_all": json.dumps([1.0, 1.01] if status == "ok" else [])}  # fmt: skip
+
+    gib = 1024**3
+    df = pd.DataFrame(
+        [
+            row(1_000_000, "ok", 300 * MB),
+            row(3_000_000, "ok", 900 * MB),
+            row(10_000_000, "memory_limit", 0, str(int(2.2 * gib))),
+        ]
+    )
+    out = classify_points(df, Floors())
+    kill = out.iloc[2]
+    # baseline extrapolated through (1M, 300 MB) and (3M, 900 MB): 3000 MB at 10M ... above the RSS
+    # at the kill, so no incremental peak can be inferred (not "the cap"): lower bound 0
+    assert (
+        kill["ram_class"] == "valid" and kill["ram_value"] == 0.0 and bool(kill["ram_lower_bound"])
+    )
+    df.loc[2, "error"] = str(int(4 * gib))  # RSS at kill 4096 MB -> bound = 4096 - 3000 MB
+    kill = classify_points(df, Floors()).iloc[2]
+    assert kill["ram_value"] == pytest.approx(4 * gib - 3000 * MB)  # NOT the cap (2 GiB)
+    assert pd.isna(kill["time_value"]) and pd.isna(kill["time_class"])
+    scored = classify_points(df, Floors()).assign(tier=0.0, has_estimate=True)
+    acc = accuracy_table(
+        scored.assign(
+            ram_expected=3e8,
+            ram_low=2e8,
+            ram_high=1e9,
+            time_expected=1.0,
+            time_low=0.5,
+            time_high=2.0,
+        ),
+        ["op"],
+    )
+    assert acc.iloc[0]["ram_n"] == 3 and acc.iloc[0]["ram_lower_bound"] == 1
+    # an estimate whose `high` is below the proven lower bound is an under-prediction
+    acc = accuracy_table(
+        scored.assign(
+            ram_expected=3e8,
+            ram_low=2e8,
+            ram_high=1e8,
+            time_expected=1.0,
+            time_low=0.5,
+            time_high=2.0,
+        ),
+        ["op"],
+    )
+    assert acc.iloc[0]["ram_above_high"] > 0
+    lone = pd.DataFrame([row(10_000_000, "memory_limit", 0, str(2 * gib))])  # no measured sibling
+    assert pd.isna(classify_points(lone, Floors()).iloc[0]["ram_class"])
 
 
 def test_run_summary_does_not_crash_when_no_run_produced_a_time():

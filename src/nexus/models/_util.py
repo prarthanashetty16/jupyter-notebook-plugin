@@ -12,8 +12,6 @@ from __future__ import annotations
 import math
 from typing import Any
 
-import numpy as np
-
 from nexus.analyzer import DetectedOp, Expr
 from nexus.machine import machine  # noqa: F401  (re-exported for models)
 from nexus.models.base import Estimate, NoEstimateError
@@ -112,27 +110,77 @@ def khash_presized_bytes(distinct: float, size_hint: float, *, key_only: bool = 
     return size * (KHASH_RESIZE_OVERLAP if grows else 1.0)
 
 
-# Peak bytes/row of factorizing one key column (``astype("category")``, one ``groupby`` key) as a
-# function of its distinct fraction U/n, measured with isolated probes on 2M-row columns
-# (``docs/benchmarks/tier0-v2/probes/p_cat.py`` and ``p_gb.py``; the two operations agree within
-# 4 B/row). At the same fraction the cost varies ~15% with n (1M and 4M probes), which the
-# models' error bands absorb. Linear interpolation between the knots.
-FACTORIZE_KNOTS = {
-    "text": (
-        (0.0, 24.1), (0.0025, 24.5), (0.01, 25.8), (0.05, 33.5), (0.25, 51.4), (0.5, 53.4),
-        (1.0, 82.6),
-    ),
-    "numeric": (
-        (0.0, 16.3), (0.0025, 16.7), (0.01, 16.9), (0.05, 18.2), (0.25, 26.5), (0.5, 36.7),
-        (1.0, 57.9),
-    ),
-}  # fmt: skip
+# -- factorizing one key column (``astype("category")``, one ``groupby`` key) ------------------
+# Derived from the pandas hash tables and validated with isolated probes (docs/benchmarks/
+# val-v3-diagnosis/probes/pb1..pb10). The peak is the larger of two phases:
+#
+#     factorize:  FACTORIZE_BASE * n  +  resident pages of the hash table  +  UNIQUE_BYTES * distinct
+#     copy:       FACTORIZE_FLOOR * n          (numeric keys only: 2 int64 arrays, independent of U)
+#
+# * The table is allocated for ``min(n, 2**20 + 7)`` entries up front (``hash_buckets``) and grows
+#   only when the distinct count exceeds its 77% load limit. Allocated pages are NOT resident until
+#   a key lands in them: ``distinct`` keys hashed to random buckets touch a fraction
+#   ``1 - exp(-distinct / pages)`` of each array (``table_touch``). Phase 4a measured its curve on
+#   sequential keys (``value_000000123``, ints 0..U-1) whose hashes cluster into few pages, which
+#   hid this term; random strings and random ids touch the whole table (+38 MiB at 2M rows, U = 12k).
+#   Clustered keys fill pages more slowly as U grows (``CLUSTER_FILL``, from three dense-int probes).
+# * ``TABLE_STRIDES``: bytes per bucket of the arrays whose pages get touched: text tables
+#   (``StringHashTable``) 16 + 8, numeric ones 8 + 8 (plus 2 flag bits per bucket, always resident).
+# * A table that had to grow was rehashed completely: fully resident.
+FACTORIZE_BASE = {"text": 24.1, "numeric": 8.65}  # B/row (codes, vectors, remap)
+FACTORIZE_FLOOR = {"text": 0.0, "numeric": 16.3}  # B/row of the copy phase (numeric keys)
+UNIQUE_BYTES = {"text": 8.0, "numeric": 16.0}  # B per distinct value (uniques; numeric: + sort)
+TABLE_STRIDES = {"text": (16, 8), "numeric": (8, 8)}
+PAGE_BYTES = 4096
+CLUSTER_FILL = 0.1  # clustered keys fill a table as 1 - exp(-U / (CLUSTER_FILL * buckets))
 
 
-def factorize_peak_per_row(kind: str, distinct_fraction: float) -> float:
-    """Peak bytes/row of factorizing a ``kind`` ("text" / "numeric") column; see FACTORIZE_KNOTS."""
-    xs, ys = zip(*FACTORIZE_KNOTS[kind], strict=True)
-    return float(np.interp(min(max(distinct_fraction, 0.0), 1.0), xs, ys))
+def hash_buckets(entries: float) -> int:
+    """khash bucket count for ``entries`` keys (power of two, 77% maximum load)."""
+    return int(2 ** math.ceil(math.log2(max(entries / KHASH_MAX_LOAD, 4))))
+
+
+def table_touch(distinct: float, buckets: int, stride: int) -> float:
+    """Expected share of an array's pages touched by ``distinct`` keys hashed to random buckets."""
+    pages = max(buckets * stride / PAGE_BYTES, 1.0)
+    return 1.0 - math.exp(-max(distinct, 0.0) / pages)
+
+
+def factorize_parts(
+    kind: str, n: float, distinct: float, scatter: float = 1.0
+) -> tuple[float, float]:
+    """(factorize-phase peak, copy-phase peak) bytes of factorizing a ``kind`` column.
+
+    ``scatter`` in [0, 1] is how uniformly the keys hash over the table (1: random keys, the usual
+    case; ~0.05: sequential strings; ~0.7: dense integers). A table that grew is fully resident.
+    """
+    distinct = min(max(distinct, 0.0), n)
+    presized = hash_buckets(min(n, SIZE_HINT_LIMIT))
+    buckets = max(presized, hash_buckets(distinct))
+    grown = buckets > presized
+    fill = 1.0 - math.exp(-distinct / (CLUSTER_FILL * buckets))
+    resident = KHASH_FLAG_BYTES * buckets
+    for stride in TABLE_STRIDES[kind]:
+        random_share = table_touch(distinct, buckets, stride)
+        # clustered keys still occupy at least ``distinct`` slots: the floor is the load factor
+        share = (
+            1.0
+            if grown
+            else max(scatter * random_share + (1.0 - scatter) * fill, distinct / buckets)
+        )
+        resident += min(share, 1.0) * buckets * stride
+    factorize = FACTORIZE_BASE[kind] * n + resident + UNIQUE_BYTES[kind] * distinct
+    return factorize, FACTORIZE_FLOOR[kind] * n
+
+
+def factorize_peak_bytes(kind: str, n: float, distinct: float, scatter: float = 1.0) -> float:
+    """Peak bytes of factorizing a ``kind`` ("text" / "numeric") column of ``n`` rows."""
+    return max(factorize_parts(kind, n, distinct, scatter))
+
+
+def factorize_peak_per_row(kind: str, distinct_fraction: float, n: float = 2_000_000) -> float:
+    """``factorize_peak_bytes`` per row at a distinct fraction (random keys)."""
+    return factorize_peak_bytes(kind, n, distinct_fraction * n) / n
 
 
 def log2n(n: float) -> float:

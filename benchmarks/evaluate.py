@@ -80,13 +80,41 @@ MEMORY_LIMIT = "memory_limit"
 SCORED_STATUSES = ("ok", MEMORY_LIMIT)
 
 
+def _memory_limit_lower_bound(row: pd.Series, df: pd.DataFrame) -> float | None:
+    """Lower bound of the incremental peak of a point killed by the memory cap (see classify_points)."""
+    at_kill = pd.to_numeric(row.get("error"), errors="coerce")
+    if pd.isna(at_kill):
+        at_kill = pd.to_numeric(row.get("cap_bytes"), errors="coerce")
+    sib = df[(df["case"] == row["case"]) & (df["status"] == "ok")]
+    sib = sib.assign(
+        _b=pd.to_numeric(sib["baseline_bytes"], errors="coerce"),
+        _n=pd.to_numeric(sib["size"], errors="coerce"),
+    ).dropna(subset=["_b", "_n"])
+    sib = sib[sib["_b"] > 0].drop_duplicates("_n").sort_values("_n")
+    if pd.isna(at_kill) or sib.empty:
+        return None
+    size = float(row["size"])
+    if (
+        len(sib) >= 2
+    ):  # line through the two largest measured sizes (baseline ~ interpreter + inputs)
+        (n1, b1), (n2, b2) = sib[["_n", "_b"]].tail(2).to_numpy()
+        baseline = b2 + (b2 - b1) / (n2 - n1) * (size - n2)
+    else:
+        baseline = float(sib["_b"].iloc[-1]) * size / float(sib["_n"].iloc[-1])
+    return max(0.0, float(at_kill) - baseline)
+
+
 def classify_points(df: pd.DataFrame, floors: Floors) -> pd.DataFrame:
     """Add ram_/time_ ``class``, ``value``, ``spread``, ``reason`` and ``ram_lower_bound`` columns.
 
-    Rule for a point killed by the harness memory cap (status ``memory_limit``): its RAM actual is
-    *at least the cap*, so it is scored as a valid RAM point with ``ram_value = cap_bytes`` and
-    ``ram_lower_bound = True``; it stays in coverage and in the above-high count (an estimate whose
-    ``high`` is below the cap is an under-prediction). Its time is not a measurement: class None.
+    Rule for a point killed by the harness memory cap (status ``memory_limit``): the cap applies to
+    the child's TOTAL resident memory, so the operation's incremental peak is at least
+    ``rss_at_kill - baseline`` (the run's ``error`` field holds the RSS seen at the kill; the
+    baseline, i.e. the resident inputs, is extrapolated from the same case's measured sizes). It is
+    scored as a valid RAM point with that value and ``ram_lower_bound = True``, stays in coverage
+    and counts as above-high only when the lower bound itself exceeds ``high``. No baseline estimate
+    (no measured sibling size): no RAM actual. Its time is not a measurement: class None.
+    (An earlier version scored the cap itself, which overstated the actual by the baseline.)
     """
     cols: dict[str, list[Any]] = {
         k: [] for k in ("ram_class", "ram_value", "ram_spread", "ram_reason",
@@ -94,12 +122,12 @@ def classify_points(df: pd.DataFrame, floors: Floors) -> pd.DataFrame:
     }  # fmt: skip
     for _, row in df.iterrows():
         if row["status"] == MEMORY_LIMIT:
-            cap = pd.to_numeric(row.get("cap_bytes"), errors="coerce")
             for k in cols:
                 cols[k].append(None)
-            if pd.notna(cap):
-                cols["ram_class"][-1], cols["ram_value"][-1] = "valid", float(cap)
-                cols["ram_reason"][-1] = "memory_limit: actual >= cap"
+            bound = _memory_limit_lower_bound(row, df)
+            if bound is not None:
+                cols["ram_class"][-1], cols["ram_value"][-1] = "valid", bound
+                cols["ram_reason"][-1] = "memory_limit: actual >= rss_at_kill - baseline"
             continue
         if row["status"] != "ok":
             for k in cols:
@@ -455,6 +483,34 @@ def _split_rows(df: pd.DataFrame) -> str:
     return f"{len(n)} points ({int((n['status'] == 'ok').sum())} measured)"
 
 
+def time_bucket_table(df: pd.DataFrame, tier: int) -> pd.DataFrame:
+    """Time as the user sees it: an order-of-magnitude bucket (``nexus.timebuckets``).
+
+    ``same`` = the expected bucket equals the measured one, ``within_one`` = at most one bucket
+    apart, ``range_hit`` = the measured bucket lies between the buckets of ``low`` and ``high``;
+    ``repeat_spread_*`` = (max - min) / median of the repeated runs of the same point (the
+    measurement noise the buckets must exceed).
+    """
+    from nexus.timebuckets import bucket_index
+
+    d = df[(df["tier"] == tier) & df["has_estimate"].astype(bool) & (df["time_class"] == "valid")]
+    rows = []
+    for op, g in [*d.groupby("op"), ("ALL", d)]:
+        if g.empty:
+            continue
+        exp = g["time_expected"].map(bucket_index)
+        act = g["time_value"].map(bucket_index)
+        lo, hi = g["time_low"].map(bucket_index), g["time_high"].map(bucket_index)
+        rows.append({
+            "op": op, "time_n": len(g), "same": float((exp == act).mean()),
+            "within_one": float(((exp - act).abs() <= 1).mean()),
+            "range_hit": float(((lo <= act) & (act <= hi)).mean()),
+            "repeat_spread_med": float(g["time_spread"].median()),
+            "repeat_spread_p90": float(g["time_spread"].quantile(0.9)),
+        })  # fmt: skip
+    return pd.DataFrame(rows)
+
+
 def _report_lines(
     df: pd.DataFrame,
     results_dir: Path,
@@ -507,6 +563,15 @@ def _report_lines(
         lines.append(
             "`above_high` = actual exceeded the predicted high (under-prediction beyond the "
             "range); `below_low` = actual fell under the predicted low. bias = median(expected / actual).\n"
+        )
+        lines.append("#### Time as an order-of-magnitude bucket (what the user is shown)\n")
+        lines.append(md_table(time_bucket_table(df, tier), PCT))
+        lines.append(
+            "Buckets: under 0.1 s, 0.1-1 s, 1-10 s, 10-60 s, 1-10 min, over 10 min. `same` / "
+            "`within_one` compare the expected bucket with the measured one; `range_hit` = measured "
+            "bucket inside the buckets of low..high; `repeat_spread_*` = run-to-run noise of the "
+            "measurement. The time models stay first drafts (Phase 6 inputs: read_csv "
+            "under-predicted, groupby / astype / float32 matmul over-predicted).\n"
         )
         lines.append("#### Per case (configuration) detail\n")
         c = acc_case[acc_case["tier"] == tier]
@@ -674,8 +739,10 @@ def write_validation_report(
     lines = _header(_meta(results_dir), floors, results_dir, "NEXUS VALIDATION report (val-v4)")
     lines.append(f"val-v4 opened {token.timestamp}; reason: {token.reason}\n")
     lines.append(
-        "A point killed by the harness memory cap counts as a RAM actual >= the cap "
-        "(`ram_lower_bound`), stays in coverage and in the above-high count; its time is not scored.\n"
+        "A point killed by the harness memory cap (a cap on TOTAL resident memory) counts as a RAM "
+        "actual >= RSS-at-kill minus the baseline extrapolated from the same case (`ram_lower_bound`); "
+        "it stays in coverage and is above-high only if that bound exceeds `high`; its time is not "
+        "scored.\n"
     )
     if dev is not None:
         dev = dev[dev["split"] == DEV]

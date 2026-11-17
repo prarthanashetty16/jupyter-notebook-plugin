@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from nexus import stats
 from nexus.models import _util as u
 from nexus.models.groupby import _aggregated_columns
 from nexus.pipeline import Pipeline
@@ -85,7 +86,8 @@ def test_astype_category_tier1_narrows_the_range_around_the_cardinality(df):
     t0 = per_row(run('df["s"].astype("category")', {"df": df}, 0))
     t1 = per_row(run('df["s"].astype("category")', {"df": df}, 1))
     assert t1[2] - t1[0] < 0.5 * (t0[2] - t0[0])
-    assert t1[0] <= u.factorize_peak_per_row("text", 300 / N) <= t1[2]  # 300 distinct of 300k
+    sc = stats.hash_scatter(df["s"], text=True).value  # the fixture's keys are sequential strings
+    assert t1[0] <= u.factorize_peak_bytes("text", N, 300, sc) / N <= t1[2]  # 300 distinct of 300k
 
 
 def test_astype_int_to_str_tier1_gives_the_probe_value(df):
@@ -102,7 +104,8 @@ def test_groupby_tier1_estimates_groups_and_narrows(df):
     item = run('df.groupby("s")["f0"].sum()', {"df": df}, 1)
     low, exp, high = per_row(item)
     assert high - low < 0.5 * (t0[2] - t0[0])
-    assert exp == pytest.approx(u.factorize_peak_per_row("text", 300 / N), abs=1.5)
+    sc = stats.hash_scatter(df["s"], text=True).value
+    assert exp == pytest.approx(u.factorize_peak_bytes("text", N, 300, sc) / N, abs=1.5)
     assert item.features["groups_fraction"][1] == pytest.approx(300 / N, rel=0.1)
 
 

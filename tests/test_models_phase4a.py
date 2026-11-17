@@ -193,10 +193,14 @@ def test_astype_to_str_range_reflects_unknown_length():
 def test_astype_to_category_spans_few_to_all_distinct_instead_of_a_point():
     f = {"n_rows": N, "source_dtype": "object", "target": "category"}
     e = AstypeModel().estimate(f, 0)
-    assert e.ram_low == 24 * N and e.ram_high == 83 * N  # probe extremes, constant in n
+    # few distinct values .. all distinct with random keys (hash-table model; probes: 24.1 / ~83 B/row)
+    assert e.ram_low == pytest.approx(24.1 * N, rel=0.03) and e.ram_high == pytest.approx(
+        83 * N, rel=0.03
+    )
     assert e.ram_low < e.ram_expected < e.ram_high
     num = AstypeModel().estimate({**f, "source_dtype": "int64"}, 0)
-    assert num.ram_low == 16 * N and num.ram_high == 59 * N
+    assert num.ram_low == pytest.approx(16.3 * N, rel=0.05)
+    assert num.ram_high == pytest.approx(58 * N, rel=0.05)  # probes at 2M rows: 57.9 B/row
 
 
 def test_astype_numeric_casts_unchanged():
