@@ -75,13 +75,31 @@ def _json_list(cell: Any) -> list[Any]:
         return []
 
 
+MEMORY_LIMIT = "memory_limit"
+SCORED_STATUSES = ("ok", MEMORY_LIMIT)
+
+
 def classify_points(df: pd.DataFrame, floors: Floors) -> pd.DataFrame:
-    """Add ram_/time_ ``class``, ``value``, ``spread``, ``reason`` (and ram_bound) columns."""
+    """Add ram_/time_ ``class``, ``value``, ``spread``, ``reason`` and ``ram_lower_bound`` columns.
+
+    Rule for a point killed by the harness memory cap (status ``memory_limit``): its RAM actual is
+    *at least the cap*, so it is scored as a valid RAM point with ``ram_value = cap_bytes`` and
+    ``ram_lower_bound = True``; it stays in coverage and in the above-high count (an estimate whose
+    ``high`` is below the cap is an under-prediction). Its time is not a measurement: class None.
+    """
     cols: dict[str, list[Any]] = {
         k: [] for k in ("ram_class", "ram_value", "ram_spread", "ram_reason",
                         "time_class", "time_value", "time_spread", "time_reason")
     }  # fmt: skip
     for _, row in df.iterrows():
+        if row["status"] == MEMORY_LIMIT:
+            cap = pd.to_numeric(row.get("cap_bytes"), errors="coerce")
+            for k in cols:
+                cols[k].append(None)
+            if pd.notna(cap):
+                cols["ram_class"][-1], cols["ram_value"][-1] = "valid", float(cap)
+                cols["ram_reason"][-1] = "memory_limit: actual >= cap"
+            continue
         if row["status"] != "ok":
             for k in cols:
                 cols[k].append(None)
@@ -98,6 +116,7 @@ def classify_points(df: pd.DataFrame, floors: Floors) -> pd.DataFrame:
     out = df.copy()
     for k, v in cols.items():
         out[k] = v
+    out["ram_lower_bound"] = out["status"] == MEMORY_LIMIT
     for k in ("ram_value", "time_value", "ram_spread", "time_spread"):
         out[k] = pd.to_numeric(out[k], errors="coerce")
     return out
@@ -193,6 +212,10 @@ def _accuracy(g: pd.DataFrame) -> dict[str, Any]:
         a = sub[f"{name}_value"]
         err = (sub[ex] - a).abs() / a
         out[f"{name}_n"] = len(sub)
+        if name == "ram":
+            out["ram_lower_bound"] = (
+                int(sub["ram_lower_bound"].sum()) if "ram_lower_bound" in sub else 0
+            )
         out[f"{name}_err_med"] = err.median()
         out[f"{name}_err_p90"] = err.quantile(0.9)
         out[f"{name}_bias"] = (sub[ex] / a).median()
@@ -205,7 +228,7 @@ def _accuracy(g: pd.DataFrame) -> dict[str, Any]:
 
 def accuracy_table(df: pd.DataFrame, by: list[str]) -> pd.DataFrame:
     """Accuracy metrics per group of ok-status points that had a prediction run."""
-    ok = df[(df["status"] == "ok") & df["tier"].notna()]
+    ok = df[df["status"].isin(SCORED_STATUSES) & df["tier"].notna()]
     rows = []
     for key, g in ok.groupby(by):
         key = key if isinstance(key, tuple) else (key,)
@@ -627,8 +650,17 @@ def write_validation_report(
     floors: Floors | None = None,
     progress_path: Path | None = None,
 ) -> Path:
-    """dev and val-v3 in separate sections. Logs the validation access first."""
+    """dev (if present) and val-v3 in separate sections.
+
+    The access is logged only after both the validation files and the dev files (when there are
+    any) have been found and parsed, so a failed attempt leaves no log entry. A results directory
+    from a val-v3-only run has no development files: the dev section is then reported as omitted.
+    """
     floors = floors or Floors()
+    if not (results_dir / VAL_DIR / "actuals.csv").exists():
+        raise FileNotFoundError(f"no validation results under {results_dir / VAL_DIR}")
+    dev_present = (results_dir / "actuals.csv").exists()
+    dev = load_joined(results_dir, floors) if dev_present else None
     token = open_validation_split(
         reason,
         results_dir=results_dir,
@@ -636,12 +668,21 @@ def write_validation_report(
         n_points=_validation_count(results_dir),
         progress_path=progress_path or PROGRESS_PATH,
     )
-    df = load_joined(results_dir, floors)
     val = load_validation(results_dir, floors, token)
-    dev = df[df["split"] == DEV]
     lines = _header(_meta(results_dir), floors, results_dir, "NEXUS VALIDATION report (val-v3)")
     lines.append(f"val-v3 opened {token.timestamp}; reason: {token.reason}\n")
-    lines += _report_lines(dev, results_dir, floors, tiers, "_val_dev", "## Dev split")
+    lines.append(
+        "A point killed by the harness memory cap counts as a RAM actual >= the cap "
+        "(`ram_lower_bound`), stays in coverage and in the above-high count; its time is not scored.\n"
+    )
+    if dev is not None:
+        dev = dev[dev["split"] == DEV]
+        lines += _report_lines(dev, results_dir, floors, tiers, "_val_dev", "## Dev split")
+    else:
+        lines.append(
+            "\n## Dev split\n\n**Omitted:** this results directory has no development "
+            "results (a val-v3-only run); nothing is shown for dev.\n"
+        )
     if val.empty:
         lines.append("\n## Val-v3 split\n\nno val-v3 points measured.\n")
     else:
@@ -649,7 +690,12 @@ def write_validation_report(
         from benchmarks import tier1_compare  # local import: tier1_compare imports this module
 
         lines.append(tier1_compare.markdown(val, "Tier 0 vs Tier 1 on val-v3", "val-v3"))
-        lines.append(tier1_compare.markdown(dev, "Tier 0 vs Tier 1 on dev", "dev"))
+        if dev is not None:
+            lines.append(tier1_compare.markdown(dev, "Tier 0 vs Tier 1 on dev", "dev"))
+        else:
+            lines.append(
+                "## Tier 0 vs Tier 1 on dev\n\n**Omitted:** no development results here.\n"
+            )
         tier1_compare.write(val, results_dir / "tier1_val", "Tier 0 vs Tier 1 on val-v3", "val-v3")
     lines.append("\n## Measurement caveats\n")
     lines.append(CAVEATS)

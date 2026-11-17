@@ -573,3 +573,62 @@ def test_only_the_final_path_touches_sealed_files():
 def test_calibration_never_imports_benchmark_code():
     source = (ROOT / "src" / "nexus" / "calibrate.py").read_text(encoding="utf-8")
     assert not re.search(r"^\s*(from|import)\s+benchmarks", source, re.MULTILINE)
+
+
+# -- validation report robustness (val-only run, memory-limit hits, summary guard) ---------------------
+def _val_only_dir(tmp_path, status="ok"):
+    out = tmp_path / "valonly"
+    a, p = _point(VAL_CASE, 1)
+    a = {**a, "status": status, "cap_bytes": 2 * 1024**3, "baseline_bytes": 100 * MB}
+    if status != "ok":
+        a["ram_delta_all"] = "[]"
+        a["time_s_all"] = "[]"
+    _write(out / "validation" / "actuals.csv", ACTUAL_FIELDS, [a])
+    _write(out / "validation" / "predictions.csv", PREDICTION_FIELDS, [p])
+    (out / "meta.json").write_text(json.dumps({"suite": "t", "cap_bytes": 10**10}))
+    return out
+
+
+def test_validation_report_works_without_dev_results_and_says_dev_was_omitted(tmp_path):
+    out = _val_only_dir(tmp_path)
+    progress = tmp_path / "P.md"
+    progress.write_text(f"# P\n\n{LOG_HEADING}\n\n", encoding="utf-8")
+    text = write_validation_report(out, "why", progress_path=progress).read_text(encoding="utf-8")
+    assert "Omitted:" in text and "no development results" in text
+    assert VAL_CASE in text and TEST_CASE not in text
+    assert progress.read_text(encoding="utf-8").count("| val-v3 |") == 1
+
+
+def test_a_failed_validation_attempt_leaves_no_access_log_entry(tmp_path):
+    progress = tmp_path / "P.md"
+    progress.write_text(f"# P\n\n{LOG_HEADING}\n\n", encoding="utf-8")
+    with pytest.raises(FileNotFoundError):
+        write_validation_report(tmp_path / "empty", "why", progress_path=progress)
+    assert "| val-v3 |" not in progress.read_text(encoding="utf-8")
+
+
+def test_a_memory_limit_hit_counts_as_an_actual_at_least_the_cap(tmp_path):
+    from benchmarks.evaluate import Floors, accuracy_table, classify_points
+
+    out = _val_only_dir(tmp_path, status="memory_limit")
+    import pandas as pd
+
+    from benchmarks.evaluate import _read_split
+
+    df = _read_split(out / "validation", Floors())
+    row = df.iloc[0]
+    assert row["ram_class"] == "valid" and row["ram_value"] == 2 * 1024**3
+    assert bool(row["ram_lower_bound"]) and pd.isna(row["time_value"]) and row["time_class"] is None
+    df = classify_points(df, Floors()).assign(tier=0.0, has_estimate=True)
+    # prediction high (300 MB) is far below the cap: counted as above-high, not dropped
+    acc = accuracy_table(df.assign(ram_expected=1e8, ram_low=5e7, ram_high=3e8), ["op"])
+    assert acc.iloc[0]["ram_n"] == 1 and acc.iloc[0]["ram_above_high"] == 1.0
+    assert acc.iloc[0]["ram_cov"] == 0.0 and acc.iloc[0]["ram_lower_bound"] == 1
+
+
+def test_run_summary_does_not_crash_when_no_run_produced_a_time():
+    from benchmarks.runner import _summary
+    from nexus.measure import Measurement
+
+    text = _summary(Measurement(status="memory_limit", error="killed"))
+    assert "ram=n/a" in text and "t=n/a" in text

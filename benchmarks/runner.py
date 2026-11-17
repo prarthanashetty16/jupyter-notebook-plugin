@@ -291,7 +291,9 @@ def _summary(m: Measurement) -> str:
     ram_txt = "n/a" if ram.value is None else f"{ram.value / 2**20:.1f} MB"
     if ram.klass != "valid":
         ram_txt += f" [{ram.klass}:{ram.reason}]"
-    time_txt = f"{t.value:.3f} s" + ("" if t.klass == "valid" else f" [{t.klass}:{t.reason}]")
+    time_txt = "n/a" if t.value is None else f"{t.value:.3f} s"  # no ok run: no time
+    if t.klass != "valid":
+        time_txt += f" [{t.klass}:{t.reason}]"
     return f"ram={ram_txt} t={time_txt}"
 
 

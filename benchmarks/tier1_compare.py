@@ -38,7 +38,9 @@ def _tier1_used(features: Any) -> bool:
 
 def prepare(df: pd.DataFrame) -> pd.DataFrame:
     """Rows with a prediction and a valid measurement, one row per (point, tier)."""
-    d = df[(df["status"] == "ok") & df["tier"].notna() & df["has_estimate"]].copy()
+    d = df[
+        df["status"].isin(("ok", "memory_limit")) & df["tier"].notna() & df["has_estimate"]
+    ].copy()
     d["tier"] = d["tier"].astype(int)
     d["t1_used"] = d["features"].map(_tier1_used) if "features" in d else False
     return d
