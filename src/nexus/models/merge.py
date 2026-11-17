@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from nexus import stats
 from nexus.analyzer import DetectedOp
 from nexus.models import _util as u
 from nexus.models._util import khash_presized_bytes
-from nexus.models.base import Estimate, NoEstimateError, OperationModel
+from nexus.models.base import Estimate, NoEstimateError, OperationModel, Tier1Context
 from nexus.registry import register_model
 from nexus.state import Inspection
 
@@ -15,6 +16,8 @@ from nexus.state import Inspection
 # key overlap are not visible without data statistics (Tier 1 replaces it via ``out_rows``).
 # 1.0 is the foreign-key case; the 0.1 / 4.0 ends are unchanged first-draft priors, not evidence.
 OUTPUT_ROWS_FACTORS = (0.1, 1.0, 4.0)
+# Tier 1: dev points under-predicted by up to 14% with fan-out (measured / formula 1.0-1.14)
+MODEL_HIGH_BAND = 1.15
 MODEL_LOW_BAND = (
     0.8  # probes: measured / formula was 0.82 at the lowest where the elision was right
 )
@@ -52,6 +55,11 @@ class MergeModel(OperationModel):
 
     The hash table is allocated for ``min(max(n_left, n_right), 2**20 + 7)`` entries up front
     (``khash_presized_bytes``), so its size does not shrink with few distinct keys.
+
+    ``how="right"`` builds the hash engine over the left keys (``left.get_indexer``), so the
+    table follows ``n_left``; ``how="outer"`` adds three int64 arrays of M for the coalesced key
+    (``_maybe_add_join_keys``: two filled takes and the combined copy). Both were found as dev
+    under-predictions (right join x0.73, outer x0.62-0.86) and then read from the source.
 
     peak = max(phase 1, phase 2). Pandas skips the copy of a side whose indexer is a range
     (``is_range_indexer``): a left join against unique right keys, or an inner join in which every
@@ -98,24 +106,72 @@ class MergeModel(OperationModel):
             "moved_left": left.moved_bytes,
             "moved_right": right.moved_bytes,
             "key_text": key_text,
+            "key_column": keys[0] if keys and len(keys) == 1 else None,
             "how": how,
             "out_rows": output_rows_range(left.shape[0], right.shape[0], how),
             "out_rows_source": "tier0_prior",
         }
 
     @staticmethod
-    def ram_at(features: dict[str, Any], m: float, left_elided: bool = False) -> float:
+    def ram_at(
+        features: dict[str, Any],
+        m: float,
+        left_elided: bool = False,
+        right_distinct: float | None = None,
+        right_unique: bool = True,
+    ) -> float:
         nl, nr = features["n_left"], features["n_right"]
         row_l = features.get("moved_left", features["bytes_left"]) / max(nl, 1)
         row_r = features.get("moved_right", features["bytes_right"]) / max(nr, 1)
-        table = khash_presized_bytes(nr, max(nl, nr))
+        how = features.get("how", "inner")
+        if how == "right":  # the hash engine is built over the LEFT keys (left.get_indexer)
+            table = khash_presized_bytes(nl, max(nl, nr))
+        else:
+            table = khash_presized_bytes(
+                nr if right_distinct is None else right_distinct, max(nl, nr)
+            )
         phase1 = table + 8 * nr + 8 * nl + nl + 16 * m
+        if not right_unique:  # sort-based join: groupsort indexers of both sides (probe: ~+10%)
+            phase1 += 8 * nr + 4 * nl
         left_copy = 0.0 if left_elided else m * row_l
         phase2 = (8 if left_elided else 16) * m + left_copy + m * row_r
+        if how == "outer":  # _maybe_add_join_keys: two filled takes of the key + a combined copy
+            phase2 += 24 * m
         return max(phase1, phase2)
 
+    def tier1_features(
+        self, op: DetectedOp, features: dict[str, Any], ctx: Tier1Context
+    ) -> dict[str, Any] | None:
+        """Output rows, overlap, uniqueness and right distinct keys from a coordinated key sample
+        (skew-aware; see ``stats.join_profile``). One key column, ``on=`` only."""
+        key = features.get("key_column")
+        if key is None:
+            return None
+        left, right = ctx.obj(op.variables[0]), ctx.obj(op.variables[1])
+        how = features["how"]
+        jp = stats.join_profile(left[key], right[key], how, deadline=ctx.deadline)
+        elided = jp.right_keys_unique and (
+            how == "left" or (how == "inner" and jp.left_all_matched_once)
+        )
+        o, d = jp.out_rows, jp.right_distinct
+        return {
+            "out_rows": (o.low, o.value, o.high),
+            "out_rows_source": "tier1",
+            "right_distinct": (d.low, d.value, d.high),
+            "left_elided": bool(elided),
+            "right_unique": bool(jp.right_keys_unique),
+            "left_elided_certain": bool(o.exact),
+            "tier1": {
+                "sample": o.sample,
+                "confidence": o.confidence,
+                "method": o.method,
+                "overlap": jp.overlap.value,
+                "heavy_keys": jp.heavy_keys,
+            },
+        }
+
     def estimate(self, features: dict[str, Any], tier: int) -> Estimate:
-        u.require_tier0(tier)
+        u.require_tier(tier)
         nl, nr = features["n_left"], features["n_right"]
         row_l = features["bytes_left"] / max(nl, 1)
         row_r = features["bytes_right"] / max(nr, 1)
@@ -126,13 +182,32 @@ class MergeModel(OperationModel):
         base = max(nl, nr)
         hash_s = u.machine().text_hash_s if features["key_text"] else u.machine().num_hash_s
         seconds = (nl + nr) * hash_s + base * (row_l + row_r) / u.machine().copy_bps
-        return u.build(
-            (
+        if features.get("out_rows_source") == "tier1":
+            el = features.get("left_elided", False)
+            rd = features.get("right_distinct") or (nr, nr, nr)
+            ru = features.get("right_unique", True)
+            ram = (
+                self.ram_at(features, lo, left_elided=el, right_distinct=rd[0], right_unique=ru)
+                * MODEL_LOW_BAND,
+                self.ram_at(features, mid, left_elided=el, right_distinct=rd[1], right_unique=ru),
+                self.ram_at(
+                    features,
+                    hi,
+                    left_elided=el and features.get("left_elided_certain", False),
+                    right_distinct=rd[2],
+                    right_unique=ru,
+                )
+                * MODEL_HIGH_BAND,
+            )
+        else:
+            ram = (
                 self.ram_at(features, lo, left_elided=True) * MODEL_LOW_BAND,
                 self.ram_at(features, mid),
                 self.ram_at(features, hi),
-            ),
-            u.time_band(seconds),
+            )
+        return u.build(
+            ram,
+            u.time_band_for_tier(seconds, tier),
             0.3,
             tier,
             [

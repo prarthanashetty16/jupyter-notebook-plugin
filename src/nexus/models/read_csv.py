@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from nexus import stats
 from nexus.analyzer import DetectedOp
 from nexus.models import _util as u
-from nexus.models.base import Estimate, NoEstimateError, OperationModel
+from nexus.models.base import Estimate, NoEstimateError, OperationModel, Tier1Context
 from nexus.registry import register_model
 from nexus.state import Inspection, candidate_paths
 
@@ -102,20 +103,58 @@ class ReadCsvModel(OperationModel):
             "unique_fraction": None,
         }
 
+    # options that change what the parser allocates; statistics assume the plain call
+    _PLAIN_KWARGS = frozenset({"filepath_or_buffer", "encoding", "low_memory"})
+
+    def tier1_features(
+        self, op: DetectedOp, features: dict[str, Any], ctx: Tier1Context
+    ) -> dict[str, Any] | None:
+        """Rows, columns, text columns, string length and per-chunk string uniqueness from the
+        head of the file plus three seeked chunks (at most 1.75 MiB read)."""
+        if any(k not in self._PLAIN_KWARGS for k in op.kwargs) or len(op.args) > 1:
+            return None
+        paths = candidate_paths(op)
+        if not paths:
+            return None
+        cp = stats.csv_profile(paths[0], features["file_bytes"], deadline=ctx.deadline)
+        r, uq = cp.rows, cp.unique_fraction
+        return {
+            "n_rows": r.value,
+            "rows_range": (r.low, r.value, r.high),
+            "n_cols": cp.cols,
+            "text_cols": cp.text_cols,
+            "str_chars": cp.str_chars,
+            "unique_fraction": uq.value,
+            "unique_range": (uq.low, uq.value, uq.high),
+            "bytes_per_field": cp.bytes_per_field,
+            "tier1": {
+                "sample": r.sample,
+                "confidence": min(r.confidence, uq.confidence),
+                "method": r.method,
+                "bytes_read": cp.bytes_read,
+                "exact": cp.exact,
+            },
+        }
+
     def estimate(self, features: dict[str, Any], tier: int) -> Estimate:
-        u.require_tier0(tier)
+        u.require_tier(tier)
         size = features["file_bytes"]
         rows, cols = features.get("n_rows"), features.get("n_cols")
         if rows and cols:  # Tier 1 values present: a point estimate with the sampling band
-            peak = parse_peak_bytes(
-                size,
-                rows,
-                cols,
-                text_cols=features.get("text_cols") or 0,
-                str_chars=features.get("str_chars") or 12.0,
-                unique_fraction=features.get("unique_fraction") or 1.0,
-            )
-            ram = (0.8 * peak, peak, 1.2 * peak)
+            rr = features.get("rows_range") or (rows, rows, rows)
+            ur = features.get("unique_range") or (features.get("unique_fraction") or 1.0,) * 3
+
+            def peak_at(i: int) -> float:
+                return parse_peak_bytes(
+                    size,
+                    rr[i],
+                    cols,
+                    text_cols=features.get("text_cols") or 0,
+                    str_chars=features.get("str_chars") or 12.0,
+                    unique_fraction=ur[i],
+                )
+
+            ram = (peak_at(0) * MODEL_BAND[0], peak_at(1), peak_at(2) * MODEL_BAND[1])
         else:
             w_lo, w_hi = FIELD_WIDTH_RANGE
             w_mid = (w_lo * w_hi) ** 0.5
@@ -127,7 +166,7 @@ class ReadCsvModel(OperationModel):
             ram = (at(w_hi) * MODEL_BAND[0], at(w_mid), at(w_lo) * MODEL_BAND[1])
         return u.build(
             ram,
-            u.time_band(size / u.machine().csv_parse_bps),
+            u.time_band_for_tier(size / u.machine().csv_parse_bps, tier),
             0.4,
             tier,
             [

@@ -1,0 +1,10 @@
+op,case,size,t1_used,actual,fold_t0,fold_t1,lost_coverage,dangerous
+astype,astype/str_to_category_highcard,3000000,True,132915200.0,1.0073752362408512,1.2090024241019839,False,False
+astype,astype/str_to_category_zipf,1000000,True,63172608.0,0.706506006527386,0.407359357397434,True,True
+astype,astype/str_to_category_zipf,3000000,True,121806848.0,1.0992442805842904,0.6264824864362306,False,False
+drop_duplicates,drop_duplicates/numeric_dup50,10000000,True,1043468288.0,1.0776296059320205,1.1585830196307796,False,False
+groupby,groupby/str_highcard_sum_f0,3000000,True,132907008.0,1.0394969767132218,1.2083531441773183,False,False
+groupby,groupby/two_keys_mean_realistic,1000000,True,82481152.0,0.9640357350973954,0.6138857881131438,True,True
+pandas.read_csv,read_csv/mixed,1000000,True,467279872.0,1.107302030334403,1.2146962987526242,False,False
+pandas.read_csv,read_csv/mixed,3000000,True,1436184576.0,1.1013164417941779,1.1979060064769835,False,False
+pandas.read_csv,read_csv/strings,3000000,True,1392066560.0,1.0334731961379777,1.2201488476240676,False,False

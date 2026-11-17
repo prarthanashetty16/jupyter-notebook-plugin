@@ -165,6 +165,7 @@ def main() -> None:  # noqa: C901
         _select_args(p)
         p.add_argument("--retry-failed", action="store_true", help="re-run points that errored")
         p.add_argument("--no-report", action="store_true")
+        p.add_argument("--tiers", default="0", help="comma list of NEXUS tiers to predict (0,1)")
         p.add_argument(
             "--no-calibrate",
             action="store_true",
@@ -230,6 +231,7 @@ def main() -> None:  # noqa: C901
         max_points=args.max_points,
         max_size=args.max_size,
         splits=_splits(args),
+        tiers=tuple(int(t) for t in args.tiers.split(",")),
     )
     if args.no_calibrate:
         os.environ[ENV_VAR] = str(out / "no_profile.json")  # nonexistent: models use defaults

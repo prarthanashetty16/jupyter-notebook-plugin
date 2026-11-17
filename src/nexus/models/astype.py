@@ -9,9 +9,10 @@ from typing import Any
 
 import numpy as np
 
+from nexus import stats
 from nexus.analyzer import DetectedOp
 from nexus.models import _util as u
-from nexus.models.base import Estimate, NoEstimateError, OperationModel
+from nexus.models.base import Estimate, NoEstimateError, OperationModel, Tier1Context
 from nexus.registry import register_model
 from nexus.state import Inspection
 
@@ -130,8 +131,52 @@ class AstypeModel(OperationModel):
             "distinct_fraction": None,  # Tier 1 fills: distinct values / rows
         }
 
+    def tier1_features(
+        self, op: DetectedOp, features: dict[str, Any], ctx: Tier1Context
+    ) -> dict[str, Any] | None:
+        """Column statistics: distinct count (category) or string-object sizes (str).
+
+        Reads a 200k-row sample of the column; never modifies it.
+        """
+        col = _column_name(op)
+        df = ctx.obj(op.receiver)
+        series = df[col]
+        n = len(series)
+        if n < stats.MIN_SAMPLE_ROWS:
+            return None
+        target, source = features["target"], features["source_dtype"]
+        if target == "category":
+            d = stats.distinct_count(series, deadline=ctx.deadline)
+            return {
+                "distinct_fraction": d.value / n,
+                "distinct_fraction_low": d.low / n,
+                "distinct_fraction_high": d.high / n,
+                "tier1": {"sample": d.sample, "confidence": d.confidence, "method": d.method},
+            }
+        kind = _kind(source)
+        if target == "str" and not u.is_text(source) and kind != "other":
+            pos = stats.sample_positions(n, 100_000)
+            sample = stats.take(series, pos)
+            ctx.deadline.check()
+            lengths = sample.astype(str).str.len().to_numpy()
+            classes = -(-(STR_HEADER_BYTES + lengths) // PYMALLOC_ALIGNMENT) * PYMALLOC_ALIGNMENT
+            mean = float(classes.mean())
+            half = stats.Z95 * float(classes.std(ddof=0)) / (len(classes) ** 0.5)
+            big = 1.0
+            if kind == "int":  # ints in [-5, 256] are cached objects: no 32-byte temporary
+                values = sample.to_numpy()
+                big = float(((values > 256) | (values < -5)).mean())
+            return {
+                "str_obj_bytes": mean,
+                "str_obj_bytes_low": mean - half,
+                "str_obj_bytes_high": mean + half,
+                "int_object_fraction": big,
+                "tier1": {"sample": len(lengths), "confidence": 1.0 - half / max(mean, 1.0)},
+            }
+        return None
+
     def estimate(self, features: dict[str, Any], tier: int) -> Estimate:
-        u.require_tier0(tier)
+        u.require_tier(tier)
         n, source, target = features["n_rows"], features["source_dtype"], features["target"]
         source_text = u.is_text(source)
         ram_range: tuple[float, float, float] | None = None
@@ -140,8 +185,16 @@ class AstypeModel(OperationModel):
         if target == "category":
             lo, hi = CATEGORY_PEAK["text" if source_text else "numeric"]
             frac = features.get("distinct_fraction")
-            mid = math.sqrt(lo * hi) if frac is None else lo + (hi - lo) * min(max(frac, 0), 1)
-            ram_range = (lo * n, mid * n, hi * n)
+            if frac is None:
+                ram_range = (lo * n, math.sqrt(lo * hi) * n, hi * n)
+            else:  # Tier 1: the measured curve at the estimated distinct fraction and its bounds
+                kind = "text" if source_text else "numeric"
+                at = (
+                    u.factorize_peak_per_row(kind, features.get("distinct_fraction_low", frac)),
+                    u.factorize_peak_per_row(kind, frac),
+                    u.factorize_peak_per_row(kind, features.get("distinct_fraction_high", frac)),
+                )
+                ram_range = (at[0] * n * 0.8, at[1] * n, at[2] * n * 1.25)
             hash_s = u.machine().text_hash_s if source_text else u.machine().num_hash_s
             seconds = n * hash_s
             time_out = 4 * n + LEGACY_CATEGORY_FRACTION * n * (
@@ -153,6 +206,7 @@ class AstypeModel(OperationModel):
             seconds = 0.0 if source_text else n * u.machine().to_str_s
             if target == "str" and not source_text and kind != "other":
                 length = features.get("str_len")
+                tier1 = features.get("str_obj_bytes")
                 lo_len, hi_len = STR_LEN_RANGE[kind]
                 if length is None:
                     lens = [lo_len, hi_len]
@@ -163,6 +217,20 @@ class AstypeModel(OperationModel):
                 if kind == "int" and length is None:  # smallest values are cached int objects
                     low = (2 * POINTER_BYTES + str_object_bytes(lo_len)) * n
                 ram_range = (low * (1 - STR_PROBE_TOLERANCE), math.sqrt(low * high), high)
+                if tier1 is not None:  # sampled string-object sizes and cached-int share
+                    big = features.get("int_object_fraction", 1.0)
+                    fixed = POINTER_BYTES + (
+                        POINTER_BYTES + INT_OBJECT_BYTES * big if kind == "int" else 0
+                    )
+                    per_row = [
+                        fixed + features.get(f"str_obj_bytes{k}", tier1)
+                        for k in ("_low", "", "_high")
+                    ]
+                    ram_range = (
+                        per_row[0] * n * (1 - STR_PROBE_TOLERANCE),
+                        per_row[1] * n,
+                        per_row[2] * n * (1 + STR_PROBE_TOLERANCE),
+                    )
                 out = ram_range[1]
                 time_out = n * LEGACY_STR_BYTES
                 why = "one new Python str per row (+ int object temporary for integers)"
@@ -179,7 +247,7 @@ class AstypeModel(OperationModel):
             ram_range = (out * 0.5, out, out * 2.5)
         return u.build(
             ram_range,
-            u.time_band(seconds + time_out / u.machine().copy_bps),
+            u.time_band_for_tier(seconds + time_out / u.machine().copy_bps, tier),
             0.5,
             tier,
             [why],

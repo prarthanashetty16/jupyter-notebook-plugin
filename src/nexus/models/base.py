@@ -9,10 +9,12 @@ by the benchmark.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
 from nexus.analyzer import DetectedOp
+from nexus.failsafe import Deadline
 from nexus.state import Inspection
 
 
@@ -45,6 +47,22 @@ class Estimate:
             raise ValueError("tier must be >= 0")
 
 
+@dataclass
+class Tier1Context:
+    """What a model may read to compute Tier 1 statistics: live objects (read-only), the cell
+    source and the time budget left for this cell. Models must never mutate ``namespace``."""
+
+    namespace: Mapping[str, Any]
+    source: str
+    deadline: Deadline
+
+    def obj(self, name: str | None) -> Any:
+        """The live object bound to ``name`` or NoEstimateError."""
+        if name is None or name not in self.namespace:
+            raise NoEstimateError(f"{name!r} is not in the namespace")
+        return self.namespace[name]
+
+
 class OperationModel(ABC):
     """Cost model for one kind of operation."""
 
@@ -57,6 +75,17 @@ class OperationModel(ABC):
     @abstractmethod
     def features(self, op: DetectedOp, state: Inspection) -> dict[str, Any]:
         """Numeric/categorical features of ``op`` given the live state; also logged."""
+
+    def tier1_features(
+        self, op: DetectedOp, features: dict[str, Any], ctx: Tier1Context
+    ) -> dict[str, Any] | None:
+        """Extra features from cheap data statistics, or None to stay at Tier 0.
+
+        Called only at tier >= 1. Must be read-only, respect ``ctx.deadline`` (raising
+        TimeoutError is fine) and report its sample sizes and confidence in the returned dict
+        under ``"tier1"``. Raising NoEstimateError / returning None means "Tier 0".
+        """
+        return None
 
     @abstractmethod
     def estimate(self, features: dict[str, Any], tier: int) -> Estimate:

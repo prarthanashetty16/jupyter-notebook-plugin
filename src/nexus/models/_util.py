@@ -12,6 +12,8 @@ from __future__ import annotations
 import math
 from typing import Any
 
+import numpy as np
+
 from nexus.analyzer import DetectedOp, Expr
 from nexus.machine import machine  # noqa: F401  (re-exported for models)
 from nexus.models.base import Estimate, NoEstimateError
@@ -110,6 +112,29 @@ def khash_presized_bytes(distinct: float, size_hint: float, *, key_only: bool = 
     return size * (KHASH_RESIZE_OVERLAP if grows else 1.0)
 
 
+# Peak bytes/row of factorizing one key column (``astype("category")``, one ``groupby`` key) as a
+# function of its distinct fraction U/n, measured with isolated probes on 2M-row columns
+# (``docs/benchmarks/tier0-v2/probes/p_cat.py`` and ``p_gb.py``; the two operations agree within
+# 4 B/row). At the same fraction the cost varies ~15% with n (1M and 4M probes), which the
+# models' error bands absorb. Linear interpolation between the knots.
+FACTORIZE_KNOTS = {
+    "text": (
+        (0.0, 24.1), (0.0025, 24.5), (0.01, 25.8), (0.05, 33.5), (0.25, 51.4), (0.5, 53.4),
+        (1.0, 82.6),
+    ),
+    "numeric": (
+        (0.0, 16.3), (0.0025, 16.7), (0.01, 16.9), (0.05, 18.2), (0.25, 26.5), (0.5, 36.7),
+        (1.0, 57.9),
+    ),
+}  # fmt: skip
+
+
+def factorize_peak_per_row(kind: str, distinct_fraction: float) -> float:
+    """Peak bytes/row of factorizing a ``kind`` ("text" / "numeric") column; see FACTORIZE_KNOTS."""
+    xs, ys = zip(*FACTORIZE_KNOTS[kind], strict=True)
+    return float(np.interp(min(max(distinct_fraction, 0.0), 1.0), xs, ys))
+
+
 def log2n(n: float) -> float:
     return math.log2(max(n, 2.0))
 
@@ -136,10 +161,29 @@ def build(
     )
 
 
+def time_band_for_tier(expected: float, tier: int) -> tuple[float, float, float]:
+    """Time range at a tier. Statistics do NOT narrow it.
+
+    A Tier 1 band of (0.5x, 2x) was tried first, chosen a priori from the ~40% session-to-session
+    variance of the same point; on the development split it cut time coverage from 94% to 69% and
+    put 13% of the actuals above ``high``, because the first-draft time formulas are biased by
+    0.4x-2.8x (more than the variance). Until the time models are calibrated (Phase 6) the Tier 0
+    band (0.25x .. 4x, far wider than the measured variance) stays at every tier.
+    """
+    del tier
+    return time_band(expected)
+
+
 def time_band(expected: float) -> tuple[float, float, float]:
     return (expected * RAM_BAND_TIME[0], expected, expected * RAM_BAND_TIME[1])
 
 
 def require_tier0(tier: int) -> None:
     if tier != 0:
+        raise NoEstimateError(f"tier {tier} not implemented for this model")
+
+
+def require_tier(tier: int, highest: int = 1) -> None:
+    """Models answer at Tier 0 and (with statistics) Tier 1."""
+    if not 0 <= tier <= highest:
         raise NoEstimateError(f"tier {tier} not implemented for this model")

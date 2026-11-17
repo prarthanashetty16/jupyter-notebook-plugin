@@ -674,3 +674,126 @@ operations are O(n) by algorithm. A working-set-dependent cost needs machine-spe
 3. groupby RAM (x2.6 dev) was not part of this phase; derive it the same way (hash table by distinct keys,
    result frame, aggregation temporaries).
 4. When the models are frozen: run `test-v2` once (procedure in the Phase 3d notes).
+
+
+## Phase 4b: Tier 1 data statistics
+
+**Status: implemented and evaluated on dev. NOT yet validated: `val-v3` has not been run or looked at.**
+Everything below that says "dev" was available while the models were built and tuned; the held-out
+check on val-v3 is still to be run by the project owner (command at the end). `test-v2` stayed sealed.
+
+- [x] 0. Split hygiene: `split.json` is now version 3. exposed-v1 is **dev** (its list is kept as
+  `provenance`); a new held-out `val-v3` (36 cases, seeds >= 301, no non-default generator value, join
+  ratio or array dtype/pattern shared with dev or test-v2; tests pin it) is frozen with a digest. The runner
+  writes val-v3 to `<results>/validation/` and logs only id/status/elapsed; `status` shows it as "count only";
+  `evaluate --val --reason "..."` is the only reader and logs every use in the Test-split access log below.
+  Tests: non-overlap of configurations, seeds and parameter values, protected-case refusal in development
+  loaders, tokens bound to their group, redaction of runner logs (also on harness errors).
+- [x] `nexus/stats.py` (Tier 1 statistics) and `Tier1Context` / `tier1_features` in the model API; the pipeline
+  calls them at `tier >= 1`, falls back to Tier 0 on any failure, a too-small sample or an exhausted
+  budget, and records `tier1: {used, reason | sample, confidence, method, stats_s}` in the logged features.
+- [x] Tier 1 for astype (category cardinality; string-object sizes), groupby (group counts, aggregated
+  columns), merge (output rows, overlap, copy elision), drop_duplicates (survivors, key distinct counts, null
+  key columns), read_csv (rows, columns, field width, string uniqueness).
+- [ ] **Not done:** DataFrame block layout (the `consolidated` flag exists but no probe showed an effect on a
+  copy-like peak; the 4a probes found `moved bytes + indexer` exact), and the shared-string *feature*: see below.
+- [x] Evaluation: `benchmarks/tier1_compare.py`; dev report in `docs/benchmarks/tier1-dev/`; `evaluate --val`
+  includes the same comparison for val-v3.
+
+### The statistics (what each one is, what bounds it, what it costs)
+| statistic | method | interval | cost |
+|---|---|---|---|
+| distinct count (groupby groups, category cardinality, per-key tables) | stratified row sample (<= 200k, time-fitted by a timed pilot) -> Chao1 point estimate | lower = distinct seen; upper = seen + unseen rows allowed by the Good-Turing missing-mass bound (McAllester-Schapire, 95%); complete = exact | 7-15 ms (ints, 200k rows) |
+| distinct rows / survivors (drop_duplicates, multi-key groupby) | same on row hashes (`hash_pandas_object`; categorical columns hashed by code) | same | 40 ms at ~25k rows x 9 columns |
+| null key columns | float/datetime columns scanned completely (a single null makes pandas lift the column); other columns sampled, `possible` when the sample shows none | Wilson for fractions | 2-3 ms per 10M floats |
+| merge output rows, overlap, key uniqueness | **coordinated key-hash sampling** of both sides (same hash predicate: sampled keys have all rows on both sides) + exact counts of up to 64 heavy keys found in a 100k-row sample (skew-aware) | Horvitz-Thompson variance + rule-of-3 for unseen heavy light keys; semantic floors (left join >= n_left) | 80-180 ms at 2M-15M scanned rows; text keys only up to 400k rows |
+| read_csv shape | head 1 MiB + 3 seeked 256 KiB chunks (<= 1.75 MiB read): rows from line lengths, columns, text columns, string length, per-**parser-chunk** string uniqueness | line-length min/max over chunks; Chao1 at chunk scale | 10-40 ms |
+| text columns | mean string length (CI), share of repeated values that reuse one object (object ids, read-only) | normal CI | 6-16 ms |
+Every function takes a `Deadline`; none writes to or reorders the user's data (a test compares the frame
+before/after). Estimator validation on synthetic data with known truth (`tests/test_stats.py`, plus the
+scratch runs in the commit): the distinct interval contained the truth in 9/9 distributions (uniform from 12
+to 5M distinct, zipf, heavy-tailed mix); Chao1 under-estimates skewed columns about 2x; the upper bounds are
+loose where the sample cannot rule out rare unseen values (e.g. 12 groups of 5M rows -> upper bound 103k),
+which costs little RAM; join output rows were within 1-5% for uniform fan-out and 0.8% for zipf after the
+heavy-key correction (without it the zipf interval missed the truth by 2.6x).
+
+### What Tier 1 changes in the models
+- **groupby** was still the unverified first-draft model; it is now derived (probes `p_gb*.py`): the peak is
+  the key factorization (same curve as `astype("category")`: text 24 -> 83 B/row, numeric 16 -> 58 as groups/rows
+  goes 0 -> 1; categorical keys ~10 B/row) or, at high group counts, the result frame (48 + 8 x columns B/row at
+  G = n); value columns do not matter below that. So **Tier 0 groupby changed too** (first-draft bias in 4a: 2.57 dev / 1.53 exposed-v1; now 1.49 on all of dev).
+- **astype -> category** uses the same curve at the estimated distinct fraction and its bounds (x0.8 / x1.25 for
+  the n-dependence seen at n = 1M/3M/6M); **-> str** uses the sampled pymalloc class sizes and the cached-int share.
+- **merge**: `out_rows` (from the 4a explicit input) and the copy-elision flag now come from the key sample; added
+  from the source and dev: the sort-based non-unique-right path, a hash engine over the **left** keys for
+  `how="right"`, and +24 B per output row for `how="outer"` (key coalescing). These two also change Tier 0.
+- **drop_duplicates**: survivors, per-key distinct (table sizes, the 2^63 id-compress test from the sum of
+  log2 distinct) and **null key columns** come from data; the null term was the 4a under-prediction.
+- **read_csv**: `parse_peak_bytes` with measured rows/columns/text columns/string length and the parser-chunk
+  uniqueness; unusual options (`sep`, `usecols`, `dtype`...) stay at Tier 0.
+- **Time**: the first attempt gave Tier 1 a narrower band (0.5x..2x of expected, chosen a priori from the ~40%
+  session variance). On dev it cut time coverage from 94% to 69% and put 13% of actuals above `high` (read_csv time
+  coverage 12%): the first-draft time formulas are biased by 0.4x-2.8x, more than the variance. It was **reverted**:
+  Tier 1 keeps the Tier 0 band (0.25x..4x, far wider than the measured variance) until the time models are
+  calibrated. So Tier 1 does not improve time estimates; stated plainly.
+
+### Dev: Tier 0 vs Tier 1 (RAM; `docs/benchmarks/tier1-dev/tier1_vs_tier0.md`; 109 valid points)
+Under-prediction (actual above `expected`) and over-prediction are reported separately in the full tables
+(`under_share/under_fold`, `over_share/over_fold`, `above_high`, `below_low`).
+| operation | bias T0 -> T1 | median err | coverage | width (mean (high-low)/expected) | actual above `high` (dangerous) |
+|---|---|---|---|---|---|
+| groupby | 1.49 -> 0.89 | 0.49 -> 0.14 | 100% -> 90% | 1.71 -> 0.84 | 0% -> 10% (1 of 10) |
+| merge | 1.79 -> 1.04 | 0.79 -> 0.06 | 93% -> 93% | 3.67 -> 0.56 | 0% -> 0% |
+| read_csv | 1.57 -> 1.22 | 0.57 -> 0.22 | 100% -> 100% | 2.65 -> 0.59 | 0% -> 0% |
+| astype | 1.00 -> 1.00 | 0.12 -> 0.01 | 100% -> 94% | 1.10 -> 0.79 | 0% -> 6% (1 of 16) |
+| drop_duplicates | 1.08 -> 1.09 | 0.17 -> 0.11 | 100% -> 100% | 1.01 -> 0.73 | 0% -> 0% |
+| sort_values, concat, matmul, np.sort | unchanged (no Tier 1 statistics apply) | | | | |
+| **ALL** | 1.01 -> 1.00 | 0.08 -> 0.06 | 99% -> 97% | **1.48 -> 0.72** | **0% -> 2% (2 of 109)** |
+Tier 1 was used on 100% of drop_duplicates, groupby, merge and read_csv points (81% of astype: numeric casts have
+no statistic), narrowed the range on 57% of all points and widened it on 1%. Over-prediction on dev is mostly gone
+for groupby/merge (over_share 0.80 -> 0.40 and 0.86 -> 0.79 at folds near 1.05); read_csv still over-predicts by 22%
+(its `expected` is a point estimate whose probe error band is +-20%).
+**Time (dev):** coverage 94% -> 95%, width 3.85 -> 3.85, median error 0.48 -> 0.48: no change, by design.
+**Overhead (warm, per cell; budget 250 ms for Tier 0+1):** Tier 0 median 4 ms (max 17); Tier 1 median 22 ms, p90 109 ms,
+**max 201 ms**, 0 of 124 over 250 ms (drop_duplicates 109 / 178 / 201 ms, merge 98 / 130 / 137, groupby 31 / 68 / 83,
+astype 24 / 46 / 64, read_csv 22 / 27 / 30: median / p90 / max). Before time-fitting the row hash, 20% of
+drop_duplicates calls exceeded 250 ms (max 1.2 s): a categorical column re-hashed its million categories on every call.
+
+**Where Tier 1 made things worse on dev (9 points, 2 dangerous):** `astype/str_to_category_zipf` 1M (fold 0.71 -> 0.41,
+actual 63 MB vs 26 MB expected) and `groupby/two_keys_mean_realistic` 1M (0.96 -> 0.61): both at n = 1M and both
+about +33 MB above any probe-derived value, a fixed overhead I could not reproduce in isolated probes (the same
+columns at 3M and 10M are within the range); both are "realistic" real-like-distribution frames. Of the other seven,
+six are over-predictions that grew within the range (folds 1.16-1.22: the narrower Tier 1 range moved `expected` to the
+curve while the actual sat 15-20% below it) and one (`astype/str_to_category_zipf` 3M, 0.63) is an under-prediction
+that stayed inside the range.
+
+### What was tuned on dev, and what is checked on val-v3
+Tuned or chosen after seeing dev (so dev numbers above are not evidence of generalization): the factorize bands
+(x0.8 / x1.25), merge's high band (x1.15) and its right/outer/non-unique terms (each found as a dev under-prediction,
+then read from the pandas source and probed), the Tier 1 time-band reversal, the time-fitting of the hashing
+samples, the skew-aware join estimator (first version missed a zipf case), and the stratified-sampler fix. Derived
+from probes or source before looking at dev: the factorize curve, the result-phase formula, the null term, the
+read_csv structure (4a). **val-v3 will check:** every claim in the table above, the under-prediction counts, the
+widths and the overhead. Nothing was changed after looking at val-v3 because it has not been looked at.
+
+### Run and evaluate val-v3 (project owner)
+```
+python -m benchmarks plan   --suite full --splits val-v3 --mem-limit-gb 2.5 --max-size 10000000
+python -m benchmarks full   --splits val-v3 --tiers 0,1 --out benchmarks/results/val-v3 \
+                            --mem-limit-gb 2.5 --max-size 10000000 --no-report
+python -m benchmarks status benchmarks/results/val-v3          # counts only
+python -m benchmarks evaluate benchmarks/results/val-v3 --val --reason "4b held-out check of Tier 1"
+```
+`plan` reports 105 points, 95 runnable under the 2.5 GiB cap (10 skipped). Expected time: about 28 min of measurement
+(dev took 13 s/point) plus ~4 s/point for the two prediction tiers, plus a one-time generation of the ~100 cached
+inputs (several minutes; the 10M-row string frames dominate): **plan on 45-70 minutes**. Close other programs (>= 6 GiB
+free) and do not run tests meanwhile. The report is `benchmarks/results/val-v3/validation_report.md` (with the Tier 0 vs
+Tier 1 comparison) and `tier1_val/`; tell me when it exists and I will look at it, once.
+
+### Next steps
+1. Read the val-v3 report; fix only what is **structural** and re-derive from the source; anything tuned afterwards needs
+   a new validation group (val-v4), since val-v3 will have been seen.
+2. The unexplained +33 MB at n = 1M for real-like frames; a fixed per-operation overhead term is the likely shape.
+3. Phase 6: calibrate the time models (Tier 1 cannot narrow time until then) and the working-set-dependent per-element cost.
+4. Wire `stats.text_profile` into a model that actually has a string-object term (read_csv/astype use their own samples);
+   no RAM formula of a pointer-copy operation depends on object sharing, so the 4a "shared-string feature" has no consumer yet.

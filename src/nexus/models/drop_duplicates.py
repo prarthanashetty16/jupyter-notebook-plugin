@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
+from nexus import stats
 from nexus.analyzer import DetectedOp
 from nexus.models import _util as u
 from nexus.models._util import (
     group_ids_overflow,
     khash_presized_bytes,
 )
-from nexus.models.base import Estimate, OperationModel
+from nexus.models.base import Estimate, OperationModel, Tier1Context
 from nexus.registry import register_model
 from nexus.state import Inspection
 
@@ -92,6 +94,11 @@ class DropDuplicatesModel(OperationModel):
             "input_bytes": df.nbytes,
             "moved_bytes": df.moved_bytes,
             "subset_known": subset is not None or op.kwargs.get("subset") is None,
+            "key_columns": (
+                subset
+                if subset is not None
+                else (list(df.dtypes) if op.kwargs.get("subset") is None and not op.args else None)
+            ),
             "n_nullable_keys": (
                 sum(u.can_hold_null(d) for d in df.dtypes.values())
                 if subset is None
@@ -104,7 +111,11 @@ class DropDuplicatesModel(OperationModel):
 
     @staticmethod
     def ram_at(
-        features: dict[str, Any], key_frac: float, row_frac: float, null_keys: float = 0.0
+        features: dict[str, Any],
+        key_frac: float,
+        row_frac: float,
+        null_keys: float = 0.0,
+        log2_shape: float | None = None,
     ) -> float:
         n, k = features["n_rows"], features["n_keys"]
         moved = features.get("moved_bytes", features["input_bytes"])
@@ -116,15 +127,67 @@ class DropDuplicatesModel(OperationModel):
             factorize = 8 * n * (k - 1) + 16 * n + table + 8 * key_frac * n
             ids = 8 * n * k + 16 * n + ids_table + n + 8 * n * null_keys
             compress = 0.0
-            if group_ids_overflow(k, key_frac * n):
+            if (
+                (log2_shape >= 63)
+                if log2_shape is not None
+                else group_ids_overflow(k, key_frac * n)
+            ):
                 full_table = khash_presized_bytes(row_frac * n, n)
                 compress = 8 * n * k + 24 * n + full_table + 8 * n * null_keys
             dedup = max(factorize, ids, compress)
         take = 2 * n + 8 * row_frac * n + moved * row_frac + 8 * row_frac * n
         return max(dedup, take)
 
+    def tier1_features(
+        self, op: DetectedOp, features: dict[str, Any], ctx: Tier1Context
+    ) -> dict[str, Any] | None:
+        """Distinct rows (survivors), distinct values per key, and null key columns.
+
+        Row/key distinct counts come from a 30k-200k row sample (Chao1 with Good-Turing bounds);
+        float/datetime key columns are scanned completely for nulls (one null makes pandas lift
+        the column), text columns are judged from the sample (``possible`` if it shows none).
+        """
+        n = features["n_rows"]
+        cols = features.get("key_columns")
+        if not cols or n < stats.MIN_SAMPLE_ROWS:
+            return None
+        df = ctx.obj(op.receiver)
+        cols = [c for c in cols if c in df.columns]
+        rows = min(stats.DEFAULT_SAMPLE_ROWS, max(30_000, 1_500_000 // len(cols)))
+        survivors = stats.distinct_rows(
+            [df[c] for c in cols], rows=rows, deadline=ctx.deadline, share=0.45
+        )
+        per_key = [
+            stats.distinct_count(
+                df[c], rows=min(rows, 50_000), deadline=ctx.deadline, share=1.0 / (len(cols) + 1)
+            )
+            for c in cols
+        ]
+        nulls = stats.null_profile(df, cols, rows=min(rows, 50_000), deadline=ctx.deadline)
+        shape = [math.log2(d.value + 1) for d in per_key]
+        lows = [math.log2(d.low + 1) for d in per_key]
+        highs = [math.log2(d.high + 1) for d in per_key]
+        certain = len(nulls.certain)
+        return {
+            "distinct_rows_range": (survivors.low / n, survivors.value / n, survivors.high / n),
+            "key_fraction_range": (
+                max(d.low for d in per_key) / n,
+                max(d.value for d in per_key) / n,
+                max(d.high for d in per_key) / n,
+            ),
+            "log2_shape_range": (sum(lows), sum(shape), sum(highs)),
+            "null_range": (certain, certain, certain + len(nulls.possible)),
+            "tier1": {
+                "sample": survivors.sample,
+                "confidence": min(survivors.confidence, min(d.confidence for d in per_key)),
+                "method": survivors.method,
+                "null_certain": certain,
+                "null_possible": len(nulls.possible),
+            },
+        }
+
     def estimate(self, features: dict[str, Any], tier: int) -> Estimate:
-        u.require_tier0(tier)
+        u.require_tier(tier)
         n, k, kt, size = (features[x] for x in ("n_rows", "n_keys", "n_text_keys", "input_bytes"))
         fixed = features.get("distinct_fraction")
         fracs = DISTINCT_FRACTIONS if fixed is None else (fixed, fixed, fixed)
@@ -136,10 +199,18 @@ class DropDuplicatesModel(OperationModel):
             if known_nulls is not None
             else tuple(x * nullable for x in NULL_COLUMN_FRACTIONS)
         )
-        ram = [
-            self.ram_at(features, kfixed if kfixed is not None else f, f, nl)
-            for f, nl in zip(fracs, nulls, strict=True)
-        ]
+        if "distinct_rows_range" in features:  # Tier 1: estimated survivors, keys and null columns
+            fr = features["distinct_rows_range"]
+            kr = features["key_fraction_range"]
+            ls = features["log2_shape_range"]
+            nr = features["null_range"]
+            fracs = fr
+            ram = [self.ram_at(features, kr[i], fr[i], nr[i], ls[i]) for i in range(3)]
+        else:
+            ram = [
+                self.ram_at(features, kfixed if kfixed is not None else f, f, nl)
+                for f, nl in zip(fracs, nulls, strict=True)
+            ]
         ram = [ram[0] * MODEL_BAND[0], ram[1], ram[2] * MODEL_BAND[1]]
         out = size * fracs[1]
         seconds = (
@@ -148,7 +219,7 @@ class DropDuplicatesModel(OperationModel):
         )
         return u.build(
             ram,  # type: ignore[arg-type]
-            u.time_band(seconds),
+            u.time_band_for_tier(seconds, tier),
             0.5,
             tier,
             [

@@ -88,17 +88,20 @@ Do not run tests or other heavy work while a benchmark runs (it distorts memory 
 Full run (resumable; re-run the same command to continue; `status` from a second terminal):
 ```bash
 python -m benchmarks plan   --suite full --mem-limit-gb 2.5 --max-size 10000000
-python -m benchmarks full   --mem-limit-gb 2.5 --max-size 10000000      # dev + exposed-v1 only
+python -m benchmarks full   --mem-limit-gb 2.5 --max-size 10000000      # dev only (add --tiers 0,1)
 python -m benchmarks status benchmarks/results/full
 python -m benchmarks evaluate benchmarks/results/full          # dev split only
 ```
-The cap must stay well below free RAM. **Splits (`benchmarks/split.json`, frozen, digest-checked):** `dev` (29 cases) and `exposed-v1` (18 cases whose
-values were printed in Phase 3c; development and diagnosis only, **never final claims**) may be read by all tooling
-(`load_joined`, reports, `diagnose`). `test-v2` (17 cases, sealed, never run) is opt-in (`--splits test-v2`), its
-results go to `<results>/sealed/`, runner/log/console output for it shows only point id, status and elapsed time, and
-it is read only by `python -m benchmarks evaluate <dir> --final --reason "..."` (logged in the "Test-split access log"
-in docs/PROGRESS.md). Never print, plot or paste sealed values anywhere; never edit `split.json` (create a new
-version with a new sealed group instead); never read `sealed/` directly. Run test-v2 only once models are frozen.
+The cap must stay well below free RAM. **Splits (`benchmarks/split.json` version 3, frozen, digest-checked):** `dev`
+(47 cases, including the former exposed-v1, which influenced a Phase 4a model change) may be read by all tooling
+(`load_joined`, reports, `diagnose`). Two groups are protected and opt-in (`--splits test-v2` / `--splits val-v3`);
+runner/log/console/status output for them shows only point id, status and elapsed time. `test-v2` (17 cases, sealed,
+never run; results in `<results>/sealed/`) is read only by `evaluate <dir> --final --reason "..."`. `val-v3` (36 cases,
+the held-out validation split for Phases 4b-4d; results in `<results>/validation/`) is read only by
+`evaluate <dir> --val --reason "..."`. Every use of either is logged in the "Test-split access log" in
+docs/PROGRESS.md. Never print, plot or paste protected values anywhere; never edit `split.json` (create a new version
+instead); never read `sealed/` or `validation/` directly. Develop and tune on dev, check on val-v3, run test-v2 only
+once models are frozen.
 
 ### Commit message style
 - First line: imperative, ~50 chars. Example: "Add Tier 0 estimator for DataFrame.sum()"

@@ -118,8 +118,22 @@ def test_unknown_inputs_give_no_estimate(pipeline, source, ns):
     assert estimates(pipeline, source, ns) == {}
 
 
-def test_higher_tiers_are_not_implemented():
-    report = Pipeline(tier=1).run("df.drop_duplicates()", {"df": frame()})
+def test_tier1_falls_back_to_tier0_when_the_sample_is_too_small():
+    report = Pipeline(tier=1).run("df.drop_duplicates()", {"df": frame(500)})  # < 1000 rows
+    (item,) = report.estimates
+    assert item.estimate.tier == 0
+    assert item.features["tier1"] == {"used": False, "reason": "no statistics"}
+
+
+def test_tier1_on_a_small_complete_frame_is_exact_not_sampled():
+    report = Pipeline(tier=1).run("df.drop_duplicates()", {"df": frame(2000)})
+    (item,) = report.estimates
+    assert item.estimate.tier == 1
+    assert item.features["tier1"]["used"] and item.features["tier1"]["method"] == "complete"
+
+
+def test_tiers_above_one_are_not_implemented():
+    report = Pipeline(tier=2).run("df.drop_duplicates()", {"df": frame()})
     assert report.ops and report.estimates == []
 
 

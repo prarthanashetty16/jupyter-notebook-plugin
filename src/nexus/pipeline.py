@@ -10,7 +10,7 @@ from typing import Any
 
 from nexus.analyzer import DetectedOp, analyze_cell
 from nexus.failsafe import Deadline
-from nexus.models.base import Estimate, NoEstimateError
+from nexus.models.base import Estimate, NoEstimateError, Tier1Context
 from nexus.models.builtin import load_builtin_models
 from nexus.registry import ModelRegistry, default_registry
 from nexus.state import Inspection, ResourceProbe, ResourceSnapshot, StateInspector, candidate_paths
@@ -35,6 +35,10 @@ class CellReport:
     elapsed_s: float = 0.0
 
 
+def _stats_summary(extra: dict[str, Any]) -> dict[str, Any]:
+    return dict(extra.get("tier1", {}))
+
+
 class Pipeline:
     """Runs one cell's source through analysis, state inspection and the model registry."""
 
@@ -44,6 +48,7 @@ class Pipeline:
         inspector: StateInspector | None = None,
         probe: ResourceProbe | None = None,
         tier: int = 0,
+        tier1_budget_s: float = 0.2,
     ) -> None:
         if registry is None:
             load_builtin_models()
@@ -52,8 +57,9 @@ class Pipeline:
         self._inspector = inspector or StateInspector()
         self._probe = probe or ResourceProbe()
         self._tier = tier
+        self._tier1_budget_s = tier1_budget_s
 
-    def run(
+    def run(  # noqa: C901
         self, source: str, namespace: Mapping[str, Any], deadline: Deadline | None = None
     ) -> CellReport:
         """Analyze ``source``. Raises TimeoutError if ``deadline`` expires; a model that raises
@@ -71,8 +77,13 @@ class Pipeline:
                 deadline.check()
             for model in self.registry.find(op):
                 try:
+                    if self._tier > 1:
+                        raise NoEstimateError(f"tier {self._tier} not implemented")
                     features = model.features(op, inspection)
-                    estimate = model.estimate(features, self._tier)
+                    used = 0
+                    if self._tier >= 1:
+                        features, used = self._tier1(model, op, features, namespace, source, t0)
+                    estimate = model.estimate(features, used)
                     if not isinstance(estimate, Estimate):
                         raise TypeError(f"{model.name} returned {type(estimate).__name__}")
                 except NoEstimateError as why:
@@ -96,3 +107,37 @@ class Pipeline:
             resources=resources,
             elapsed_s=time.perf_counter() - t0,
         )
+
+    def _tier1(
+        self,
+        model: Any,
+        op: DetectedOp,
+        features: dict[str, Any],
+        namespace: Mapping[str, Any],
+        source: str,
+        t0: float,
+    ) -> tuple[dict[str, Any], int]:
+        """Add Tier 1 statistics to ``features``; (features, tier actually used).
+
+        Any failure (no statistics for this model, too small a sample, budget exhausted, an
+        unexpected exception) keeps the Tier 0 features: Tier 1 may only refine, never break.
+        """
+        left = self._tier1_budget_s - (time.perf_counter() - t0)
+        started = time.perf_counter()
+        try:
+            if left <= 0:
+                raise TimeoutError("tier 1 budget used up by earlier stages")
+            ctx = Tier1Context(namespace, source, Deadline(left))
+            extra = model.tier1_features(op, features, ctx)
+        except NoEstimateError as why:
+            log.debug("nexus: tier 1 unavailable for %s: %s", model.name, why)
+            return {**features, "tier1": {"used": False, "reason": str(why)}}, 0
+        except TimeoutError:
+            return {**features, "tier1": {"used": False, "reason": "time budget"}}, 0
+        except Exception as exc:
+            log.debug("nexus: tier 1 failed for %s", model.name, exc_info=True)
+            return {**features, "tier1": {"used": False, "reason": type(exc).__name__}}, 0
+        if not extra:
+            return {**features, "tier1": {"used": False, "reason": "no statistics"}}, 0
+        info = {**_stats_summary(extra), "used": True, "stats_s": time.perf_counter() - started}
+        return {**features, **extra, "tier1": info}, 1

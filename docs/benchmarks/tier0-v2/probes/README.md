@@ -15,6 +15,8 @@ e.g. `python docs/benchmarks/tier0-v2/probes/p_sort.py`; `probe_lib.py` caches g
 | p_mg, p_mg2 | merge: indexer phase vs full merge, left-copy elision, presized hash table |
 | p_as, p_as_tm, p_cat, p_cat2, p_cat_tm | astype to str (object-int temporary, pymalloc classes) and to category (by distinct count) |
 | p_csv, p_csv2, p_csv3 | read_csv: default vs low_memory=False vs chunked; width / column sweeps |
+| p_gb, p_gb2, p_gb3, p_gb4 | groupby (Phase 4b): peak vs group count, categorical keys, result frame at G = n, n-dependence of the factorize curve |
+| p_mg3 | merge (4b): right/outer joins and non-unique keys, indexer phase vs full merge |
 | p_cache | in-process timing of argsort / duplicated / gather at 125k..8M rows (cache effect, no memory pressure) |
 
 Instrument limits: a probe whose peak stays below the setup peak is censored and printed as `None`

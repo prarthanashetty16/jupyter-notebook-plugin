@@ -646,6 +646,11 @@ def write_validation_report(
         lines.append("\n## Val-v3 split\n\nno val-v3 points measured.\n")
     else:
         lines += _report_lines(val, results_dir, floors, tiers, "_val", "## Val-v3 split")
+        from benchmarks import tier1_compare  # local import: tier1_compare imports this module
+
+        lines.append(tier1_compare.markdown(val, "Tier 0 vs Tier 1 on val-v3", "val-v3"))
+        lines.append(tier1_compare.markdown(dev, "Tier 0 vs Tier 1 on dev", "dev"))
+        tier1_compare.write(val, results_dir / "tier1_val", "Tier 0 vs Tier 1 on val-v3", "val-v3")
     lines.append("\n## Measurement caveats\n")
     lines.append(CAVEATS)
     report = results_dir / "validation_report.md"
