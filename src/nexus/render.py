@@ -7,6 +7,7 @@ from typing import Any
 from nexus.analyzer import Expr
 from nexus.pipeline import CellReport
 from nexus.state import ArrayDescriptor, Descriptor, FrameDescriptor, SeriesDescriptor
+from nexus.timebuckets import describe as describe_time
 
 
 def human_bytes(n: float) -> str:
@@ -64,7 +65,7 @@ def format_report(report: CellReport) -> str:
             f"  estimate {item.op.name} [{item.model}, tier {e.tier}]: "
             f"RAM {human_bytes(e.ram_low)}-{human_bytes(e.ram_high)} "
             f"(expected {human_bytes(e.ram_expected)}), "
-            f"time {human_seconds(e.time_low)}-{human_seconds(e.time_high)}, "
+            f"time {describe_time(e.time_low, e.time_expected, e.time_high)}, "
             f"confidence {e.confidence:.2f}; drivers: {'; '.join(e.drivers) or 'n/a'}"
         )
     if report.resources is not None:

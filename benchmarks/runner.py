@@ -27,6 +27,7 @@ import pandas as pd
 import psutil
 
 from benchmarks import workers
+from benchmarks.planner import decide
 from benchmarks.split import DEV, SEALED_DIR, SEALED_GROUPS, TEST, VAL, VAL_DIR
 from benchmarks.suite import CsvInput, GridPoint, build_grid
 from nexus.calibrate import ensure_profile
@@ -277,6 +278,7 @@ class RunConfig:
     out_dir: Path
     tiers: tuple[int, ...] = (0,)
     mem_limit_bytes: int | None = None
+    plan_with_model: bool = True  # skip points whose NEXUS upper bound cannot fit under the cap
     ops: set[str] | None = None
     retry_failed: bool = False
     max_points: int | None = None
@@ -340,10 +342,32 @@ def write_progress(out: Path, state: dict[str, Any]) -> None:
 
 
 def _point_line(point: GridPoint, prow: dict[str, Any], tier: int) -> str:
-    if prow["has_estimate"]:
-        ram, secs = int(prow["ram_expected"]) / 2**20, float(prow["time_expected"])
+    if str(prow["has_estimate"]).lower() in ("true", "1"):  # stored rows hold strings
+        ram, secs = float(prow["ram_expected"]) / 2**20, float(prow["time_expected"])
         return f" | tier{tier} pred={ram:.1f} MB t={secs:.3f} s"
     return f" | tier{tier} no estimate ({prow['status']})"
+
+
+def _plan_with_model(
+    point: GridPoint,
+    tiers: list[int],
+    source: str,
+    cache_dir: Path,
+    cap: int,
+    env: dict[str, Any],
+    preds: ResultStore,
+) -> str | None:
+    """Predict first (inputs fit by the static rule), then apply the model-based footprint rule.
+
+    Returns the skip reason, or None when the point may be measured. The predictions are stored,
+    so they are not computed twice.
+    """
+    for tier in tiers:
+        if preds.has(point_id=point.id, tier=tier) is None:
+            preds.add(run_prediction(point, tier, source, cache_dir, cap, env))
+    rows = {t: preds.has(point_id=point.id, tier=t) for t in (0, 1)}
+    decision = decide(point.est_input_bytes(), {t: r for t, r in rows.items() if r}, cap)
+    return decision.reason if decision.skip else None
 
 
 def run_suite(cfg: RunConfig, points: Iterable[GridPoint] | None = None) -> tuple[Path, Path]:  # noqa: C901
@@ -427,6 +451,17 @@ def run_suite(cfg: RunConfig, points: Iterable[GridPoint] | None = None) -> tupl
                     source = (
                         point.source.format(csv=path) if "{csv" in point.source else point.source
                     )
+                    if cfg.plan_with_model and missing:
+                        verdict = _plan_with_model(
+                            point, missing, source, cache_dir, cap, env, preds
+                        )
+                        if verdict is not None:  # the model's upper bound says it cannot fit
+                            row = _actual_row(point, cfg.suite, point.source, cap, env,
+                                              status=SKIPPED_CAP, split=point.split, error=verdict)  # fmt: skip
+                            actuals.add(row)
+                            counts["skipped_cap"] += 1
+                            log.info("%s: skipped (model upper bound above memory cap)", prefix)
+                            continue
                     row, m = run_actual(point, cfg.suite, source, cache_dir, cap, env)
                     actuals.add(row)
                     counts["measured"] += 1
@@ -436,8 +471,10 @@ def run_suite(cfg: RunConfig, points: Iterable[GridPoint] | None = None) -> tupl
                     source = previous["source"]
                     status, detail = f"actual kept ({previous['status']})", ""
                 for tier in missing:
-                    prow = run_prediction(point, tier, source, cache_dir, cap, env)
-                    preds.add(prow)
+                    prow = None if retry else preds.has(point_id=point.id, tier=tier)
+                    if prow is None:  # else: predicted before measuring (model-based planning)
+                        prow = run_prediction(point, tier, source, cache_dir, cap, env)
+                        preds.add(prow)
                     detail += _point_line(point, prow, tier)
                 session_times.append(time.monotonic() - t_point)
                 publish(i, None)

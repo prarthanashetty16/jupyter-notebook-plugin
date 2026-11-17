@@ -8,6 +8,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from nexus import ranges
 from nexus.analyzer import DetectedOp, analyze_cell
 from nexus.failsafe import Deadline
 from nexus.models.base import Estimate, NoEstimateError, Tier1Context
@@ -80,10 +81,15 @@ class Pipeline:
                     if self._tier > 1:
                         raise NoEstimateError(f"tier {self._tier} not implemented")
                     features = model.features(op, inspection)
+                    tier0_features = features
                     used = 0
                     if self._tier >= 1:
                         features, used = self._tier1(model, op, features, namespace, source, t0)
                     estimate = model.estimate(features, used)
+                    if used >= 1:
+                        estimate = ranges.apply(
+                            model.name, estimate, self._tier0_estimate(model, tier0_features)
+                        )
                     if not isinstance(estimate, Estimate):
                         raise TypeError(f"{model.name} returned {type(estimate).__name__}")
                 except NoEstimateError as why:
@@ -107,6 +113,14 @@ class Pipeline:
             resources=resources,
             elapsed_s=time.perf_counter() - t0,
         )
+
+    @staticmethod
+    def _tier0_estimate(model: Any, features: dict[str, Any]) -> Estimate | None:
+        """The Tier 0 estimate of the same op (its ``high`` can serve as a ceiling); None if absent."""
+        try:
+            return model.estimate(features, 0)
+        except Exception:
+            return None
 
     def _tier1(
         self,

@@ -165,6 +165,12 @@ def main() -> None:  # noqa: C901
         _select_args(p)
         p.add_argument("--retry-failed", action="store_true", help="re-run points that errored")
         p.add_argument("--no-report", action="store_true")
+        p.add_argument(
+            "--no-model-planning",
+            action="store_true",
+            help="decide skipping by the static input-size rule only (default: predict first and "
+            "also skip points whose NEXUS upper bound cannot fit under the cap)",
+        )
         p.add_argument("--tiers", default="0", help="comma list of NEXUS tiers to predict (0,1)")
         p.add_argument(
             "--no-calibrate",
@@ -232,6 +238,7 @@ def main() -> None:  # noqa: C901
         max_size=args.max_size,
         splits=_splits(args),
         tiers=tuple(int(t) for t in args.tiers.split(",")),
+        plan_with_model=not args.no_model_planning,
     )
     if args.no_calibrate:
         os.environ[ENV_VAR] = str(out / "no_profile.json")  # nonexistent: models use defaults
