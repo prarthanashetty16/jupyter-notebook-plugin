@@ -681,7 +681,7 @@ operations are O(n) by algorithm. A working-set-dependent cost needs machine-spe
 
 ## Phase 4b: Tier 1 data statistics
 
-**Status: implemented and evaluated on dev. NOT yet validated: `val-v3` has not been run or looked at.**
+**Status: implemented and evaluated on dev. The held-out check (`val-v3`) was then run and read; see Phase 4b.2 below: it found failures, and val-v3 is dev data from split version 4 on.**
 Everything below that says "dev" was available while the models were built and tuned; the held-out
 check on val-v3 is still to be run by the project owner (command at the end). `test-v2` stayed sealed.
 
@@ -800,3 +800,109 @@ Tier 1 comparison) and `tier1_val/`; tell me when it exists and I will look at i
 3. Phase 6: calibrate the time models (Tier 1 cannot narrow time until then) and the working-set-dependent per-element cost.
 4. Wire `stats.text_profile` into a model that actually has a string-object term (read_csv/astype use their own samples);
    no RAM formula of a pointer-copy operation depends on object sharing, so the 4a "shared-string feature" has no consumer yet.
+
+
+## Phase 4b.2: diagnose the val-v3 failures, repair Tier 1 ranges, fix the planner
+
+**Status: done on development data; NOT validated.** val-v3 was read by the developer and a reviewer, so it
+is dev from split version 4 on (reclassification recorded in the access log). The held-out check is the
+new `val-v4` (40 configurations), **not run**. `test-v2` stayed sealed and unrun. Nothing below is a claim
+of generalisation: the fixes were derived from the failures of val-v3 and checked against those same
+points, so the "after" numbers on them are in-sample.
+
+- [x] 0. Split version 4: val-v3 -> dev (kept as `provenance["val-v3"]`, 36 cases); new `val-v4` (40 configurations,
+  seeds >= 401, no non-default generator value, join ratio or array dtype/pattern shared with dev incl. val-v3 or
+  test-v2; tests pin it; same leak protection as val-v3). Families: astype -> category at card 6000 / 15000 / 40000 /
+  150000 / 0.12 / 400 (long strings) and int -> category, float / int -> str; groupby low-cardinality text (3, 0.003),
+  two keys (60, 6000), int 40000, zipf 1.5, 0.9; merge overlap 20-95% with fan-out 1.1-10 and right sides 0.15x-3x
+  (inner / left / right / outer, zipf, text keys); drop_duplicates null-heavy full frame and subsets of float / text /
+  category + datetime columns, wide numeric, no-null, int subset; sort_values, concat, read_csv, np.sort, matmul as
+  regression families. The stored val-v3 rows were copied into `benchmarks/results/dev-v4-before/` (dev results +
+  val-v3 actuals and the old predictions) with `maintenance migrate-val3`.
+- [x] 1. Diagnosis: `docs/benchmarks/val-v3-diagnosis.md` (evidence per cause, probes in
+  `docs/benchmarks/val-v3-diagnosis/probes/`). **Causes found:**
+  1. *There is no fixed offset* (first-call overhead is below 0.5 MiB at n = 5k..200k). The "~35-40 MiB at n = 1M"
+     (astype card12000, groupby `str_card0p04`, `two_keys_card800`, and the two 4b dev points) is a **missing formula
+     term**: the hash table is presized for `min(n, 2**20 + 7)` entries and its pages become resident only when keys
+     hash into them. Random strings touch all of it; the Phase 4a curve had been measured on sequential keys, which
+     cluster into a few pages (same n and U: 48 vs 86 MiB). The Tier 1 statistics were right (distinct counts exact,
+     sd <= 0.7% over 10 seeds).
+  2. merge `inner_overlap25_fanout6`: the output-row estimate was right (3%); **a formula term was missing**: with
+     non-unique right keys one factorizer sees both sides, so the table holds the union of the keys (+ sorters and
+     counts). That is also why Tier 1 landed *below* Tier 0.
+  3. drop_duplicates `null_heavy_full` 10M: **not a model failure.** My evaluator scored a kill by the *total-RSS* cap as
+     an actual equal to the cap; the true incremental peak is >= 1.8 GiB (RSS at kill minus baseline), inside Tier 1's
+     range. The defect was the planner, which admitted a point whose baseline + `high` exceeds the cap. The
+     per-nullable-column cost is 8 B/row exactly, as modelled; the 8-13% under-prediction of wide frames at 0.5-1M rows
+     (4a, unexplained) stays.
+- [x] 2. Fixes (derivations in the docstrings, regression tests pinned to probes, `tests/test_hash_table_model.py`):
+  `factorize_peak_bytes` (base + resident table pages + uniques; replaces the n = 2M `FACTORIZE_KNOTS` curve) for astype and
+  groupby, `stats.hash_scatter` (khash string / int64 hash replicas, 9-11 ms) for the key layout, merge sort-path
+  union table with `left_distinct` / overlap from `join_profile`. Validated on 12 + 11 isolated probes (held-out 11:
+  random text 0.99-1.00, random ints 0.94-0.98, clustered keys 0.83-1.01 measured/model; it over-predicts clustered
+  keys, never under-predicts by more than 1%); merge 27 probes 1.02 (0.83-1.17). Fitted constants: `CLUSTER_FILL`
+  (3 probes), `COMBO_COEXIST` (4 probes), merge sort-path coefficients (27 probes): all from probe grids, none from a
+  benchmark point.
+- [x] 3. Range policy. **Criterion committed before any number was computed** (commit "Pre-register the Tier 1
+  range-policy selection criterion"; `benchmarks/range_policy.py`): above_high <= 3% per point and <= 5% per
+  configuration under leave-one-configuration-out, then the narrowest mean width. Candidates on dev (191 valid points,
+  81 configurations; `docs/benchmarks/tier1-v2/range_policy.md`): **A** the model's own Tier 1 range: coverage 98.4%,
+  above_high 0.5% (1 point; 1.2% of configurations), below_low 1.0%, width 0.65: admissible. **C** `[T1 low, T0 high]`:
+  admissible, above_high 0.0%, but width 1.84 (2.8x wider). **B / D** (expected x per-operation residual quantiles
+  q(1-a), q(a), a = 0.90-0.99, LOCO; D capped at Tier 0's high): not admissible (above_high 3.7-6.3%, per
+  configuration 6.2-9.9%; the residuals of other configurations do not predict the next one's). **Winner: A.** So the
+  policy did not change the range: the model fixes did (A on the old predictions: above_high 4.2%, 7.4% of
+  configurations, width 0.72). `nexus.ranges` keeps the hook for C / D (empty table = A, inactive); if val-v4 breaks A,
+  C is the fallback to try first. **Honesty:** A passes on data that informed the model fixes; the held-out result is
+  what counts.
+- [x] 4. Planner (`benchmarks/planner.py`; `full` predicts first, `--no-model-planning` restores the old rule): skip
+  when `baseline + high > cap` (baseline = 100 MiB + 1.02 x estimated input bytes, a least-squares fit on the 218
+  measured dev baselines: 55 MiB + 1.017x, residual p95 +23 MiB, max +44 MiB; `high` = Tier 1's if it used statistics,
+  else Tier 0's). On the 241 existing development points (`docs/benchmarks/tier1-v2/planner.md`, cap 2.5 GiB): the one
+  point killed by the cap (null_heavy 10M, planned 2.9 GiB) is skipped before running; **3 of 218 points that measured
+  fine would now be skipped** (drop_duplicates `mixed_dup0` and `mixed_dup50` at 10M, planned 2.7 GiB, measured total
+  2.0-2.1 GiB; read_csv `wide_numeric` at 3M, planned 2.7 GiB, measured 1.6 GiB): the price of using an upper bound.
+  Points the old static rule skipped have no prediction and are unchanged.
+- [x] 5. Time is coarse. Models untouched. The user-facing text and the report show time as a bucket (under 0.1 s,
+  0.1-1 s, 1-10 s, 10-60 s, 1-10 min, over 10 min) with the measured variation (repeats of one point spread by a median
+  of 9% and a p90 of 30% of the median, 156 points >= 0.1 s). On dev (140 valid time points, Tier 1) the expected
+  bucket equals the measured one for 76%, is within one bucket for 100%, and the measured bucket lies inside the
+  low..high buckets for 100%. **Phase 6 inputs (time model biases, val-v3 Tier 1, median expected/actual):** read_csv 0.36
+  (under), groupby 2.24 (over), astype 2.20 (over), float32 matmul 2.84 (over; all matmul 2.19), concat 1.25; the
+  first-draft Tier 1 time band is deliberately unchanged (0.25x .. 4x).
+- [x] 6. Dev predictions re-run (actuals reused; `benchmarks/results/tier1-v2`, docs in `docs/benchmarks/tier1-v2/`).
+  Tier 1 RAM, dev original (109 points), before -> after: err_med 6% -> 3%, coverage 97% -> 99%, above_high 2% -> 0%,
+  width 72% -> 67% (groupby above_high 10% -> 0%, astype 6% -> 0%; merge p90 error 10% -> 19%: the sort-path term moved
+  points that were 4-5% low to up to 22% high). Former val-v3 (81 points, in-sample): err_med 4% -> 3%, p90 25% -> 16%,
+  coverage 91% -> 98%, above_high 7% -> 1%, width 72% -> 64%. Tier 1 analysis overhead: warm median 25 ms, p90 131 ms,
+  max 200 ms (drop_duplicates; merge 196 ms), 0 of 219 over the 250 ms budget (the scatter statistic adds ~10 ms per key).
+
+### Corrections to earlier statements (mine)
+- The 297c09f rule "a memory-limit kill is an actual >= the cap" was wrong: the cap is on the child's *total* RSS. The
+  incremental peak is >= `rss_at_kill - baseline` (baseline extrapolated from the same case's measured sizes). With
+  the corrected rule the null_heavy 10M point is **inside** Tier 1's range (bound ~1.8-1.9 GiB vs high 2.07 GiB), so the
+  "above-high, dangerous" reading of it in the val-v3 report (Tier 1 above_high 9%) is retracted; the corrected
+  former-val-v3 figure, before the fixes, is 7%. Test and report text updated.
+- The 4b note "+33 MB at n = 1M ... a fixed overhead I could not reproduce" was the table-residency term above, not an overhead.
+
+### Run val-v4 (project owner; NOT run)
+```
+python -m benchmarks plan   --suite full --splits val-v4 --mem-limit-gb 2.5 --max-size 10000000
+python -m benchmarks full   --splits val-v4 --tiers 0,1 --out benchmarks/results/val-v4 \
+                            --mem-limit-gb 2.5 --max-size 10000000 --no-report
+python -m benchmarks status benchmarks/results/val-v4          # counts only
+python -m benchmarks evaluate benchmarks/results/val-v4 --val --reason "4b.2 held-out check of the repaired Tier 1"
+```
+`plan` reports 119 points, 105 under the static rule (14 skipped); the model-based planner will additionally skip the
+points whose baseline + `high` exceeds 2.5 GiB (it predicts before measuring). Expected time **45-70 minutes**: ~95-105
+points x ~13 s of measurement (about 20-25 min), ~4 s per point for the two prediction tiers (~7 min), and a one-time
+generation of ~100 cached inputs (the 10M-row string frames dominate; 10-25 min). Close other programs (>= 6 GiB free)
+and do not run tests meanwhile. The report is `benchmarks/results/val-v4/validation_report.md`. Read it once; if val-v4
+shows failures, fix only what is structural and create `val-v5`.
+
+### Next steps
+1. val-v4 (above). The success criterion to hold the result to, stated now: Tier 1 above_high <= 3% per point on val-v4,
+   every operation family covered, and no family that works on dev failing on val-v4.
+2. Unexplained: drop_duplicates 8-13% under-prediction on 9-column frames at 0.5-1M rows (4a), the +-17% of the merge
+   sort path between fan-out 2 and 6, read_csv over-prediction on nulls/dates (1.4x on val-v3).
+3. Phase 6: calibrate the time models (inputs above); Tier 1 may then narrow time ranges.

@@ -1,0 +1,12 @@
+op,case,size,t1_used,actual,fold_t0,fold_t1,lost_coverage,dangerous
+drop_duplicates,drop_duplicates/numeric_dup50,10000000,True,1043468288.0,1.0776296059320205,1.1585830196307796,False,False
+drop_duplicates,v3/drop_duplicates/null_subset_f0_s0,1000000,True,52932608.0,1.1727878588563028,1.2525644683896928,True,False
+drop_duplicates,v3/drop_duplicates/null_subset_f0_s0,3000000,True,144248832.0,1.0326063229406253,1.1390144496975891,False,False
+groupby,groupby/two_keys_mean_realistic,1000000,True,82481152.0,1.0648838779555359,1.32952398627992,False,False
+groupby,v3/groupby/two_keys_card800,1000000,True,85082112.0,1.0323303798570491,1.096936380704795,False,False
+merge,v3/merge/inner_overlap25_fanout6,3000000,True,189419520.0,1.8498621472591632,0.85591770584151,True,True
+pandas.read_csv,read_csv/mixed,1000000,True,467279872.0,1.107302030334403,1.2146962987526242,False,False
+pandas.read_csv,read_csv/mixed,3000000,True,1436184576.0,1.1013164417941779,1.1979060064769835,False,False
+pandas.read_csv,read_csv/strings,3000000,True,1392066560.0,1.0334731961379777,1.2201488476240676,False,False
+pandas.read_csv,v3/read_csv/mixed_nulls_dates,1000000,True,406224896.0,1.178236166007905,1.4012262458675109,False,False
+pandas.read_csv,v3/read_csv/mixed_nulls_dates,3000000,True,1234055168.0,1.1873815158318757,1.3938150948207852,False,False
