@@ -60,6 +60,30 @@ python -m benchmarks evaluate benchmarks/results/val-v5 --val \
 #    and the "Controller" section with the pass / fail / inconclusive verdict for S1-S5
 ```
 
+## One-hour pilot BEFORE the full run (recommended)
+
+The run order is priority order (Amendment 1 of the pre-registration): P1 merge, groupby, astype, drop_duplicates,
+read_csv; then P2 concat, sort_values; then P3 np.sort, matmul (skippable). The first N points are whole cases at
+3M / 10M / 30M rows, so a pilot of 12 also times the largest sizes.
+
+```bash
+python -m benchmarks full --splits val-v5 --tiers 0,1,2 --out benchmarks/results/val-v5 \
+      --mem-limit-gb $CAP --max-size 400000000 --require-calibrated --no-report --pilot 12
+cat benchmarks/results/val-v5/pilot.json     # seconds per pilot point + the estimate for the remaining points
+```
+`--pilot N` runs only the first N points, writes `pilot.json` (per-point seconds, their mean, and the extrapolated hours
+for the rest: the mean of the pilot points of the same size, scaled linearly in rows for sizes the pilot did not reach and
+quadratically in the dimension for matmul; low / high from the fastest / slowest point) and logs a one-line summary.
+Pilot points are REAL val-v5 measurements: the full run resumes and does not repeat them. Nothing is read until
+`evaluate --val`. If the budget runs short, stop after P1 or P2: the report lists which groups completed and judges only
+those; if P1 is incomplete it says "val-v5 NOT EVALUATED".
+
+## Interrupted runs
+
+Kill or reboot at any time and re-run the same `full` command: finished points are kept byte for byte, a point cut off
+mid-measurement is measured again, a prediction missing for a measured point is filled in, and a half-written CSV row is
+dropped on load (tested by killing a real runner mid-run).
+
 ## Expected runtime and cost class (estimates, not measurements)
 
 The development machine needed ~13 s per measured point at <= 10M rows; at 30M rows loading the inputs (pickled

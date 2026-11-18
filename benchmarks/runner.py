@@ -170,12 +170,43 @@ def upgrade_header(path: Path, fields: list[str]) -> bool:
     return True
 
 
+def repair_partial_rows(path: Path, fields: list[str]) -> int:
+    """Drop a half-written last row (a runner killed mid-write) so a resume never trusts it.
+
+    A row counts as complete only if its width equals the current or the file's own header width.
+    A missing final line terminator is the usual sign of a torn write; its partial text is cut first
+    so the csv parser cannot see a fragment as a row. Returns the number of rows / fragments dropped.
+    """
+    if not path.exists():
+        return 0
+    data = path.read_bytes()
+    dropped = 0
+    nl = bytes([10])  # a line feed
+    if data and not data.endswith(nl):
+        cut = data.rfind(nl)
+        data = data[: cut + 1] if cut >= 0 else b""
+        dropped += 1
+    table = list(csv.reader(data.decode("utf-8", errors="replace").splitlines(keepends=True)))
+    if not table:
+        if dropped:
+            path.write_bytes(b"")
+        return dropped
+    widths = {len(fields), len(table[0])}
+    good = [table[0], *[r for r in table[1:] if len(r) in widths]]
+    dropped += len(table) - len(good)
+    if dropped:
+        with path.open("w", newline="", encoding="utf-8") as fh:
+            csv.writer(fh).writerows(good)
+    return dropped
+
+
 class ResultStore:
     """Append-only CSV with an in-memory index of finished keys (last row wins)."""
 
     def __init__(self, path: Path, fields: list[str], key: tuple[str, ...]) -> None:
         self.path, self.fields, self.key = path, fields, key
         self.rows: list[dict[str, Any]] = []
+        self.repaired = repair_partial_rows(path, fields)
         upgrade_header(path, fields)
         if path.exists():
             with path.open(newline="", encoding="utf-8") as fh:
@@ -311,6 +342,9 @@ class RunConfig:
     ops: set[str] | None = None
     retry_failed: bool = False
     max_points: int | None = None
+    pilot: int | None = (
+        None  # run only the first N points (priority order) and extrapolate the total
+    )
     max_size: int | None = None
     splits: tuple[str, ...] = ("dev", "test")
     calibrate: bool = True  # False: use the uncalibrated default throughputs (ablation)
@@ -415,7 +449,10 @@ def run_suite(cfg: RunConfig, points: Iterable[GridPoint] | None = None) -> tupl
         if points is not None
         else build_grid(cfg.suite, ops=cfg.ops, splits=cfg.splits, max_size=cfg.max_size)
     )
-    if cfg.max_points:
+    full_grid = grid
+    if cfg.pilot:
+        grid = grid[: cfg.pilot]
+    elif cfg.max_points:
         grid = grid[: cfg.max_points]
     stores = Stores(out)
 
@@ -438,6 +475,9 @@ def run_suite(cfg: RunConfig, points: Iterable[GridPoint] | None = None) -> tupl
 
     t_start = time.monotonic()
     session_times: list[float] = []
+    timed: list[
+        dict[str, Any]
+    ] = []  # per measured point: id, op, size, seconds (for the pilot extrapolation)
     counts = {"measured": 0, "skipped_cap": 0, "resumed": 0, "errors": 0}
     progress: dict[str, Any] = {
         "suite": cfg.suite, "total": len(grid), "runnable": len(runnable),
@@ -511,6 +551,15 @@ def run_suite(cfg: RunConfig, points: Iterable[GridPoint] | None = None) -> tupl
                         preds.add(prow)
                     detail += _point_line(point, prow, tier)
                 session_times.append(time.monotonic() - t_point)
+                timed.append(
+                    {
+                        "id": point.id,
+                        "op": point.op,
+                        "size": point.size,
+                        "seconds": session_times[-1],
+                        "status": status,
+                    }
+                )
                 publish(i, None)
                 now = time.monotonic()
                 log_point(point, prefix, status, detail, now - t_point, now - t_start)
@@ -524,5 +573,15 @@ def run_suite(cfg: RunConfig, points: Iterable[GridPoint] | None = None) -> tupl
         publish(i, None, "interrupted")
         log.warning("interrupted: finished points are saved; re-run the same command to resume")
         raise
+    if cfg.pilot:
+        from benchmarks import pilot
+
+        rest = [
+            {"id": q.id, "op": q.op, "size": q.size}
+            for q in full_grid[len(grid) :]
+            if q.est_footprint_bytes() <= cap
+        ]
+        report = pilot.write(out, cfg.pilot, timed, rest, time.monotonic() - t_start)
+        log.info("%s", pilot.summary(report))
     publish(len(grid), None, "finished")
     return stores.actuals["dev"].path, stores.preds["dev"].path

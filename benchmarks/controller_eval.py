@@ -248,12 +248,38 @@ def criteria(d: pd.DataFrame, ctl: pd.DataFrame) -> pd.DataFrame:
     lowered = int(
         ((m["ram_low"] < m["ram_low_t1"]) | (m["ram_expected"] < m["ram_expected_t1"])).sum()
     )
-    s4 = (above.mean() <= above_b.mean() + 1e-12) and lowered == 0 if len(v) else None
+    wd = ((m["ram_high"] - m["ram_low"]) / m["ram_expected"]).mean()
+    wb = ((b["ram_high"] - b["ram_low"]) / b["ram_expected"]).mean()
+    tb = b[b["time_class"] == "valid"]
+    within_b = (
+        float(
+            (
+                (tb["time_expected"].map(bucket_index) - tb["time_value"].map(bucket_index)).abs()
+                <= 1
+            ).mean()
+        )
+        if len(tb)
+        else math.nan
+    )
+    over = float((w["time_value"] > w["time_high"]).mean()) if len(w) else math.nan
+    over_b = float((tb["time_value"] > tb["time_high"]).mean()) if len(tb) else math.nan
+    checks = {
+        "RAM above_high <= Tier 1's": bool(above.sum() <= above_b.sum()),
+        "no RAM bound lowered": lowered == 0,
+        "RAM width <= 1.25x Tier 1's": bool(wd <= 1.25 * wb),
+        "time within-one >= Tier 1's - 1 pp": bool(within >= within_b - 0.01) if len(w) else True,
+        "time above-high <= Tier 1's + 2 pp": bool(over <= over_b + 0.02) if len(w) else True,
+    }
+    detail = (
+        f"above_high {int(above.sum())} vs {int(above_b.sum())}; lowered {lowered}; width {wd:.2f} vs {wb:.2f}; "
+        f"within-one {within:.1%} vs {within_b:.1%}; time above-high {over:.1%} vs {over_b:.1%}"
+    )
+    failed = [k for k, ok in checks.items() if not ok]
     rows.append(
         (
-            "S4 no harm: above_high <= Tier 1 alone, no bound lowered",
-            f"{above.mean():.1%} vs {above_b.mean():.1%}; lowered: {lowered}",
-            s4,
+            "S4 no harm (Amendment 1): five numeric checks",
+            detail + ("; FAILED: " + ", ".join(failed) if failed else ""),
+            not failed if len(v) else None,
         )
     )
     errors = int(m["note"].str.contains("controller error").sum())
@@ -270,36 +296,86 @@ def criteria(d: pd.DataFrame, ctl: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+PRIORITY_NAMES = {
+    1: "P1 (merge, groupby, astype, drop_duplicates, read_csv)",
+    2: "P2 (concat, sort_values)",
+    3: "P3 (numpy.sort, matmul)",
+}
+
+
+def completion(done_ids: set[str]) -> dict[int, tuple[int, int]]:
+    """Per priority group: (points with a final status, points planned).
+
+    Amendment 1 (b): a group is completed when every point of it has a final row (ok, memory_limit,
+    error, timeout or skipped_cap); a point with no row is still pending.
+    """
+    from benchmarks.suite import build_grid, priority_of
+
+    out: dict[int, list[int]] = {1: [0, 0], 2: [0, 0], 3: [0, 0]}
+    for pt in build_grid("full", splits=("val-v5",)):
+        g = priority_of(pt.op)
+        out[g][1] += 1
+        out[g][0] += pt.id in done_ids
+    return {g: (v[0], v[1]) for g, v in out.items()}
+
+
 def validation_section(val_joined: pd.DataFrame) -> str:
-    """Markdown for ``evaluate --val``: the controller replayed on the held-out points, S1-S5."""
-    head = "\n## Controller (pre-registered rules)\n\n"
+    """Markdown for ``evaluate --val``: completed groups, then S1-S5 on the completed groups only."""
+    from benchmarks.suite import priority_of
+
+    nl = chr(10)
+    head = nl + "## Controller (pre-registered rules)" + nl + nl
+    comp = completion(set(val_joined["point_id"]))
+    done = [g for g, (k, n) in comp.items() if n and k == n]
+    lines = [head + "### Which priority groups completed (Amendment 1)" + nl + nl,
+             "| group | points with a final status | planned | completed |" + nl + "|---|---|---|---|" + nl]  # fmt: skip
+    for g, (k, n) in comp.items():
+        lines.append(
+            f"| {PRIORITY_NAMES[g]} | {k} | {n} | {'yes' if n and k == n else 'NO'} |" + nl
+        )
+    if 1 not in done:
+        lines.append(
+            nl + "**val-v5 NOT EVALUATED: P1 did not complete; no criterion is judged.**" + nl
+        )
+        return "".join(lines)
     try:
         d = from_joined(val_joined)
     except (KeyError, ValueError):
-        return (
-            head
+        lines.append(
+            nl
             + "no Tier 0 / 1 / 2 predictions in the validation results (run `full --tiers 0,1,2`)."
-            + chr(10)
+            + nl
         )
+        return "".join(lines)
+    d = d[d["op"].map(priority_of).isin(done)]
     if d.empty:
-        return head + "no points with Tier 2 predictions." + chr(10)
+        lines.append(nl + "no points with Tier 2 predictions in the completed groups." + nl)
+        return "".join(lines)
     free = None if "avail" in d and d["avail"].notna().all() else 32 * GIB
-    ctl = run_scenario(d, free, ControllerConfig())
     note = (
         "free RAM = what was free at each point's start"
         if free is None
         else "free RAM scenario 32 GiB"
     )
-    return (
-        head
-        + f"Replayed on the stored dry runs; {note}."
-        + chr(10)
-        + chr(10)
-        + _md(criteria(d, ctl))
-        + chr(10)
-        + _md(compare(d, ctl))
-        + chr(10)
-    )
+    names = ", ".join(f"P{g}" for g in done)
+    lines.append(nl + f"Verdicts are for the completed groups only ({names}); points of incomplete groups are excluded. "
+                 f"Replayed on the stored dry runs; {note}." + nl)  # fmt: skip
+    scopes = [("union of the completed groups", d)]
+    if len(done) > 1:
+        scopes += [(f"P{g} alone", d[d["op"].map(priority_of) == g]) for g in done]
+    for name, sub in scopes:
+        ctl = run_scenario(sub, free, ControllerConfig())
+        lines.append(
+            nl
+            + f"#### {name}"
+            + nl
+            + nl
+            + _md(criteria(sub, ctl))
+            + nl
+            + _md(compare(sub, ctl))
+            + nl
+        )
+    return "".join(lines)
 
 
 def _md(df: pd.DataFrame) -> str:

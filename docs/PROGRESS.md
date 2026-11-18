@@ -1141,3 +1141,48 @@ needs larger samples).
 2. If the controller is validated: relaxations P1 / P2 (resolve literal names, per-statement dry runs) are the only route to
    Tier 2 on real notebook cells (12% accepted today), each needs its own safety review and a fresh split.
 3. Phase 5 (risk and suggestions) can consume Tier 1 / policy B and the controller's recorded tier and reason.
+
+
+## Phase 4e: de-risk val-v5 and measure real-cell coverage
+
+**Status: done; val-v5 NOT run; models, controller and the val-v5 split content untouched; test-v2 sealed.**
+
+- [x] 1. **Pre-registration Amendment 1** (dated 2026-11-18, commit `3134216`, appended to
+  `docs/benchmarks/phase4d-preregistration.md`; the original text is unchanged; written before val-v5 ran).
+  (a) The original S4 ("no harm") covered RAM only (controller above_high <= Tier 1's, no bound lowered) and said nothing
+  numeric about time or width: S4 is now five numeric checks: RAM above_high count <= Tier 1's; no RAM bound lowered; RAM
+  width <= 1.25x Tier 1's; time within-one >= Tier 1's minus 1 pp; share of points above `time_high` <= Tier 1's plus 2 pp
+  (thresholds fixed by principle, not from dev). (b) Run priority: P1 merge, groupby, astype, drop_duplicates, read_csv;
+  P2 concat, sort_values; P3 np.sort, matmul (skippable); S1-S5 are evaluated on the groups that COMPLETED and the report
+  lists which did (a group is complete when every point has a final status). (c) Partial runs: verdicts only for completed
+  groups (union and per group), incomplete groups excluded and listed as counts, minimum evidence on the union, "val-v5 NOT
+  EVALUATED" if P1 is incomplete. Implemented in `benchmarks/controller_eval.py` (`criteria`, `completion`,
+  `validation_section`, used by `evaluate --val`) and in the suite (val-v5 points are ordered by priority, cases and sizes kept).
+- [x] 2. **Linux smoke test: NOT possible here.** WSL2 has only the stopped `docker-desktop` helper distribution; the Docker
+  client exists but the daemon is not running; I did not start Docker Desktop or pull images. Instead the Linux / POSIX
+  branches were tested with fakes (`tests/test_linux_branches.py`, 11 tests: VmRSS / VmHWM, ru_maxrss fallback, clear_refs
+  reset and its failure, faults, /etc/os-release, /proc/cpuinfo, no `CREATE_NO_WINDOW`, no fork); no portability bug found.
+  Exact Docker / WSL2 commands (incl. a 2 GiB cgroup run of the instrument validation): `docs/benchmarks/phase4e/linux-smoke.md`.
+  **Found and fixed:** a runner killed mid-write left a torn CSV row that crashed or corrupted the next resume
+  (`ResultStore` now drops torn rows; harness bug, not a model change).
+- [x] 3. **Pilot and resume.** `python -m benchmarks full ... --pilot N` runs the first N points (priority order, whole cases
+  so the largest sizes are timed), writes `pilot.json` (seconds per point, mean, extrapolated hours for the rest: mean of
+  same-size pilot points, scaled linearly in rows / quadratically in the matmul dimension for sizes not reached, low / high
+  from the fastest / slowest point) and logs a summary; pilot points are real results and are not repeated by the full run.
+  Tests (10, `tests/test_pilot_resume.py`): priority order, extrapolation, `--pilot` end to end, torn rows (incl. a quoted
+  newline), and **a real runner process killed mid-run then resumed**: the finished point's row is byte-identical, no
+  duplicates, every row has the header's width, missing predictions filled in. Runbook updated (pilot + interrupted runs).
+- [x] 4. **Real-cell coverage study** (`benchmarks/realworld/coverage.py`; static: JSON + `ast.parse` + the unchanged
+  analyzers over stand-in operands; never executes cell code, no downloads; 7 tests incl. a notebook full of side-effecting
+  cells that must not run). Per cell: supported operation detected (Tier 0/1 model exists), Tier 2 safety verdict and reason;
+  aggregates by operation and by reason; a counting-only ranking of the relaxation proposals P1-P7 (+ P8: bare imported names
+  such as `read_csv(...)`). On the 51 handwritten cells it reproduces the Phase 4d verdicts exactly (6 of 51 accepted): a supported
+  operation is detected in 49 (96%), Tier 2 accepts 12%; ranking: P2 per-statement 15 (35% of the rejected supported-operation
+  cells), P3 chains 8 (19%), P5 filters 4 (9%), P1 literal names 3 (7%), P4 wrappers 2, P6 agg dict 2 (`docs/benchmarks/phase4e/
+  coverage_handwritten51.md`). **These are handwritten cells, not real notebooks: no real notebook has been analysed yet.**
+  Command: `python -m benchmarks.realworld.coverage <folder of .ipynb> --out docs/benchmarks/phase4e/real`.
+
+### Next steps
+1. Give me the notebook folder and run the coverage command; decide on relaxations (still proposals, each needing a safety
+   review and a fresh split) only from real counts.
+2. Run the Linux commands (or Docker) before the VM; then the one-hour pilot (`--pilot 12`), then the full val-v5 run.

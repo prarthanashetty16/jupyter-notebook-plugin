@@ -355,3 +355,55 @@ def test_s1_fails_when_the_held_out_actual_exceeds_the_high_bound():
     d["ram_value"] = 900 * MIB  # far above every bound
     ctl = run_scenario(d, None, ControllerConfig())
     assert criteria(d, ctl).iloc[0]["met"] == "FAILED"
+
+
+# -- Amendment 1: S4 made numeric, priority groups, partial runs --------------------------------------------------------------
+def test_s4_is_five_numeric_checks_and_fails_on_each():
+    from benchmarks.controller_eval import criteria, run_scenario
+
+    d = _fake_frame()
+    ctl = run_scenario(d, None, ControllerConfig())
+    ok = criteria(d, ctl).iloc[3]
+    assert ok["met"] == "MET" and "within-one" in ok["result"]
+    wide = ctl.assign(ram_high=ctl["ram_high"] * 5)  # width far beyond 1.25x
+    assert (
+        criteria(d, wide).iloc[3]["met"] == "FAILED"
+        and "FAILED" in criteria(d, wide).iloc[3]["result"]
+    )
+    lowered = ctl.assign(ram_low=ctl["ram_low"] // 2)
+    assert criteria(d, lowered).iloc[3]["met"] == "FAILED"
+    worse_time = ctl.assign(
+        time_expected=1e-3, time_low=1e-4, time_high=2e-3
+    )  # buckets 4+ apart from 20 s
+    assert criteria(d, worse_time).iloc[3]["met"] == "FAILED"
+
+
+def test_completion_counts_final_statuses_per_priority_group():
+    from benchmarks.controller_eval import completion
+    from benchmarks.suite import build_grid, priority_of
+
+    grid = build_grid("full", splits=("val-v5",))
+    ids = {p.id for p in grid}
+    assert {g: k == n for g, (k, n) in completion(ids).items()} == {1: True, 2: True, 3: True}
+    p1 = {p.id for p in grid if priority_of(p.op) == 1}
+    comp = completion(p1)
+    assert comp[1][0] == comp[1][1] and comp[2][0] == 0 and comp[3][0] == 0
+    partial = set(list(p1)[:-1])  # one P1 point still pending
+    assert completion(partial)[1][0] == completion(partial)[1][1] - 1
+
+
+def test_a_partial_run_is_reported_per_completed_group_and_never_as_the_whole_of_val_v5():
+    from benchmarks.controller_eval import validation_section
+    from benchmarks.suite import build_grid, priority_of
+
+    grid = build_grid("full", splits=("val-v5",))
+    p1 = [p.id for p in grid if priority_of(p.op) == 1]
+    none_done = validation_section(pd.DataFrame({"point_id": p1[:-1]}))
+    assert "NOT EVALUATED" in none_done and "| NO |" in none_done.replace("| NO |", "| NO |")
+    only_p1 = validation_section(pd.DataFrame({"point_id": p1}))
+    assert (
+        "NOT EVALUATED" not in only_p1 and "| yes |" in only_p1 and only_p1.count("| NO |") == 2
+    )  # P2, P3 incomplete
+    assert (
+        "completed groups only" not in only_p1 or "P1" in only_p1
+    )  # verdict scope is stated when predictions exist

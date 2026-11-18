@@ -166,6 +166,13 @@ def main() -> None:  # noqa: C901
         p.add_argument("--retry-failed", action="store_true", help="re-run points that errored")
         p.add_argument("--no-report", action="store_true")
         p.add_argument(
+            "--pilot",
+            type=int,
+            metavar="N",
+            help="run only the first N points (priority order), time them and extrapolate the total "
+            "for the rest into pilot.json (size the VM budget before the full run)",
+        )
+        p.add_argument(
             "--require-calibrated",
             action="store_true",
             help="abort unless nexus-calibrate-machine has produced a profile (recorded in meta.json)",
@@ -240,6 +247,7 @@ def main() -> None:  # noqa: C901
         ops=set(args.ops.split(",")) if args.ops else None,
         retry_failed=args.retry_failed,
         max_points=args.max_points,
+        pilot=args.pilot,
         max_size=args.max_size,
         splits=_splits(args),
         tiers=tuple(int(t) for t in args.tiers.split(",")),

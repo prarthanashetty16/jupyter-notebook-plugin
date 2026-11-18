@@ -19,7 +19,7 @@ import numpy as np
 
 from benchmarks import store
 from benchmarks.datasets import DatasetConfig, estimate_frame_bytes, make_frame, make_join_pair
-from benchmarks.split import GROUPS, load_split
+from benchmarks.split import GROUPS, VAL, load_split
 
 BASE = DatasetConfig(n_rows=1, n_int=2, n_float=2, n_object=2, n_category=1, n_datetime=1)
 NP_SORT_SIZES = (5_000_000, 10_000_000, 30_000_000, 100_000_000)
@@ -1347,6 +1347,16 @@ SUITES: dict[str, SuiteSpec] = {
 }
 
 
+# Run order for the held-out group when a budget may cut the run short (pre-registration, Amendment 1)
+PRIORITY = {"merge": 1, "groupby": 1, "astype": 1, "drop_duplicates": 1, "pandas.read_csv": 1,
+            "pandas.concat": 2, "sort_values": 2, "numpy.sort": 3, "operator.matmul": 3}  # fmt: skip
+
+
+def priority_of(op: str) -> int:
+    """1 (run first) .. 3 (run last, skippable); unknown operations run last."""
+    return PRIORITY.get(op, 3)
+
+
 def build_grid(
     suite: str = "small",
     *,
@@ -1392,4 +1402,8 @@ def build_grid(
                     split=which,
                 )
             )
-    return sorted(points, key=lambda pt: GROUPS.index(pt.split))  # stable group order
+    # stable: group order, then (held-out group only) priority; cases and sizes keep their order
+    return sorted(
+        points,
+        key=lambda pt: (GROUPS.index(pt.split), priority_of(pt.op) if pt.split == VAL else 0),
+    )
