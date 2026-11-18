@@ -4,6 +4,11 @@ Safe only when the cell consumes the result through a literal column selection (
 result whose uses are all literal column reads). Binding the result keeps it visible to later
 cells, which this analysis cannot see, so that case is labelled ``changes_results`` instead of
 ``preserving``. Anything not provable is refused.
+
+Disabled by default (post-hoc, after the Phase 5 held-out check): the frozen Tier 0 column-saving
+model predicted 46-59% savings and 13-19% were measured on every shown suggestion (dev and
+held-out, see docs/PROGRESS.md, Phase 5b). Enable it explicitly with ``NEXUS_ENABLE_RULES=select_columns``
+or ``suggest(..., enable={"select_columns"})`` and treat its saving figure as an over-estimate.
 """
 
 from __future__ import annotations
@@ -34,6 +39,7 @@ from nexus.suggestions.virtual import profile_frame, virtual_frame
 
 class SelectColumnsRule(SuggestionRule):
     name = "select_columns"
+    enabled_by_default = False
     ops = ("groupby", "merge", "pandas.merge")
 
     def propose(self, ctx: Context) -> Suggestion | None:

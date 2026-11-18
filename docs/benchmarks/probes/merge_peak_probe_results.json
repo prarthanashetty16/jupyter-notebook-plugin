@@ -1,0 +1,2546 @@
+[
+ {
+  "mix": "float6",
+  "rows": 500000,
+  "key_card": 1000,
+  "inputs_MiB": 30.54834747314453,
+  "dropped_share_of_inputs": 0.7499938187322632,
+  "os_full_MiB": 20.40625,
+  "censored_full": false,
+  "trace_full": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 28.077244758605957,
+    "merge_result_MiB": 11.467187881469727,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 16.1,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 0.5,
+     "where": "merge.py:3049 <- merge.py:2200"
+    },
+    {
+     "MiB": 0.0,
+     "where": "merge.py:3042 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 24.268460273742676
+  },
+  "os_selected_MiB": 20.5078125,
+  "censored_selected": false,
+  "trace_selected": {
+   "stages": {
+    "select_MiB": 0.01999950408935547,
+    "merge_MiB": 28.07169818878174,
+    "merge_result_MiB": 0.014386177062988281,
+    "final_column_MiB": 0.002105712890625
+   },
+   "sites": [
+    {
+     "MiB": 16.1,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 0.5,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 28.08932876586914
+  },
+  "os_preselected_MiB": 20.3828125,
+  "censored_preselected": false,
+  "trace_preselected": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 28.074241638183594,
+    "merge_result_MiB": 0.017400741577148438,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 16.1,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 0.5,
+     "where": "merge.py:3049 <- merge.py:2200"
+    },
+    {
+     "MiB": 0.0,
+     "where": "merge.py:3042 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 24.265457153320312
+  }
+ },
+ {
+  "mix": "float6",
+  "rows": 1000000,
+  "key_card": 1000,
+  "inputs_MiB": 61.06592559814453,
+  "dropped_share_of_inputs": 0.7499969078088509,
+  "os_full_MiB": 32.49609375,
+  "censored_full": false,
+  "trace_full": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 56.12366771697998,
+    "merge_result_MiB": 22.911270141601562,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 1.0,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 56.129408836364746
+  },
+  "os_selected_MiB": 32.58203125,
+  "censored_selected": false,
+  "trace_selected": {
+   "stages": {
+    "select_MiB": 0.01999950408935547,
+    "merge_MiB": 56.11765193939209,
+    "merge_result_MiB": 0.014426231384277344,
+    "final_column_MiB": 0.002105712890625
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 1.0,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 56.13521766662598
+  },
+  "os_preselected_MiB": 32.4375,
+  "censored_preselected": false,
+  "trace_preselected": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 56.12073516845703,
+    "merge_result_MiB": 0.01744842529296875,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 1.0,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 56.12654113769531
+  }
+ },
+ {
+  "mix": "float6",
+  "rows": 2000000,
+  "key_card": 1000,
+  "inputs_MiB": 122.10108184814453,
+  "dropped_share_of_inputs": 0.749998453514811,
+  "os_full_MiB": 61.94921875,
+  "censored_full": false,
+  "trace_full": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 79.96561908721924,
+    "merge_result_MiB": 45.79954719543457,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 1.9,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 79.97138690948486
+  },
+  "os_selected_MiB": 56.42578125,
+  "censored_selected": false,
+  "trace_selected": {
+   "stages": {
+    "select_MiB": 0.0200042724609375,
+    "merge_MiB": 79.95955562591553,
+    "merge_result_MiB": 0.014424324035644531,
+    "final_column_MiB": 0.002105712890625
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 1.9,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 79.97715282440186
+  },
+  "os_preselected_MiB": 56.3203125,
+  "censored_preselected": false,
+  "trace_preselected": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 79.96257019042969,
+    "merge_result_MiB": 0.0174407958984375,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 1.9,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 79.96833801269531
+  }
+ },
+ {
+  "mix": "float6",
+  "rows": 500000,
+  "key_card": 500000,
+  "inputs_MiB": 45.77661895751953,
+  "dropped_share_of_inputs": 0.7499958750226874,
+  "os_full_MiB": 36.21875,
+  "censored_full": false,
+  "trace_full": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 35.69175720214844,
+    "merge_result_MiB": 11.46703052520752,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 16.1,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3050 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 35.697513580322266
+  },
+  "os_selected_MiB": 36.30859375,
+  "censored_selected": false,
+  "trace_selected": {
+   "stages": {
+    "select_MiB": 0.020043373107910156,
+    "merge_MiB": 35.68587398529053,
+    "merge_result_MiB": 0.014456748962402344,
+    "final_column_MiB": 0.002105712890625
+   },
+   "sites": [
+    {
+     "MiB": 16.1,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3050 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 35.70349884033203
+  },
+  "os_preselected_MiB": 36.21484375,
+  "censored_preselected": false,
+  "trace_preselected": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 35.68884086608887,
+    "merge_result_MiB": 0.017377853393554688,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 16.1,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3050 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 35.694597244262695
+  }
+ },
+ {
+  "mix": "float6",
+  "rows": 1000000,
+  "key_card": 500000,
+  "inputs_MiB": 76.29419708251953,
+  "dropped_share_of_inputs": 0.7499975250081674,
+  "os_full_MiB": 56.05859375,
+  "censored_full": false,
+  "trace_full": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 63.73787212371826,
+    "merge_result_MiB": 22.911354064941406,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3050 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 63.74362850189209
+  },
+  "os_selected_MiB": 56.15625,
+  "censored_selected": false,
+  "trace_selected": {
+   "stages": {
+    "select_MiB": 0.02008819580078125,
+    "merge_MiB": 63.7317590713501,
+    "merge_result_MiB": 0.014412879943847656,
+    "final_column_MiB": 0.002105712890625
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3050 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 63.74942874908447
+  },
+  "os_preselected_MiB": 56.0,
+  "censored_preselected": false,
+  "trace_preselected": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 63.734846115112305,
+    "merge_result_MiB": 0.017345428466796875,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3050 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 63.74061393737793
+  }
+ },
+ {
+  "mix": "float6",
+  "rows": 2000000,
+  "key_card": 500000,
+  "inputs_MiB": 137.32935333251953,
+  "dropped_share_of_inputs": 0.7499986250025208,
+  "os_full_MiB": 80.15234375,
+  "censored_full": false,
+  "trace_full": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 87.57977771759033,
+    "merge_result_MiB": 45.79958534240723,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 87.58556079864502
+  },
+  "os_selected_MiB": 80.24609375,
+  "censored_selected": false,
+  "trace_selected": {
+   "stages": {
+    "select_MiB": 0.0200042724609375,
+    "merge_MiB": 87.5736608505249,
+    "merge_result_MiB": 0.014456748962402344,
+    "final_column_MiB": 0.002105712890625
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 87.59124660491943
+  },
+  "os_preselected_MiB": 80.1640625,
+  "censored_preselected": false,
+  "trace_preselected": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 87.57672119140625,
+    "merge_result_MiB": 0.0174713134765625,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 87.58250427246094
+  }
+ },
+ {
+  "mix": "float2",
+  "rows": 500000,
+  "key_card": 1000,
+  "inputs_MiB": 15.289558410644531,
+  "dropped_share_of_inputs": 0.5004907603816904,
+  "os_full_MiB": 20.4375,
+  "censored_full": false,
+  "trace_full": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 28.07701587677002,
+    "merge_result_MiB": 11.466817855834961,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 16.1,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 0.5,
+     "where": "merge.py:3049 <- merge.py:2200"
+    },
+    {
+     "MiB": 0.0,
+     "where": "merge.py:3042 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 24.268322944641113
+  },
+  "os_selected_MiB": 20.53515625,
+  "censored_selected": false,
+  "trace_selected": {
+   "stages": {
+    "select_MiB": 0.019819259643554688,
+    "merge_MiB": 28.071181297302246,
+    "merge_result_MiB": 0.014386177062988281,
+    "final_column_MiB": 0.002105712890625
+   },
+   "sites": [
+    {
+     "MiB": 16.1,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 0.5,
+     "where": "merge.py:3049 <- merge.py:2200"
+    },
+    {
+     "MiB": 0.0,
+     "where": "merge.py:3042 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 24.274041175842285
+  },
+  "os_preselected_MiB": 20.3828125,
+  "censored_preselected": false,
+  "trace_preselected": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 28.074806213378906,
+    "merge_result_MiB": 0.017421722412109375,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 16.1,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 0.5,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 28.080612182617188
+  }
+ },
+ {
+  "mix": "float2",
+  "rows": 1000000,
+  "key_card": 1000,
+  "inputs_MiB": 30.54834747314453,
+  "dropped_share_of_inputs": 0.5002456273462281,
+  "os_full_MiB": 32.4921875,
+  "censored_full": false,
+  "trace_full": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 56.12344551086426,
+    "merge_result_MiB": 22.910910606384277,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 1.0,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 56.12918663024902
+  },
+  "os_selected_MiB": 32.578125,
+  "censored_selected": false,
+  "trace_selected": {
+   "stages": {
+    "select_MiB": 0.01986217498779297,
+    "merge_MiB": 56.11765384674072,
+    "merge_result_MiB": 0.014428138732910156,
+    "final_column_MiB": 0.002105712890625
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 1.0,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 56.13508224487305
+  },
+  "os_preselected_MiB": 32.4375,
+  "censored_preselected": false,
+  "trace_preselected": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 56.12071514129639,
+    "merge_result_MiB": 0.01739788055419922,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 1.0,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 56.12645626068115
+  }
+ },
+ {
+  "mix": "float2",
+  "rows": 2000000,
+  "key_card": 1000,
+  "inputs_MiB": 61.06592559814453,
+  "dropped_share_of_inputs": 0.5001228755553606,
+  "os_full_MiB": 61.90234375,
+  "censored_full": false,
+  "trace_full": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 79.96538829803467,
+    "merge_result_MiB": 45.799224853515625,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 1.9,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 79.97112941741943
+  },
+  "os_selected_MiB": 56.4296875,
+  "censored_selected": false,
+  "trace_selected": {
+   "stages": {
+    "select_MiB": 0.01990795135498047,
+    "merge_MiB": 79.95955562591553,
+    "merge_result_MiB": 0.014472007751464844,
+    "final_column_MiB": 0.002105712890625
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 1.9,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 79.9770565032959
+  },
+  "os_preselected_MiB": 56.27734375,
+  "censored_preselected": false,
+  "trace_preselected": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 79.96252250671387,
+    "merge_result_MiB": 0.017393112182617188,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 1.9,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 79.96829032897949
+  }
+ },
+ {
+  "mix": "float2",
+  "rows": 500000,
+  "key_card": 500000,
+  "inputs_MiB": 30.51782989501953,
+  "dropped_share_of_inputs": 0.6249948437925388,
+  "os_full_MiB": 36.14453125,
+  "censored_full": false,
+  "trace_full": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 35.69180774688721,
+    "merge_result_MiB": 11.467035293579102,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 16.1,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3050 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 35.697564125061035
+  },
+  "os_selected_MiB": 36.31640625,
+  "censored_selected": false,
+  "trace_selected": {
+   "stages": {
+    "select_MiB": 0.01990795135498047,
+    "merge_MiB": 35.68578052520752,
+    "merge_result_MiB": 0.01432037353515625,
+    "final_column_MiB": 0.002105712890625
+   },
+   "sites": [
+    {
+     "MiB": 16.1,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3050 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 35.703269958496094
+  },
+  "os_preselected_MiB": 36.2109375,
+  "censored_preselected": false,
+  "trace_preselected": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 35.688876152038574,
+    "merge_result_MiB": 0.01739788055419922,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 16.1,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3050 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 35.6946439743042
+  }
+ },
+ {
+  "mix": "float2",
+  "rows": 1000000,
+  "key_card": 500000,
+  "inputs_MiB": 45.77661895751953,
+  "dropped_share_of_inputs": 0.5833301250176457,
+  "os_full_MiB": 56.01953125,
+  "censored_full": false,
+  "trace_full": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 63.73768901824951,
+    "merge_result_MiB": 22.91107940673828,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3050 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 63.74344539642334
+  },
+  "os_selected_MiB": 56.109375,
+  "censored_selected": false,
+  "trace_selected": {
+   "stages": {
+    "select_MiB": 0.01981639862060547,
+    "merge_MiB": 63.73175525665283,
+    "merge_result_MiB": 0.014409065246582031,
+    "final_column_MiB": 0.002105712890625
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3050 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 63.74915313720703
+  },
+  "os_preselected_MiB": 56.0078125,
+  "censored_preselected": false,
+  "trace_preselected": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 63.73481559753418,
+    "merge_result_MiB": 0.017377853393554688,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3050 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 63.74057197570801
+  }
+ },
+ {
+  "mix": "float2",
+  "rows": 2000000,
+  "key_card": 500000,
+  "inputs_MiB": 76.29419708251953,
+  "dropped_share_of_inputs": 0.5499981850059894,
+  "os_full_MiB": 80.15625,
+  "censored_full": false,
+  "trace_full": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 87.57950401306152,
+    "merge_result_MiB": 45.79917240142822,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 87.58528709411621
+  },
+  "os_selected_MiB": 80.24609375,
+  "censored_selected": false,
+  "trace_selected": {
+   "stages": {
+    "select_MiB": 0.01990795135498047,
+    "merge_MiB": 87.57361698150635,
+    "merge_result_MiB": 0.014319419860839844,
+    "final_column_MiB": 0.002105712890625
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 87.59113311767578
+  },
+  "os_preselected_MiB": 80.15234375,
+  "censored_preselected": false,
+  "trace_preselected": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 87.57672119140625,
+    "merge_result_MiB": 0.0174713134765625,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 87.58247756958008
+  }
+ },
+ {
+  "mix": "int6",
+  "rows": 500000,
+  "key_card": 1000,
+  "inputs_MiB": 30.54834747314453,
+  "dropped_share_of_inputs": 0.7499938187322632,
+  "os_full_MiB": 20.4375,
+  "censored_full": false,
+  "trace_full": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 28.077900886535645,
+    "merge_result_MiB": 11.467470169067383,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 16.1,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 0.5,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 28.08364200592041
+  },
+  "os_selected_MiB": 20.515625,
+  "censored_selected": false,
+  "trace_selected": {
+   "stages": {
+    "select_MiB": 0.020071029663085938,
+    "merge_MiB": 28.07108974456787,
+    "merge_result_MiB": 0.01428985595703125,
+    "final_column_MiB": 0.002105712890625
+   },
+   "sites": [
+    {
+     "MiB": 16.1,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 0.5,
+     "where": "merge.py:3049 <- merge.py:2200"
+    },
+    {
+     "MiB": 0.0,
+     "where": "merge.py:3042 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 24.27420139312744
+  },
+  "os_preselected_MiB": 20.43359375,
+  "censored_preselected": false,
+  "trace_preselected": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 28.074806213378906,
+    "merge_result_MiB": 0.01744842529296875,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 16.1,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 0.5,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 28.080585479736328
+  }
+ },
+ {
+  "mix": "int6",
+  "rows": 1000000,
+  "key_card": 1000,
+  "inputs_MiB": 61.06592559814453,
+  "dropped_share_of_inputs": 0.7499969078088509,
+  "os_full_MiB": 32.46484375,
+  "censored_full": false,
+  "trace_full": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 56.12378406524658,
+    "merge_result_MiB": 22.911514282226562,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 1.0,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 56.12952518463135
+  },
+  "os_selected_MiB": 32.58203125,
+  "censored_selected": false,
+  "trace_selected": {
+   "stages": {
+    "select_MiB": 0.02015972137451172,
+    "merge_MiB": 56.11765384674072,
+    "merge_result_MiB": 0.014385223388671875,
+    "final_column_MiB": 0.002105712890625
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 1.0,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 56.135379791259766
+  },
+  "os_preselected_MiB": 32.41796875,
+  "censored_preselected": false,
+  "trace_preselected": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 56.120689392089844,
+    "merge_result_MiB": 0.01735973358154297,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 1.0,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 56.126495361328125
+  }
+ },
+ {
+  "mix": "int6",
+  "rows": 2000000,
+  "key_card": 1000,
+  "inputs_MiB": 122.10108184814453,
+  "dropped_share_of_inputs": 0.749998453514811,
+  "os_full_MiB": 61.96484375,
+  "censored_full": false,
+  "trace_full": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 79.96568775177002,
+    "merge_result_MiB": 45.79964733123779,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 1.9,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 79.97145557403564
+  },
+  "os_selected_MiB": 56.38671875,
+  "censored_selected": false,
+  "trace_selected": {
+   "stages": {
+    "select_MiB": 0.020154953002929688,
+    "merge_MiB": 79.95955562591553,
+    "merge_result_MiB": 0.014472007751464844,
+    "final_column_MiB": 0.002105712890625
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 1.9,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 79.97730350494385
+  },
+  "os_preselected_MiB": 56.3203125,
+  "censored_preselected": false,
+  "trace_preselected": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 79.96256828308105,
+    "merge_result_MiB": 0.017438888549804688,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 1.9,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 79.96833610534668
+  }
+ },
+ {
+  "mix": "int6",
+  "rows": 500000,
+  "key_card": 500000,
+  "inputs_MiB": 45.77661895751953,
+  "dropped_share_of_inputs": 0.7499958750226874,
+  "os_full_MiB": 36.21484375,
+  "censored_full": false,
+  "trace_full": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 35.691993713378906,
+    "merge_result_MiB": 11.467427253723145,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 16.1,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3050 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 35.69776153564453
+  },
+  "os_selected_MiB": 36.34765625,
+  "censored_selected": false,
+  "trace_selected": {
+   "stages": {
+    "select_MiB": 0.02020263671875,
+    "merge_MiB": 35.68525791168213,
+    "merge_result_MiB": 0.014374732971191406,
+    "final_column_MiB": 0.002105712890625
+   },
+   "sites": [
+    {
+     "MiB": 16.1,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 0.5,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 31.888501167297363
+  },
+  "os_preselected_MiB": 36.2578125,
+  "censored_preselected": false,
+  "trace_preselected": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 35.688934326171875,
+    "merge_result_MiB": 0.0174713134765625,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 16.1,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3050 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 35.6946907043457
+  }
+ },
+ {
+  "mix": "int6",
+  "rows": 1000000,
+  "key_card": 500000,
+  "inputs_MiB": 76.29419708251953,
+  "dropped_share_of_inputs": 0.7499975250081674,
+  "os_full_MiB": 56.015625,
+  "censored_full": false,
+  "trace_full": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 63.737942695617676,
+    "merge_result_MiB": 22.911511421203613,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3050 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 63.743699073791504
+  },
+  "os_selected_MiB": 56.1015625,
+  "censored_selected": false,
+  "trace_selected": {
+   "stages": {
+    "select_MiB": 0.02011394500732422,
+    "merge_MiB": 63.73171138763428,
+    "merge_result_MiB": 0.014365196228027344,
+    "final_column_MiB": 0.002105712890625
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3050 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 63.749406814575195
+  },
+  "os_preselected_MiB": 56.0546875,
+  "censored_preselected": false,
+  "trace_preselected": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 63.73480033874512,
+    "merge_result_MiB": 0.017393112182617188,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3050 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 63.74056816101074
+  }
+ },
+ {
+  "mix": "int6",
+  "rows": 2000000,
+  "key_card": 500000,
+  "inputs_MiB": 137.32935333251953,
+  "dropped_share_of_inputs": 0.7499986250025208,
+  "os_full_MiB": 80.14453125,
+  "censored_full": false,
+  "trace_full": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 87.57958126068115,
+    "merge_result_MiB": 45.79954719543457,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 87.58535289764404
+  },
+  "os_selected_MiB": 80.234375,
+  "censored_selected": false,
+  "trace_selected": {
+   "stages": {
+    "select_MiB": 0.020025253295898438,
+    "merge_MiB": 87.57361316680908,
+    "merge_result_MiB": 0.014409065246582031,
+    "final_column_MiB": 0.002105712890625
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 87.59124660491943
+  },
+  "os_preselected_MiB": 80.1484375,
+  "censored_preselected": false,
+  "trace_preselected": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 87.57667827606201,
+    "merge_result_MiB": 0.01742839813232422,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 87.5824613571167
+  }
+ },
+ {
+  "mix": "mixed",
+  "rows": 500000,
+  "key_card": 1000,
+  "inputs_MiB": 79.18573760986328,
+  "dropped_share_of_inputs": 0.9035523829628445,
+  "os_full_MiB": 19.8359375,
+  "censored_full": false,
+  "trace_full": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 28.07793140411377,
+    "merge_result_MiB": 11.470178604125977,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 16.1,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 0.5,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 28.083683967590332
+  },
+  "os_selected_MiB": 19.921875,
+  "censored_selected": false,
+  "trace_selected": {
+   "stages": {
+    "select_MiB": 0.020066261291503906,
+    "merge_MiB": 28.071702003479004,
+    "merge_result_MiB": 0.014389991760253906,
+    "final_column_MiB": 0.002105712890625
+   },
+   "sites": [
+    {
+     "MiB": 16.1,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 0.5,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 28.089399337768555
+  },
+  "os_preselected_MiB": 20.3828125,
+  "censored_preselected": false,
+  "trace_preselected": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 28.074806213378906,
+    "merge_result_MiB": 0.01732158660888672,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 16.1,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 0.5,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 28.080612182617188
+  }
+ },
+ {
+  "mix": "mixed",
+  "rows": 1000000,
+  "key_card": 1000,
+  "inputs_MiB": 158.34070587158203,
+  "dropped_share_of_inputs": 0.9035834143657765,
+  "os_full_MiB": 31.962890625,
+  "censored_full": false,
+  "trace_full": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 56.12382984161377,
+    "merge_result_MiB": 22.91434669494629,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 1.0,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 56.129597663879395
+  },
+  "os_selected_MiB": 32.2578125,
+  "censored_selected": false,
+  "trace_selected": {
+   "stages": {
+    "select_MiB": 0.020116806030273438,
+    "merge_MiB": 56.11769771575928,
+    "merge_result_MiB": 0.014426231384277344,
+    "final_column_MiB": 0.002105712890625
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 1.0,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 56.13538074493408
+  },
+  "os_preselected_MiB": 32.43359375,
+  "censored_preselected": false,
+  "trace_preselected": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 56.120758056640625,
+    "merge_result_MiB": 0.017486572265625,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 1.0,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 56.12649917602539
+  }
+ },
+ {
+  "mix": "mixed",
+  "rows": 2000000,
+  "key_card": 1000,
+  "inputs_MiB": 316.65064239501953,
+  "dropped_share_of_inputs": 0.9035989345902843,
+  "os_full_MiB": null,
+  "censored_full": true,
+  "trace_full": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 79.96559715270996,
+    "merge_result_MiB": 45.80239200592041,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 1.9,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 79.97136497497559
+  },
+  "os_selected_MiB": null,
+  "censored_selected": true,
+  "trace_selected": {
+   "stages": {
+    "select_MiB": 0.020112037658691406,
+    "merge_MiB": 79.95955562591553,
+    "merge_result_MiB": 0.014472007751464844,
+    "final_column_MiB": 0.002105712890625
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 1.9,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 79.97723388671875
+  },
+  "os_preselected_MiB": 56.31640625,
+  "censored_preselected": false,
+  "trace_preselected": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 79.96256828308105,
+    "merge_result_MiB": 0.017438888549804688,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 1.9,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 79.96830940246582
+  }
+ },
+ {
+  "mix": "mixed",
+  "rows": 500000,
+  "key_card": 500000,
+  "inputs_MiB": 94.41400909423828,
+  "dropped_share_of_inputs": 0.8787855353597845,
+  "os_full_MiB": 35.66015625,
+  "censored_full": false,
+  "trace_full": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 35.69199085235596,
+    "merge_result_MiB": 11.470108985900879,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 16.1,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3050 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 35.69775867462158
+  },
+  "os_selected_MiB": 35.75,
+  "censored_selected": false,
+  "trace_selected": {
+   "stages": {
+    "select_MiB": 0.020112037658691406,
+    "merge_MiB": 35.685851097106934,
+    "merge_result_MiB": 0.014418601989746094,
+    "final_column_MiB": 0.002105712890625
+   },
+   "sites": [
+    {
+     "MiB": 16.1,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3050 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 35.703609466552734
+  },
+  "os_preselected_MiB": 36.20703125,
+  "censored_preselected": false,
+  "trace_preselected": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 35.68896484375,
+    "merge_result_MiB": 0.017438888549804688,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 16.1,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 3.8,
+     "where": "merge.py:3050 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 35.694732666015625
+  }
+ },
+ {
+  "mix": "mixed",
+  "rows": 1000000,
+  "key_card": 500000,
+  "inputs_MiB": 173.56897735595703,
+  "dropped_share_of_inputs": 0.8901085989633509,
+  "os_full_MiB": 55.80078125,
+  "censored_full": false,
+  "trace_full": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 63.737945556640625,
+    "merge_result_MiB": 22.91429615020752,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3050 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 63.74372863769531
+  },
+  "os_selected_MiB": 55.89453125,
+  "censored_selected": false,
+  "trace_selected": {
+   "stages": {
+    "select_MiB": 0.020158767700195312,
+    "merge_MiB": 63.73180294036865,
+    "merge_result_MiB": 0.0143585205078125,
+    "final_column_MiB": 0.002105712890625
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3050 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 63.74954319000244
+  },
+  "os_preselected_MiB": 56.05859375,
+  "censored_preselected": false,
+  "trace_preselected": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 63.734317779541016,
+    "merge_result_MiB": 0.01743316650390625,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 1.0,
+     "where": "merge.py:3049 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 56.110809326171875
+  }
+ },
+ {
+  "mix": "mixed",
+  "rows": 2000000,
+  "key_card": 500000,
+  "inputs_MiB": 331.87891387939453,
+  "dropped_share_of_inputs": 0.8965510439957597,
+  "os_full_MiB": 80.0625,
+  "censored_full": false,
+  "trace_full": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 87.57984638214111,
+    "merge_result_MiB": 45.80252265930176,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 87.58560276031494
+  },
+  "os_selected_MiB": 79.73828125,
+  "censored_selected": false,
+  "trace_selected": {
+   "stages": {
+    "select_MiB": 0.020111083984375,
+    "merge_MiB": 87.5736608505249,
+    "merge_result_MiB": 0.014409065246582031,
+    "final_column_MiB": 0.002105712890625
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 87.59138011932373
+  },
+  "os_preselected_MiB": 80.1640625,
+  "censored_preselected": false,
+  "trace_preselected": {
+   "stages": {
+    "select_MiB": 0.006328582763671875,
+    "merge_MiB": 87.57667541503906,
+    "merge_result_MiB": 0.017425537109375,
+    "final_column_MiB": 0.00213623046875
+   },
+   "sites": [
+    {
+     "MiB": 32.3,
+     "where": "merge.py:3018 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3047 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3051 <- merge.py:2200"
+    },
+    {
+     "MiB": 15.3,
+     "where": "merge.py:3050 <- merge.py:2200"
+    },
+    {
+     "MiB": 7.6,
+     "where": "merge.py:3042 <- merge.py:2200"
+    }
+   ],
+   "near_peak_MiB": 87.58245849609375
+  }
+ }
+]

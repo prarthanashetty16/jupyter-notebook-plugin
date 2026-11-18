@@ -8,8 +8,9 @@ from typing import Any
 
 from nexus.failsafe import Deadline, run_with_timeout
 from nexus.pipeline import CellReport, Pipeline
-from nexus.render import format_report, human_bytes
+from nexus.render import format_report
 from nexus.risk import RiskReport, assess
+from nexus.suggestions.format import describe_all
 
 log = logging.getLogger("nexus")
 
@@ -44,6 +45,9 @@ class NexusSession:
         self.last_risk: RiskReport | None = None
         self.last_source: str | None = None
         self.suggestions: list[Any] = []
+        self.enabled_rules: set[str] = (
+            set()
+        )  # suggestion rules that are off by default and opted in
         self._in_hook = False
         self._active = 0
 
@@ -120,6 +124,17 @@ class NexusSession:
             parts.append(self.last_risk.format())
         return "\n".join(parts)
 
+    def set_rule(self, name: str, enable: bool) -> str:
+        """Opt a suggestion rule that is off by default in or out; unknown names are refused."""
+        from nexus.suggestions.rules import RULES
+
+        known = {r.name: r for r in RULES}
+        if name not in known:
+            return f"[nexus] unknown rule {name!r}; known: {', '.join(sorted(known))}"
+        (self.enabled_rules.add if enable else self.enabled_rules.discard)(name)
+        default = known[name].enabled_by_default
+        return f"[nexus] rule {name}: {'on' if default or name in self.enabled_rules else 'off'}"
+
     def show_suggestions(self, namespace: Any) -> str:
         """Compute and list ranked suggestions for the last cell (nothing is executed)."""
         from nexus.suggestions import suggest
@@ -127,23 +142,12 @@ class NexusSession:
         report, source = self.last_report, self.last_source
         if report is None or not report.ops or source is None:
             return "[nexus] no analysed cell with a known operation"
-        self.suggestions = suggest(source, namespace, report.inspection, report.ops)
+        self.suggestions = suggest(
+            source, namespace, report.inspection, report.ops, enable=self.enabled_rules
+        )
         if not self.suggestions:
             return "[nexus] no suggestion that is provably safe and saves enough memory"
-        lines = []
-        for i, sg in enumerate(self.suggestions, 1):
-            if sg.before is not None and sg.after is not None:
-                rng = (
-                    f"predicted peak {human_bytes(sg.before.ram_expected)} -> "
-                    f"{human_bytes(sg.after.ram_expected)} (range {human_bytes(sg.after.ram_low)}-"
-                    f"{human_bytes(sg.after.ram_high)}, Tier 0 re-estimate)"
-                )
-            else:
-                rng = f"saves about {human_bytes(sg.saving_bytes)} (exact size, no range)"
-            lines.append(f"[{i}] {sg.title}  [{sg.semantics}]\n    {sg.explanation}\n    {rng}")
-            lines.append(f"    semantics: {sg.semantics_detail}")
-            for note in sg.notes:
-                lines.append(f"    note: {note}")
+        lines = describe_all(self.suggestions)
         lines.append("Use %nexus apply <n> to print the modified source (it is not run).")
         return "\n".join(lines)
 

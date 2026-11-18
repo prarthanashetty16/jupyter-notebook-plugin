@@ -10,7 +10,7 @@ from IPython.core.magic import Magics, line_magic, magics_class
 from nexus.session import NexusSession
 
 log = logging.getLogger("nexus")
-USAGE = "usage: %nexus [status | on | off | verbose on|off | explain | suggestions | apply <n>]"
+USAGE = "usage: %nexus [status | on | off | verbose on|off | explain | suggestions | apply <n> | rule enable|disable <name>]"
 
 
 @magics_class
@@ -22,7 +22,8 @@ class NexusMagics(Magics):
     @line_magic
     def nexus(self, line: str) -> None:
         """Control NEXUS: ``%nexus status``, ``on|off``, ``verbose on|off``, ``explain``,
-        ``suggestions``, ``apply <n>`` (prints the modified source; nothing is executed)."""
+        ``suggestions``, ``apply <n>`` (prints the modified source; nothing is executed),
+        ``rule enable|disable <name>`` (opt in to a rule that is off by default)."""
         words = line.split()
         s = self._session
         try:
@@ -38,6 +39,8 @@ class NexusMagics(Magics):
                 print(s.explain())
             elif words == ["suggestions"]:
                 print(s.show_suggestions(self.shell.user_ns))
+            elif len(words) == 3 and words[0] == "rule" and words[1] in ("enable", "disable"):
+                print(s.set_rule(words[2], words[1] == "enable"))
             elif len(words) == 2 and words[0] == "apply" and words[1].isdigit():
                 print(s.apply(int(words[1])))
             else:

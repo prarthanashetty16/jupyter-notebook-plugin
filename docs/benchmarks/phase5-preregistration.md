@@ -230,3 +230,19 @@ Everything above is unchanged. What changed and why, in the order it happened:
    evidence of generalisation; only the held-out part can be.**
 4. **Not met as pre-registered:** at least 30 dev cells that are risky. Of 40 dev cells only 19 were risky (peak >= 200 MiB), and
    only 15 candidates were shown and measured. Rule-level claims exist for 3 rule families only (>= 3 shown).
+
+---
+
+## Amendment 2 (2026-11-18, written after the held-out suggestion result was read; the held-out configurations are now dev)
+
+Everything above is unchanged, including every threshold (20% / 64 MiB, S1-S5). The held-out check was run once and read: S1 and S2
+PASSED, S3 FAILED (n=9, median 5.5, p90 39.0 against <= 15 / <= 35), S4 FAILED (9 of 12 = 75% against >= 80%). Nothing was re-run.
+
+1. **`select_columns` disabled by default.** Post-hoc, after the failure, on the evidence dev 46% predicted vs 13% measured and held-out 46-59%
+   predicted vs 13-19% measured (three suggestions). It can be enabled explicitly (`NEXUS_ENABLE_RULES`, `%nexus rule enable`, `suggest(enable=)`).
+   A post-hoc subset without it would meet S3 and S4 numerically but does not count as a pass.
+2. **Disclosure about B2 as implemented.** For suggestions whose saving is a descriptor size (`avoid_copy`, `delete_unreferenced`) the engine
+   applied only the 64 MiB condition; the 20% condition was not evaluated, because no estimate of the unmodified cell's peak exists for them
+   (Amendment 1 said "thresholds still apply", true for bytes only). This is how the held-out and dev runs actually behaved. Thresholds are not changed.
+3. **Interface.** Every shown suggestion states what its label changes in plain words, and suggestions without a model re-estimate show
+   "no estimate of saving" instead of a saving.

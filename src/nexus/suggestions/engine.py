@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import ast
 import logging
-from collections.abc import Mapping
+import os
+from collections.abc import Collection, Mapping
 from dataclasses import replace
 from typing import Any
 
@@ -41,8 +42,15 @@ def _in_tree(tree: ast.Module, op: DetectedOp) -> DetectedOp | None:
     return None
 
 
-def default_rules() -> list[SuggestionRule]:
-    return [cls() for cls in rules_mod.RULES]
+def default_rules(enable: Collection[str] = ()) -> list[SuggestionRule]:
+    """Rules that are on by default plus those named in ``enable`` (explicit opt-in)."""
+    return [cls() for cls in rules_mod.RULES if cls.enabled_by_default or cls.name in enable]
+
+
+def env_enabled_rules() -> frozenset[str]:
+    """Rule names opted in through ``NEXUS_ENABLE_RULES`` (comma-separated)."""
+    raw = os.environ.get("NEXUS_ENABLE_RULES", "")
+    return frozenset(n.strip() for n in raw.split(",") if n.strip())
 
 
 def meaningful(saving: int, before_expected: int) -> bool:
@@ -55,6 +63,8 @@ def _finish(s: Suggestion, op: DetectedOp, state: Inspection) -> Suggestion | No
     if (
         ch.descriptor_saving is not None
     ):  # no frozen model for the avoided allocation (copy, delete)
+        # Only the 64 MiB floor is applied here; the 20% fraction cannot be checked because no
+        # peak is estimated for the unmodified cell (Amendment 2). saving_frac stays 0.0 = "not estimated".
         saving = int(ch.descriptor_saving)
         if saving < MIN_SAVING_BYTES:
             return None
@@ -81,12 +91,14 @@ def suggest(
     ops: list[DetectedOp] | None = None,
     *,
     rules: list[SuggestionRule] | None = None,
+    enable: Collection[str] = (),
     budget_s: float = 3.0,
     keep_hidden: bool = False,
 ) -> list[Suggestion]:
     """Ranked, re-estimated suggestions for a cell; never raises, never runs the cell.
 
-    ``keep_hidden`` (evaluation only) also returns the candidates the filters removed.
+    ``keep_hidden`` (evaluation only) also returns the candidates the filters removed. ``enable``
+    names rules that are off by default and are opted in (plus ``NEXUS_ENABLE_RULES``).
     """
     try:
         if strip_magics(source) != source:
@@ -97,9 +109,10 @@ def suggest(
     except Exception:
         return []
     out: list[Suggestion] = []
+    active = rules if rules is not None else default_rules(set(enable) | env_enabled_rules())
     ops = [m for m in (_in_tree(tree, o) for o in ops) if m is not None]
     for op in ops:
-        for rule in rules if rules is not None else default_rules():
+        for rule in active:
             try:
                 if not rule.applies(op, inspection):
                     continue

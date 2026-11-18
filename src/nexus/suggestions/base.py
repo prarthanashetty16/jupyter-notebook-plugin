@@ -25,6 +25,17 @@ CHANGES_DTYPE = "changes_dtype"
 CHANGES_RESULTS = "changes_results"
 SEMANTICS = (PRESERVING, CHANGES_PRECISION, CHANGES_DTYPE, CHANGES_RESULTS)  # least change first
 
+# What each label means for the user, in plain words (shown for every suggestion).
+SEMANTICS_WORDS: dict[str, str] = {
+    PRESERVING: "the cell gives the same result",
+    CHANGES_PRECISION: "numbers are stored with less precision, so values can differ slightly",
+    CHANGES_DTYPE: "the values are kept but column types change, which can affect later code",
+    CHANGES_RESULTS: (
+        "the result is not the same as before: later cells that use it, or use what it "
+        "removes, may fail or give different answers"
+    ),
+}
+
 
 @dataclass(frozen=True, kw_only=True)
 class VirtualChange:
@@ -86,6 +97,7 @@ class Context:
 class SuggestionRule(ABC):
     name: ClassVar[str]
     ops: ClassVar[tuple[str, ...]] = ()
+    enabled_by_default: ClassVar[bool] = True
 
     def applies(self, op: DetectedOp, state: Inspection) -> bool:
         """Cheap syntactic / state check; the default only checks the operation name."""

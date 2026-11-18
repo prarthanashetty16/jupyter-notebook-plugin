@@ -216,3 +216,63 @@ def test_downcast_is_not_proposed_for_merge_after_the_measured_harm():
     assert not DowncastRule().applies(
         analyze_cell('left.merge(right, on="k")["a"]', _ns())[0], None
     )
+
+
+def _big_merge_case():
+    """A merge whose column drop would clear every threshold if the rule were on."""
+    n = 4_000_000
+    ns = {
+        "pd": pd,
+        "left": pd.DataFrame({"k": np.arange(n) % 50, **{f"c{i}": np.zeros(n) for i in range(8)}}),
+        "right": pd.DataFrame({"k": np.arange(50), "w": np.zeros(50)}),
+    }
+    src = 'left.merge(right, on="k")["w"]'
+    state = StateInspector().inspect(["left", "right"], ns)
+    return src, ns, state
+
+
+def test_select_columns_is_off_by_default_and_opt_in_works(monkeypatch):
+    from nexus.suggestions.engine import default_rules, env_enabled_rules
+
+    monkeypatch.delenv("NEXUS_ENABLE_RULES", raising=False)
+    assert "select_columns" not in {r.name for r in default_rules()}
+    assert "select_columns" in {r.name for r in default_rules({"select_columns"})}
+    assert "downcast_numeric" in {r.name for r in default_rules()}
+    src, ns, state = _big_merge_case()
+    ops = analyze_cell(src, ns)
+    assert propose(SELECT, src, ns) is not None  # the rule itself still works
+    assert not [s for s in suggest(src, ns, state, ops) if s.rule == "select_columns"]
+    on = suggest(src, ns, state, ops, enable={"select_columns"}, keep_hidden=True)
+    assert [s for s in on if s.rule == "select_columns"]
+    monkeypatch.setenv("NEXUS_ENABLE_RULES", "select_columns")
+    assert "select_columns" in {r.name for r in default_rules(env_enabled_rules())}
+    assert [s for s in suggest(src, ns, state, ops, keep_hidden=True) if s.rule == "select_columns"]
+
+
+def test_every_suggestion_states_what_changes_and_no_estimate_where_none():
+    from nexus.suggestions.base import SEMANTICS, SEMANTICS_WORDS, Suggestion, VirtualChange
+    from nexus.suggestions.format import describe
+
+    assert set(SEMANTICS_WORDS) == set(SEMANTICS)
+    base = {
+        "rule": "r", "title": "t", "explanation": "e", "original_source": "a",
+        "modified_source": "b", "semantics_detail": "d",
+    }  # fmt: skip
+    copy = Suggestion(semantics="preserving", saving_bytes=100 * 2**20,
+                      virtual=VirtualChange(descriptor_saving=1), estimate_source="descriptor", **base)  # fmt: skip
+    text = "\n".join(describe(1, copy))
+    assert (
+        "no estimate of saving" in text and "what changes: the cell gives the same result" in text
+    )
+    free = Suggestion(semantics="changes_results", kind="headroom", saving_bytes=2**30, **base)
+    text = "\n".join(describe(1, free))
+    assert "no estimate of saving" in text and "later cells" in text
+
+
+def test_session_set_rule_and_explain_lists_suggestions():
+    from nexus.session import NexusSession
+
+    s = NexusSession(shell=None)
+    assert "unknown rule" in s.set_rule("nope", True)
+    assert s.set_rule("select_columns", True).endswith("on") and "select_columns" in s.enabled_rules
+    assert s.set_rule("select_columns", False).endswith("off")

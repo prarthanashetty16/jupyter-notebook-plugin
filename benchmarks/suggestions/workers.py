@@ -59,7 +59,15 @@ def suggest_child(state: State) -> dict[str, Any]:
     paths = [p for op in ops for p in candidate_paths(op)]
     inspection = StateInspector().inspect(names, state.env, paths=paths)
     out = []
-    for s in suggest(state.source, state.env, inspection, ops, keep_hidden=True, budget_s=20.0):
+    for s in suggest(
+        state.source,
+        state.env,
+        inspection,
+        ops,
+        keep_hidden=True,
+        budget_s=20.0,
+        enable={"select_columns"},
+    ):
         b, a = s.before, s.after
         out.append(
             {

@@ -1223,7 +1223,8 @@ each and their predictions are optimistic (46% predicted vs 13-17% measured), th
 `text_to_category` produced no risky cell; `delete_unreferenced` produced no suggestion (not measured for peak). Hidden candidates
 (filtered out) were not measured beyond those listed.
 
-### Held-out suggestion run (NOT executed)
+### Held-out suggestion run (executed afterwards; outcome in "Phase 5b" below)
+*Written before the run, kept as it was:* it had not been executed when Phase 5 was committed.
 ```
 python -m benchmarks.suggestions run --heldout --reason "Phase 5 held-out check of the rule-based suggestions (S1-S4)"
 python -m benchmarks.suggestions evaluate --heldout --reason "Phase 5 held-out check of the rule-based suggestions (S1-S4)" --out docs/benchmarks/phase5-suggestions-heldout
@@ -1233,4 +1234,103 @@ Run it once on the frozen state; afterwards the 19 configurations are dev data. 
 ### Next steps
 Phase 6 (calibration); a risk validation split on a large Linux machine with positives at 4 GiB+; improve the column-saving prediction
 (needs a model change, out of scope here); more risky suggestion cells.
+
+## Phase 5b: consequences of the held-out suggestion check
+
+**Status: the held-out suggestion run was executed once on the frozen Phase 5 state and read (2026-11-18; access log:
+`docs/benchmarks/phase5-heldout-access-log.md`). Verdict: S1 and S2 PASSED, S3 and S4 FAILED. The 19 held-out configurations are now dev
+data. Tier 0/1/2, guard, range policy B, controller, risk engine thresholds, the 20% / 64 MiB filter thresholds, `test-v2` and `val-v5` are
+untouched; the held-out benchmark was NOT re-run and nothing was retuned.** Report: `docs/benchmarks/phase5-suggestions-heldout/suggestions_heldout.md`.
+
+### Held-out outcome, as it came out (pre-registered S1-S4, Part B4)
+| criterion | result | verdict |
+|---|---|---|
+| S1 no `preserving` bug | 0 cases | PASS |
+| S2 do no harm (>10% more RAM) | 0 of 12 shown; 0 measured increases among all candidates | PASS |
+| S3 predicted vs measured saving (target median <= 15 pp, p90 <= 35 pp) | n=9, signed bias 2.2%, median 5.5, p90 39.0 | **FAIL** (p90) |
+| S4 shown with measured saving >= 20% and >= 64 MiB (target >= 80%) | 9 of 12 = 75.0% | **FAIL** |
+
+12 candidates were measured and all 12 were shown (36 cells run, 15 risky). S3 has n=9 because the three `avoid_copy` suggestions have no
+predicted saving (see item 3) and are not in it.
+
+### Attribution by rule (per-suggestion table of the report)
+Every S3 and S4 failure belongs to one rule, `select_columns`, which produced the three suggestions of the configurations
+`downcast_numeric/M1/num8`, `key_dtype/M1/k_wide` (both filed under other rule families by configuration, produced by the
+`select_columns` rule) and `select_columns/M2/w6`:
+
+| suggestion (rule `select_columns`) | predicted | measured | error (pp) |
+|---|---|---|---|
+| downcast_numeric/M1/num8@7.9M | 56.2% | 18.6% | 37.6 |
+| key_dtype/M1/k_wide@7.1M | 58.8% | 14.6% | 44.2 |
+| select_columns/M2/w6@11.2M | 45.8% | 12.6% | 33.2 |
+
+The other six (all `read_csv_options`) predicted 90.0-91.0% and measured 90.2-96.6% (errors 0.2-5.6 pp). The three `avoid_copy`
+suggestions measured 71-83% and have no prediction. All three `select_columns` suggestions measured below the 20% bar, so they are exactly
+the three S4 failures. Dev showed the same pattern (predicted 46%, measured 13%; run 2 of Phase 5 above), so the held-out result confirms
+a bias that was already visible, it is not a new surprise.
+
+**Post-hoc subset, not a pass.** Without the three `select_columns` suggestions, S3 over the remaining six points (median ~3 pp, p90
+~5.6 pp) and S4 (9 of 9 = 100%) would meet the numbers. That subset was chosen after reading the result, so it does **not** count as passing
+S3 or S4. The Phase 5 suggestion layer FAILED its pre-registered held-out check; what changes below is the consequence, not a re-score.
+
+### 2. `select_columns` disabled by default (post-hoc decision)
+Decision taken after the held-out failure, not pre-registered: `SelectColumnsRule.enabled_by_default = False`. Evidence: dev predicted 46%
+vs measured 13%; held-out predicted 46-59% vs measured 13-19% on three suggestions. Enable it explicitly with `NEXUS_ENABLE_RULES=select_columns`,
+`%nexus rule enable select_columns` (per session, `%nexus rule disable ...` to undo) or `suggest(..., enable={"select_columns"})`;
+when on, its saving figure is an over-estimate (documented in the rule's docstring). The suggestion benchmark worker opts in explicitly so the
+stored measurements stay reproducible. Test: `test_select_columns_is_off_by_default_and_opt_in_works`. The rule's safety logic (S1, S5) is unchanged
+and passed.
+
+### 3. `avoid_copy`: why no predicted saving, and what the interface says now
+`avoid_copy` has no frozen operation model (a copy is not an estimated operation), so its candidate carries `descriptor_saving` (the size of the
+avoided copy) and `engine._finish` returns early on that path: it applies only the 64 MiB floor and leaves `saving_frac = 0.0`, never calling
+`meaningful()`. So the pre-registered 20%-of-peak condition (B2) was **not applied** to `avoid_copy` or `delete_unreferenced` suggestions: no
+before-estimate of the cell's peak exists to take a fraction of. They passed on bytes alone, and the held-out report shows "predicted n/a".
+(Amendment 1 said "thresholds still apply"; that was only true for the bytes threshold, which is a gap between the text and the code.) The
+measured savings (71-83%) were far above the bar, so no harm resulted here, but the filter was weaker than stated.
+Fix without changing a threshold: the interface (`nexus/suggestions/format.py`) now says "no estimate of saving" for every suggestion whose saving is
+not a model re-estimate, and names what the number is (the size of the avoided copy; freed headroom for delete). Recorded as Amendment 2 in the
+pre-registration. Nothing was re-run.
+
+### 4. `%nexus suggestions` and `%nexus explain`
+Both now print, for every suggestion, a line `what changes:` with the plain-words meaning of its label (`SEMANTICS_WORDS` in `suggestions/base.py`),
+the existing detail, and either the re-estimated peak with the predicted saving or "no estimate of saving". `%nexus explain` appends the
+suggestions of the last cell. Note on the wording: the repository had no pre-defined text for `changes_results`; the wording used is
+"the result is not the same as before: later cells that use it, or use what it removes, may fail or give different answers" (tested).
+If a different exact wording is required it is one dict entry.
+
+### 5. Probe, not a fix: where is the peak of a merge made? (`docs/benchmarks/probes/`)
+`merge_peak_probe.py`, results `merge_peak_probe_results.md` / `.json`. **Hypothesis tested:** the frozen model's column-bytes-proportional saving
+overstates because the merge peak has a large width-independent part (join indexers, key factorisation / hash table, selection copies); dropping
+columns only removes the width-dependent part. Refuted if the measured saving tracks the dropped share of the bytes.
+Setup: template M1 mirrored (left = k, v + payload; right = k, w, x0, x1; every left row matches one right row), 4 column mixes (float6, float2,
+int6, mixed with 2 string columns), 0.5/1/2M left rows, right of 1,000 or 500,000 rows, three variants (full, selected inside the measured region,
+narrowed in setup), OS peak (median of 3, `nexus.measure`) plus tracemalloc stage peaks and live allocation sites. Only pandas 3.1.1 /
+numpy 2.5.5 on the Windows development machine.
+
+Findings (probe, not validated claims):
+- The peak did **not** follow the dropped bytes: with 50-90% of the input bytes dropped the OS peak was the same within 0-1% in 20 of 24
+  configurations (e.g. 2M rows, 500k right: 80 MiB in all three variants for all four mixes); in the other three (2M rows, right 1,000) the
+  selection saved 9% (62 -> 56 MiB) and in the mixed 2M/1,000 case the two measurements were censored.
+- tracemalloc places the peak in `pandas.core.reshape.merge._factorize_keys` (hash-table construction and lookup arrays, about 32 + 15 + 15 MiB at
+  2M rows, ~40-44 B per left row), identical for all three variants. The result's payload is not what sets the peak here.
+- So the hypothesis is **supported** in this regime: the peak is a function of rows, not of the width of the carried columns. The measured
+  13-19% saving in the benchmark is not reproduced either (0-9% here).
+Limits: probe peaks are 20-88 MiB, below the benchmark's 200+ MiB regime and near the instrument's 64 MiB floor, so differences of a few MiB
+are not resolved; only N:1 joins with a unique right key; no duplicate-key (many-to-many) merges, where the result can dominate and the saving
+may be real; groupby (the other half of the rule) was not probed; one pandas version.
+
+### 6. Phase 6 inputs (added; the 4b.3 list above stays)
+1. **`select_columns` saving model:** the frozen Tier 0 merge / groupby column-saving is too optimistic (46-59% predicted vs 13-19% measured, dev
+   and held-out); the probe says the merge peak is row-driven (`_factorize_keys`, ~40-44 B/row) and independent of payload width for N:1 joins.
+   Needs a model with a width-independent term and a check on many-to-many joins and on groupby, at >= 200 MiB, before the rule is enabled again.
+2. **concat time** (under-predicted, val-v4 0.19x), **groupby / astype time** (over-predicted 3.34x / 1.41x on val-v4): see 4b.3 list.
+3. **Category-heavy concat RAM** (23% low, `v4/concat/two_category_heavy`).
+4. **`avoid_copy` savings:** no model; measured 71-83% of the peak while the copy's own size is the only number available. Needs an estimate
+   of the unmodified cell's peak so the 20% condition can be applied, then a re-check on a fresh split.
+5. Make the pre-registered filter apply to descriptor-sized savings (needs item 4) and re-check on a fresh held-out set; the Phase 5 held-out
+   set is now dev, so a new suggestion split must be created and frozen before any new claim.
+
+### Next steps
+Phase 6 (calibration) with the inputs above; a new frozen suggestion split for any further S1-S4 claim.
 
