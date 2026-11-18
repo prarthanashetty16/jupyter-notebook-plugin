@@ -13,8 +13,9 @@ how much of the same data is included, and every one is a COPY: the user's objec
 | matmul ``a @ b``       | the first ``x`` of the rows of ``a`` and of the columns of ``b`` | work ~ x^2, output ~ x^2, operands ~ x; inner dimension kept so BLAS blocking matches |
 | read_csv               | lines from 8 evenly spread byte offsets (+ header)   | local order is kept, the file's head is not the only region seen |
 
-Sample sizes follow one principle (not tuned): the largest sample is 4% of the rows, but at least
-``MIN_LARGEST`` and at most ``ROW_CAP`` rows (a bigger sample costs more than it teaches), then
+Sample sizes follow one principle: the largest sample is 10% of the rows, but at least
+``MIN_LARGEST`` and at most ``ROW_CAP`` (1M) rows (a bigger sample costs more than it teaches; the
+smaller ones must clear the measurement floors), then
 1/2, 1/4, 1/8 of it. An input smaller than ``MIN_RATIO`` x the largest sample is not worth
 extrapolating from: just run the cell.
 """
@@ -33,9 +34,16 @@ from nexus.dryrun_io import save_array, save_frame
 from nexus.failsafe import Deadline
 from nexus.stats import _key_bits
 
-LARGEST_FRACTION = 0.04
+# Two configurations were evaluated on the development data (PROGRESS.md, Phase 4c):
+#   A: 4% of the rows, at most 250k  (declared first, before any result was seen)
+#   B: 10% of the rows, at most 1M   (the alternative)
+# B is the default: more fits clear the measurement floors (RAM fits 137 -> 236 of 322 points,
+# time 145 -> 173) at a similar overhead. The choice was made AFTER seeing
+# development results (a configuration-level decision, not per point); it is not validated.
+# The environment variables exist only to reproduce A.
+LARGEST_FRACTION = float(os.environ.get("NEXUS_DRYRUN_FRACTION", 0.10))
 MIN_LARGEST = 40_000
-ROW_CAP = 250_000
+ROW_CAP = int(os.environ.get("NEXUS_DRYRUN_ROW_CAP", 1_000_000))
 LEVELS = (0.125, 0.25, 0.5, 1.0)
 MIN_RATIO = 5.0
 MATMUL_MIN_DIM = 400

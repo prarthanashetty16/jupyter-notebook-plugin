@@ -310,30 +310,22 @@ def test_tier2_estimate_replaces_only_what_was_fitted():
 
 
 def test_escalation_only_when_it_can_matter():
-    narrow = Estimate(
-        ram_low=90,
-        ram_expected=100,
-        ram_high=110,
-        time_low=1,
-        time_expected=1,
-        time_high=1,
-        confidence=1,
-        tier=1,
+    def est(low, exp, high, t):
+        return Estimate(ram_low=low, ram_expected=exp, ram_high=high, time_low=t, time_expected=t, time_high=t,
+                        confidence=1, tier=1)  # fmt: skip
+
+    narrow, wide_long, wide_short = (
+        est(90, 100, 110, 60.0),
+        est(10, 100, 900, 60.0),
+        est(10, 100, 900, 1.0),
     )
-    wide = Estimate(
-        ram_low=10,
-        ram_expected=100,
-        ram_high=900,
-        time_low=1,
-        time_expected=1,
-        time_high=1,
-        confidence=1,
-        tier=1,
-    )
-    assert not dryrun.should_escalate(narrow) and dryrun.should_escalate(wide)
+    assert not dryrun.should_escalate(narrow)
+    assert dryrun.should_escalate(wide_long)  # wide and long-running: the dry run pays
+    assert not dryrun.should_escalate(wide_short)  # wide but over in a second: just run it
     assert dryrun.should_escalate(
-        narrow, available_bytes=150
-    )  # the upper bound is near the free RAM
+        wide_short, available_bytes=1_000
+    )  # RAM risk overrides the run-time rule
+    assert dryrun.should_escalate(narrow, available_bytes=150)
     assert not dryrun.should_escalate(narrow, available_bytes=10_000)
 
 

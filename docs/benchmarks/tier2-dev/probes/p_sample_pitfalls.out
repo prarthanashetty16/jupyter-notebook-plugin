@@ -1,0 +1,17 @@
+== 1/2: astype category, n=3,000,000, U=12,000
+-- random keys: real peak 109.0 MiB, real time 0.248 s
+   sample    14,852 rows:   1.23 MiB ( 86.6 B/row)     4.2 ms
+   sample    29,917 rows:   2.15 MiB ( 75.3 B/row)     6.9 ms
+   sample    60,055 rows:   4.32 MiB ( 75.5 B/row)    10.1 ms
+   sample   120,000 rows:   9.00 MiB ( 78.6 B/row)    16.0 ms
+   RAM fit ok=True  best=nlogn expected=277.5 MiB range=[145.1, 387.4] -> expected/real = 2.55
+-- sequential keys: real peak 70.9 MiB, real time 0.203 s
+   sample    14,852 rows:   1.20 MiB ( 84.9 B/row)     5.3 ms
+   sample    29,917 rows:   2.11 MiB ( 73.8 B/row)     8.0 ms
+   sample    60,055 rows:   3.66 MiB ( 63.8 B/row)    10.2 ms
+   sample   120,000 rows:   4.81 MiB ( 42.0 B/row)    14.3 ms
+   RAM fit ok=False no law predicts the next sample (best CV error 0.26) best=linear expected=nan MiB range=[nan, nan] -> expected/real = nan
+== 3: first call vs later calls in one fresh interpreter (tiny sample)
+   sort_values 50k rows, ms per call: 9.40 1.52 1.70 1.74 1.64 1.51
+   sort_values 50k rows, ms per call: 1.83 1.57 1.76 1.60 1.47 1.64
+   sort_values 50k rows, ms per call: 1.72 1.46 1.40 2.23 1.91 1.51

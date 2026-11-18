@@ -980,3 +980,91 @@ astype zero estimate). val-v4 is dev from split version 5 (access log, `provenan
    (astype nulls, guard, policy C) are the frozen model state it would test.
 2. Run the Linux large-size job (above) to replace the extrapolation above 4M rows.
 3. Phase 6: time-model calibration; the merge residual; concat category-heavy RAM.
+
+
+## Phase 4c: Tier 2, sandboxed sample dry runs with scaling extrapolation
+
+**Status: implemented and evaluated on DEVELOPMENT data only (every number below is dev: dev + exposed-v1 + val-v3 +
+val-v4; nothing is held out; no validation split was created or run; test-v2 sealed).** Tier 0 / Tier 1 models, the guard
+and range policy C are untouched. Tier 2 is opt-in (`Pipeline(tier=2)`); the IPython session still runs Tier 0-1.
+Evidence: `docs/benchmarks/tier2-dev/` (`README.md`, `config-a/`, `config-b/`, `probes/`).
+
+### What was built (`src/nexus/`)
+`dryrun_safety.py` (allowlist over the AST -> `Recipe`), `dryrun_sample.py` (nested samples), `dryrun_io.py` +
+`_dryrun_child.py` (hand-over files, recipe executor, the sandbox child), `dryrun_fit.py` (scaling laws),
+`dryrun.py` (orchestration, escalation, `tier2_estimate`), `Estimate.note` / `Estimate.diagnostics`, `Pipeline(tier=2)`.
+Tests: 139 in `tests/test_dryrun_safety.py` (31 safe + 72 unsafe / adversarial snippets: aliasing, chains, lambdas, walrus,
+imports, `eval`, shadowed `pd` / `str`, subclasses, in-place calls, URLs, magics) and `tests/test_dryrun.py` (fits,
+nested / coordinated sampling invariants, sandbox timeout / memory cap / crash, end-to-end sort, escalation, and a
+**spawned daemon process that starts the sandbox**, the Windows constraint). Full suite and lint green.
+
+### Design decisions, with the alternatives
+| # | decision | alternatives considered | why |
+|---|---|---|---|
+| 1 | sandbox = a fresh interpreter via `subprocess` (`python -m nexus._dryrun_child`), hard wall-clock timeout and RSS cap enforced by the parent killing it | `multiprocessing` spawn; threads | `multiprocessing` children cannot start children from a daemon process (the benchmark's prediction worker is one) and under Windows `spawn` re-imports the kernel's `__main__`; threads share the address space with the user's objects |
+| 2 | samples handed over as raw `.npy` files in a private temp dir (strings pickled), loaded into ordinary memory by the child | memory-mapped files; shared memory | a memory map is counted as resident when touched, which would put the input into the measured peak; shared memory cannot hold Python strings and behaves differently on Windows / POSIX; file cost is small next to a few-MiB sample |
+| 3 | the child executes a `Recipe` (data), never the source text | `exec` / `eval` of the cell in the child | nothing the user wrote is evaluated anywhere; unknown means unsafe |
+| 4 | sampling per operation (table in `dryrun_sample.py`): key-hash for merge (both frames, same predicate), groupby and drop_duplicates (equal rows hash alike); row samples (order kept) for astype / sort_values / concat / np.sort; leading rows of a and columns of b (scale x, work ~ x^2) for matmul; lines from 8 byte offsets for read_csv | plain row samples everywhere | a row sample thins both merge sides independently (matches vanish, the output ~ x^2 instead of x) and removes duplicates (tested: a row sample sees >95% unique where the real frame has 71%) |
+| 5 | **sample sizes: A = 4% of the rows (40k..250k) declared first; B = 10% (40k..1M) evaluated as the alternative; default = B**, 4 nested sizes (1/8, 1/4, 1/2, 1 of the largest) | 1% / 2% / 4% with a 250k cap | A left 142 of 322 RAM fits below the measurement floors; B: 137 -> 236 RAM fits (time 145 -> 173) at a similar overhead (median 2.2 s vs 2.0 s). **This choice was made after seeing dev results (a configuration-level choice, not per point) and is not validated.** The default can be switched back with `NEXUS_DRYRUN_FRACTION` / `NEXUS_DRYRUN_ROW_CAP` |
+| 6 | three laws with an intercept, `y = a + b f(n)`, `a, b >= 0`; FORWARD cross-validation (fit smaller samples, predict the next); candidate laws within max(2x best, best + 0.05) all enter the range; range = exp(-1.28 sigma) .. exp(+1.64 sigma) with sigma = CV x log2(target / largest sample) | leave-one-out; AIC | extrapolation is the task; a wrong exponent costs a constant factor per doubling so the spread must grow with the distance |
+| 7 | refuse (no estimate) when < 3 sizes clear the floors, the value does not grow (x1.3), or the best forward-CV error > 25% | answer anyway | an unreliable fit is worse than Tier 1 |
+| 8 | floors 1 MiB RAM / 2 ms time (allocator chunking, timer and first-call jitter; probe: first call of a 50k-row sort 1.8-9.4 ms vs 1.5 ms warm) | 4 MiB / 10 ms (first draft: it rejected every sample of a 1.5M-row merge in the pilot, before any dev evaluation) | the CV gate, not the floor, carries reliability |
+| 9 | text keys above 6M rows are not hashed ("no sample"), 15 dev points | hash any size (~1.5 s per 10M strings) | overhead budget; listed as a failure, not tuned |
+| 10 | escalate to Tier 2 only if RAM `high` > 50% of the available RAM, or the range is wide (>= 100% of expected) AND the expected run time >= 5 s | always | a dry run costs ~2.2 s whatever the cell does; on dev it was cheaper than the real run for 13% of the points |
+| 11 | **no combination of Tier 1 and Tier 2 is adopted**; `hull` (Tier 2 expected, union of ranges) and `geomean` are reported | a per-operation switch | a per-operation choice made on dev needs a fresh split |
+
+### Evaluation (dev; configuration B; `docs/benchmarks/tier2-dev/config-b/tier2_vs_tier1.md`)
+Qualifying cells: 259 of 322 points with Tier 1 predictions got a dry run that fitted something (RAM 236, time 173);
+the rest: no fit above the floors (53 RAM), unreliable CV (12), no growth (6), unsafe / not sampled (the text-key limit
+above, 15). Medians of |expected / actual - 1| on the points where the Tier 2 fit was accepted (`err_med`; coverage in brackets):
+
+| op | RAM Tier 1 | RAM Tier 2 | time Tier 1 | time Tier 2 |
+|---|---|---|---|---|
+| astype | 1% (100%) | 15% (60%) | 67% (97%) | **21%** (78%) |
+| drop_duplicates | 11% (100%) | 13% (89%) | 28% (97%) | 32% (79%), bias 0.70 |
+| groupby | 1% (100%) | 14% (76%) | 95% (79%) | **33%** (50%), bias 0.67, above_high 43% |
+| merge | 8% (97%) | 13% (79%) | 38% (100%) | **16%** (90%) |
+| read_csv | 22% (100%) | **15%** (74%) | 66% (100%) | **4%** (100%) |
+| sort_values | 1% (100%) | 3% (96%) | 38% (95%) | 31% (85%), above_high 15% |
+| concat | 8% (100%) | 9% (100%) | 44% (100%) | 32% (80%) (5 fits) |
+| matmul | 3% (100%) | 45% (44%), bias 0.55 | 6% (100%) | 50% (50%), bias 0.62 |
+| numpy.sort | 0% (100%) | 0% (100%) | 21% | 25% (3 fits) |
+| ALL | 3% (100%) | 13% (78%) | 53% (96%) | **25%** (80%), above_high 11% |
+
+* **Time** is where Tier 2 helps: the first-draft time models are off by 0.3x-3x, a measured sample is not. read_csv
+  (Tier 1 under-predicted 0.36x) is fixed (median error 66% -> 4%, bias 1.02), astype / groupby / merge roughly halve.
+  The cost: Tier 2's own time ranges are very wide (median width 16x of expected overall, up to 78x for merge) and
+  under-cover for groupby, sort_values, drop_duplicates and matmul; the `hull` keeps 99% coverage at width ~20x.
+* **RAM**: Tier 2 never beats Tier 1's median on the operations Tier 1 models structurally (astype, groupby, merge,
+  sort, concat, matmul); it is comparable only for read_csv and drop_duplicates, and its ranges cover 78% vs 100%.
+  `geomean` of both improves over Tier 2 alone but not over Tier 1 (10% vs 3%).
+* **Merge residual (target 1)**: of the 8 non-unique-right / small-output points (incl. both failing configurations)
+  Tier 2 fitted RAM for 6 and was within 3-24% on 4 (v3 overlap25_fanout6 1M x1.03 / 3M x1.24; v4 overlap35_fanout7 1M x1.04 /
+  3M x1.05, where Tier 1 was x0.86-0.89 and x1.85), but x11.2 on `overlap20_fanout10` 1M (outside its own range) and x1.86 on
+  `inner_overlap10` 3M; no fit for `overlap20_fanout10` 3M. So Tier 2 **can** see what Tier 1 misses, **unreliably**: a
+  sampled merge shows the real sort-based path, but one 1M-row sample table is not the 3M-row one. Under config A it fitted 1 of 8.
+* **Overhead**: median 2.2 s (max 13.7 s, concat; the hashing of text keys and the writing of samples), 3.8x the median real
+  run time; the dry run was cheaper than the real run for **13%** of the points (merge 0%, drop_duplicates 24%, groupby 29%).
+  By input size the median overhead is 1.9 / 2.3 / 2.5 s at 1M / 3M / 10M rows against median run times of 0.18 / 0.51 / 0.89 s:
+  **on dev it never pays for time at these sizes**; break-even needs a cell that runs longer than ~5 s (`MIN_RUN_S`), i.e.
+  larger inputs than the 2.5 GiB machine can hold (`docs/benchmarks/large-size-linux.md`), or a RAM-risk case.
+* **Where Tier 2 is NOT worth it / fails**: (a) RAM of hash-table operations with few distinct keys: samples show a fully
+  resident table of ~75-87 B/row that falls as the real table saturates at 2^20 entries; probe (3M rows, 12,000 distinct
+  strings, config A sizes) extrapolated **277 MiB for random keys vs a real 109 MiB (x2.55)**, and for sequential keys (real 71 MiB) the fit
+  was refused (CV 0.26): the presize cap and the key layout (4b.2) cannot be represented by the three laws, and key-hash sampling
+  thins dense keys; Tier 1 models exactly this; (b) matmul (BLAS thread scaling: time bias 0.62, above_high 50%) and
+  numpy.sort / cheap row-wise ops (too cheap to clear floors); (c) cells under ~5 s; (d) cells that are not a single
+  supported operation: **63 of 322** dev points got no usable Tier 2 estimate (unsafe or unsampled cells, 15 of them the text-key limit; the rest unreliable fits); real notebook cells are mostly chains; (e) text keys > 6M rows.
+* **Fixed costs and cold start**: the intercept absorbs them; the first call of a tiny sample can be 1.8-9.4 ms vs 1.5 ms
+  warm (probe), which is why 2 ms is the time floor.
+
+### Hypotheses (need a fresh split; not adopted)
+(1) use Tier 2 time only for read_csv, astype, merge, groupby (median error halves or better) and keep Tier 1 for the rest;
+(2) use Tier 2 RAM only for read_csv; (3) gate Tier 2 on its CV error (fits with CV < ~0.1); (4) a Tier 2 that fits only the
+non-hash part and takes the table from Tier 1; (5) a presize-aware extrapolation (fit the sample sizes above 2^20 only,
+needs larger samples).
+
+### Next steps
+1. A held-out split must be frozen before anything about Tier 2 is claimed.
+2. Run the Linux large-size job and rerun `tier2_eval` there: the regime where a ~2 s dry run is cheap compared with the cell.
+3. Phase 5 (risk and suggestions) can consume Tier 1 now; Tier 2 time for read_csv / merge / groupby is the useful part.

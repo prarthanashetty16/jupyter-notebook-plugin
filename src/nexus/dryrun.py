@@ -66,6 +66,9 @@ HASH_KINDS = frozenset({"merge", "groupby_agg", "drop_duplicates"})
 PRESIZE_CAP = 2**20 + 7
 WIDE_RANGE = 1.0  # escalate when (high - low) / expected is at least this
 RISK_FRACTION = 0.5  # ... or when the estimate's high exceeds this share of the available RAM
+MIN_RUN_S = 5.0  # a dry run costs ~2 s whatever the cell does: below this expected run time a wide
+# range is not worth it (on the development data the dry run was cheaper than the real run for only
+# 18% of the points); the RAM-risk condition is exempt (an out-of-memory kill costs more than 2 s)
 OP_NAMES = {
     "merge": {"merge", "pandas.merge"},
     "groupby_agg": {"groupby"},
@@ -255,11 +258,12 @@ def matching_op(recipe_kind: str, op_name: str) -> bool:
 
 
 def should_escalate(estimate: Estimate, available_bytes: float | None = None) -> bool:
-    """Escalate to Tier 2 only when it can matter: a wide range, or an upper bound near the free RAM."""
-    width = (estimate.ram_high - estimate.ram_low) / max(estimate.ram_expected, 1)
-    if width >= WIDE_RANGE:
+    """Escalate to Tier 2 only when it can matter: an upper bound near the free RAM, or a wide range
+    on a cell that runs long enough (``MIN_RUN_S``) for a ~2 s dry run to pay."""
+    if available_bytes is not None and estimate.ram_high > RISK_FRACTION * available_bytes:
         return True
-    return available_bytes is not None and estimate.ram_high > RISK_FRACTION * available_bytes
+    width = (estimate.ram_high - estimate.ram_low) / max(estimate.ram_expected, 1)
+    return width >= WIDE_RANGE and estimate.time_expected >= MIN_RUN_S
 
 
 def tier2_estimate(result: DryRunResult, base: Estimate) -> Estimate | None:
