@@ -82,8 +82,12 @@ def suggest(
     *,
     rules: list[SuggestionRule] | None = None,
     budget_s: float = 3.0,
+    keep_hidden: bool = False,
 ) -> list[Suggestion]:
-    """Ranked, re-estimated suggestions for a cell; never raises, never runs the cell."""
+    """Ranked, re-estimated suggestions for a cell; never raises, never runs the cell.
+
+    ``keep_hidden`` (evaluation only) also returns the candidates the filters removed.
+    """
     try:
         if strip_magics(source) != source:
             return []  # magics are rewritten by the analyzer; patching the text would be unsafe
@@ -103,9 +107,9 @@ def suggest(
                               namespace=namespace, deadline=deadline, all_ops=ops)  # fmt: skip
                 s = rule.propose(ctx)
                 done = _finish(s, op, inspection) if s is not None else None
-                if done is not None:
+                if done is not None and (done.shown or keep_hidden):
                     out.append(done)
             except Exception:
                 log.debug("nexus: suggestion rule %s failed", rule.name, exc_info=True)
-    out.sort(key=lambda s: (-s.saving_bytes, SEMANTICS.index(s.semantics)))
+    out.sort(key=lambda s: (not s.shown, -s.saving_bytes, SEMANTICS.index(s.semantics)))
     return out

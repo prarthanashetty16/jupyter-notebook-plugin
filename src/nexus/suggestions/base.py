@@ -61,6 +61,8 @@ class Suggestion:
     saving_frac: float = 0.0
     estimate_source: str = "model"  # "model" (frozen estimator on virtual state) | "descriptor"
     notes: tuple[str, ...] = ()
+    shown: bool = True  # False: re-estimated but filtered out (kept only for evaluation)
+    hidden_reason: str = ""
 
     def diff(self) -> str:
         a = self.original_source.splitlines()
