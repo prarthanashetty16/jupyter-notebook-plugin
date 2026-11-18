@@ -457,7 +457,21 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--min-cells", type=int, default=0, help="exit with an error if fewer cells were analysed"
     )
+    ap.add_argument(
+        "--heldout",
+        action="store_true",
+        help="Phase 8a held-out use: abort unless the working tree is the frozen model stack "
+        "(benchmarks.frozen) and record its commit in summary.json",
+    )
     args = ap.parse_args(argv)
+    frozen: dict[str, object] = {}
+    if args.heldout:
+        from benchmarks.frozen import NotFrozenError, require_frozen
+
+        try:
+            frozen = require_frozen()
+        except NotFrozenError as exc:
+            raise SystemExit(str(exc)) from None
     if not args.folder.is_dir():
         raise SystemExit(f"{args.folder} is not a folder")
     records, stats = study(args.folder)
@@ -477,7 +491,7 @@ def main(argv: list[str] | None = None) -> int:
             ]
         ).to_csv(args.out / "cells.csv", index=False)
         n = len(records)
-        (args.out / "summary.json").write_text(json.dumps({**stats, "analysed": n, "supported": sum(r.supported for r in records),
+        (args.out / "summary.json").write_text(json.dumps({**stats, **frozen, "analysed": n, "supported": sum(r.supported for r in records),
                                                            "accepted": sum(r.accepted for r in records)}, indent=2), encoding="utf-8")  # fmt: skip
     return 1 if len(records) < args.min_cells else 0
 

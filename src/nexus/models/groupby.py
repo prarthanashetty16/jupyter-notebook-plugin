@@ -8,6 +8,7 @@ from typing import Any
 
 from nexus import stats
 from nexus.analyzer import DetectedOp
+from nexus.models import _time as tt
 from nexus.models import _util as u
 from nexus.models.base import Estimate, OperationModel, Tier1Context
 from nexus.registry import register_model
@@ -207,10 +208,7 @@ class GroupByModel(OperationModel):
             ]  # fmt: skip
             ram = (at[0] * MODEL_LOW_BAND, at[1], at[2] * MODEL_HIGH_BAND)
             why = f"estimated groups {gf[1] * n:,.0f} of {n:,} rows ({features['tier1']['method']})"
-        seconds = (
-            n * ((k - kt) * u.machine().num_hash_s + kt * u.machine().text_hash_s)
-            + n * cols * u.machine().agg_s
-        )
+        seconds = tt.groupby(features)
         return u.build(
             ram,  # type: ignore[arg-type]
             u.time_band_for_tier(seconds, tier),

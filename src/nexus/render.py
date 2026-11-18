@@ -67,6 +67,7 @@ def format_report(report: CellReport) -> str:
             f"(expected {human_bytes(e.ram_expected)}), "
             f"time {describe_time(e.time_low, e.time_expected, e.time_high)}, "
             f"confidence {e.confidence:.2f}; drivers: {'; '.join(e.drivers) or 'n/a'}"
+            + (f" [{', '.join(e.flags)}]" if e.flags else "")
         )
     if report.resources is not None:
         r = report.resources

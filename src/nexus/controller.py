@@ -25,7 +25,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from nexus import dryrun
+from nexus import dryrun, timecal
 from nexus.dryrun_safety import SafetyVerdict, analyze_safety
 from nexus.dryrun_sample import LARGEST_FRACTION, ROW_CAP
 from nexus.models.base import Estimate
@@ -171,12 +171,20 @@ class Controller:
             rules.append("R1: RAM high raised to the Tier 2 expected value")
         t_low, t_exp, t_high = est.time_low, est.time_expected, est.time_high
         kind = dryrun.kind_of_op(op)
+        flags: list[str] = []
         if tim and tim.ok and kind in TIME_FROM_TIER2:
-            t_low, t_exp, t_high = tim.low, tim.expected, tim.high
-            rules.append(f"R2: time from Tier 2 ({kind})")
+            (t_low, t_exp, t_high), flags = timecal.calibrate_tier2(
+                op, tim.low, tim.expected, tim.high
+            )
+            rules.append(f"R2: time from Tier 2 ({kind}), calibrated range")
         elif tim and tim.ok and kind == "groupby_agg":
-            t_low, t_exp, t_high = tim.low, tim.expected, tim.high * cfg.groupby_high_multiplier
-            rules.append(f"R2: time from Tier 2 (groupby), high x{cfg.groupby_high_multiplier:g}")
+            (t_low, t_exp, t_high), flags = timecal.calibrate_tier2(
+                op, tim.low, tim.expected, tim.high
+            )
+            t_high *= cfg.groupby_high_multiplier
+            rules.append(
+                f"R2: time from Tier 2 (groupby), calibrated range, high x{cfg.groupby_high_multiplier:g}"
+            )
         info = replace(base, rules=tuple(rules)).as_dict()
         if not rules:
             why = (
@@ -189,5 +197,6 @@ class Controller:
             est, ram_low=low, ram_expected=exp, ram_high=max(high, exp),
             time_low=min(t_low, t_exp), time_expected=t_exp, time_high=max(t_high, t_exp),
             tier=2, note=(est.note + "; " if est.note else "") + note, diagnostics=info,
+            flags=tuple(dict.fromkeys([*est.flags, *flags])),
         )  # fmt: skip
         return new, info

@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from nexus import dryrun, guard, ranges
+from nexus import dryrun, guard, ranges, timecal
 from nexus.analyzer import DetectedOp, analyze_cell
 from nexus.controller import Controller
 from nexus.failsafe import Deadline
@@ -116,6 +116,8 @@ class Pipeline:
                             raise NoEstimateError(f"tier 1 rejected ({problem}) and no Tier 0")
                     else:
                         estimate = tier0 = model.estimate(features, used)
+                    if isinstance(estimate, Estimate):  # time: residual + conformal range
+                        estimate = timecal.calibrate(model.name, estimate)
                     if self._tier >= 2 and isinstance(estimate, Estimate):
                         estimate, features = self._tier2(
                             op, estimate, features, source, namespace, dry, tier0, inspection

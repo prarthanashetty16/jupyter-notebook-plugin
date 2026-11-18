@@ -7,6 +7,7 @@ from typing import Any
 import numpy as np
 
 from nexus.analyzer import DetectedOp
+from nexus.models import _time as tt
 from nexus.models import _util as u
 from nexus.models.base import Estimate, NoEstimateError, OperationModel
 from nexus.registry import register_model
@@ -51,11 +52,7 @@ class MatmulModel(OperationModel):
         out = m * p * item
         return u.build(
             (out, out + BLAS_BUFFER_BYTES, 1.5 * out + 8 * BLAS_BUFFER_BYTES),
-            (
-                2 * m * k * p / u.machine().blas_flops * 0.2,
-                2 * m * k * p / u.machine().blas_flops,
-                2 * m * k * p / u.machine().blas_flops * 5,
-            ),
+            u.time_band(tt.matmul(features)),
             0.7,
             tier,
             [

@@ -1,0 +1,13 @@
+pandas 3.1.1, numpy 2.5.5
+n=1,000,000 card=   50 same=True  dtype=category   t=0.001s (0.3 ns/row/col) peak=3 MiB (1.0 B/row/col) codes=3 MiB
+n=1,000,000 card=   50 same=False dtype=str        t=0.031s (10.4 ns/row/col) peak=31 MiB (10.7 B/row/col) codes=3 MiB
+n=1,000,000 card= 5000 same=True  dtype=category   t=0.002s (0.8 ns/row/col) peak=6 MiB (2.0 B/row/col) codes=6 MiB
+n=1,000,000 card= 5000 same=False dtype=str        t=0.039s (12.9 ns/row/col) peak=31 MiB (10.7 B/row/col) codes=6 MiB
+n=3,000,000 card=   50 same=True  dtype=category   t=0.003s (0.3 ns/row/col) peak=9 MiB (1.0 B/row/col) codes=9 MiB
+n=3,000,000 card=   50 same=False dtype=str        t=0.108s (12.0 ns/row/col) peak=92 MiB (10.7 B/row/col) codes=9 MiB
+n=3,000,000 card= 5000 same=True  dtype=category   t=0.003s (0.4 ns/row/col) peak=17 MiB (2.0 B/row/col) codes=17 MiB
+n=3,000,000 card= 5000 same=False dtype=str        t=0.115s (12.7 ns/row/col) peak=92 MiB (10.7 B/row/col) codes=17 MiB
+n=6,000,000 card=   50 same=True  dtype=category   t=0.004s (0.2 ns/row/col) peak=17 MiB (1.0 B/row/col) codes=17 MiB
+n=6,000,000 card=   50 same=False dtype=str        t=0.213s (11.9 ns/row/col) peak=183 MiB (10.7 B/row/col) codes=17 MiB
+n=6,000,000 card= 5000 same=True  dtype=category   t=0.008s (0.5 ns/row/col) peak=34 MiB (2.0 B/row/col) codes=34 MiB
+n=6,000,000 card= 5000 same=False dtype=str        t=0.255s (14.2 ns/row/col) peak=183 MiB (10.7 B/row/col) codes=34 MiB

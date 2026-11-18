@@ -11,6 +11,7 @@ import numpy as np
 
 from nexus import stats
 from nexus.analyzer import DetectedOp
+from nexus.models import _time as tt
 from nexus.models import _util as u
 from nexus.models.base import Estimate, NoEstimateError, OperationModel, Tier1Context
 from nexus.registry import register_model
@@ -22,8 +23,6 @@ INT_OBJECT_BYTES = 32  # a Python int above the small-int cache (fits up to 2**6
 POINTER_BYTES = 8
 STR_PROBE_TOLERANCE = 0.02  # probe peaks were within ~1-2% of the formula, below it for datetime
 # First-draft figures kept ONLY for the time term, which Phase 4a does not change.
-LEGACY_STR_BYTES = 60
-LEGACY_CATEGORY_FRACTION = 0.1
 
 # Characters of the decimal/ISO string form, Tier 0 range by source kind (Tier 1 narrows it).
 STR_LEN_RANGE = {"int": (1, 20), "float": (3, 24), "datetime": (10, 29), "bool": (4, 5)}
@@ -194,7 +193,6 @@ class AstypeModel(OperationModel):
         source_text = u.is_text(source)
         ram_range: tuple[float, float, float] | None = None
         out = 0.0
-        time_out = 0.0  # bytes in the (unchanged) time term
         if target == "category":
             kind = "text" if source_text else "numeric"
             frac = features.get("distinct_fraction")
@@ -214,15 +212,9 @@ class AstypeModel(OperationModel):
                     u.factorize_peak_bytes(kind, n, fh * n, sh),
                 )
                 ram_range = (at[0] * CATEGORY_BAND[0], at[1], at[2] * CATEGORY_BAND[1])
-            hash_s = u.machine().text_hash_s if source_text else u.machine().num_hash_s
-            seconds = n * hash_s
-            time_out = 4 * n + LEGACY_CATEGORY_FRACTION * n * (
-                LEGACY_STR_BYTES if source_text else 8
-            )
             why = "hash every value; peak spans few-distinct .. all-distinct (count unknown)"
         elif target in ("str", "object"):
             kind = _kind(source)
-            seconds = 0.0 if source_text else n * u.machine().to_str_s
             if target == "str" and not source_text and kind != "other":
                 length = features.get("str_len")
                 tier1 = features.get("str_obj_bytes")
@@ -252,22 +244,22 @@ class AstypeModel(OperationModel):
                         per_row[2] * n * (1 + STR_PROBE_TOLERANCE),
                     )
                 out = ram_range[1]
-                time_out = n * LEGACY_STR_BYTES
                 why = "one new Python str per row (+ int object temporary for integers)"
             else:
                 out = n * (POINTER_BYTES if source_text else 40)
-                time_out = n * (POINTER_BYTES if source_text else LEGACY_STR_BYTES)
                 why = "pointer copy for text" if source_text else "one Python object per value"
         else:
             itemsize = np.dtype(target).itemsize
-            out, seconds = n * itemsize, n * u.machine().cast_s
-            time_out = out
+            out = n * itemsize
             why = f"new {target} array of {n} elements"
         if ram_range is None:
             ram_range = (out * 0.5, out, out * 2.5)
         return u.build(
             ram_range,
-            u.time_band_for_tier(seconds + time_out / u.machine().copy_bps, tier),
+            u.time_band_for_tier(
+                tt.astype({**features, "target_itemsize": out / max(n, 1)}, _kind(source)),
+                tier,
+            ),
             0.5,
             tier,
             [why],

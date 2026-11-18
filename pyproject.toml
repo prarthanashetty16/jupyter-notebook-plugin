@@ -47,9 +47,13 @@ learn = [
 
 [project.scripts]
 nexus-calibrate-machine = "nexus.calibrate:main"
+nexus-calibrate = "nexus.calfit:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+nexus = ["calibration/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -58,11 +62,14 @@ addopts = "-v"
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+markers = [
+    "pandas_mechanisms: probe checks of pandas internals the models rely on (CI pandas matrix)",
+]
 
 [tool.ruff]
 line-length = 100
 target-version = "py310"
-extend-exclude = ["docs/benchmarks/tier0-v2/probes", "docs/benchmarks/val-v3-diagnosis/probes"]  # scripts kept as run
+extend-exclude = ["docs/benchmarks/tier0-v2/probes", "docs/benchmarks/val-v3-diagnosis/probes", "docs/benchmarks/phase6/probes"]  # scripts kept as run
 
 [tool.ruff.lint]
 select = [

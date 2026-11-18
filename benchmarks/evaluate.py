@@ -673,6 +673,13 @@ def write_report(
     return report
 
 
+def _require_frozen() -> dict[str, Any]:
+    """Held-out evaluation only on the frozen model stack (``benchmarks.frozen``)."""
+    from benchmarks.frozen import require_frozen
+
+    return require_frozen()
+
+
 def write_final_report(
     results_dir: Path,
     reason: str,
@@ -684,6 +691,7 @@ def write_final_report(
 ) -> Path:
     """dev and test-v2 in separate sections. Logs the sealed access first."""
     floors = floors or Floors()
+    frozen = _require_frozen()
     token = open_test_split(
         reason,
         results_dir=results_dir,
@@ -695,7 +703,9 @@ def write_final_report(
     test = load_sealed(results_dir, floors, token)
     dev = df[df["split"] == DEV]
     lines = _header(_meta(results_dir), floors, results_dir, "NEXUS FINAL report")
-    lines.append(f"Test-v2 opened {token.timestamp}; reason: {token.reason}\n")
+    lines.append(
+        f"Test-v2 opened {token.timestamp}; reason: {token.reason}; frozen stack {frozen}\n"
+    )
     lines += _report_lines(dev, results_dir, floors, tiers, "_final_dev", "## Dev split")
     if test.empty:
         lines.append("\n## Test-v2 split\n\nno test-v2 points measured.\n")
@@ -724,6 +734,7 @@ def write_validation_report(
     from a val-v5-only run has no development files: the dev section is then reported as omitted.
     """
     floors = floors or Floors()
+    frozen = _require_frozen()
     if not (results_dir / VAL_DIR / "actuals.csv").exists():
         raise FileNotFoundError(f"no validation results under {results_dir / VAL_DIR}")
     dev_present = (results_dir / "actuals.csv").exists()
@@ -737,7 +748,9 @@ def write_validation_report(
     )
     val = load_validation(results_dir, floors, token)
     lines = _header(_meta(results_dir), floors, results_dir, "NEXUS VALIDATION report (val-v5)")
-    lines.append(f"val-v5 opened {token.timestamp}; reason: {token.reason}\n")
+    lines.append(
+        f"val-v5 opened {token.timestamp}; reason: {token.reason}; frozen stack {frozen}\n"
+    )
     lines.append(
         "A point killed by the harness memory cap (a cap on TOTAL resident memory) counts as a RAM "
         "actual >= RSS-at-kill minus the baseline extrapolated from the same case (`ram_lower_bound`); "

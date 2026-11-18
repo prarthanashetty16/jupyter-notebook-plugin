@@ -1,0 +1,27 @@
+{
+ "selected": {
+  "0": "D+m",
+  "1": "D+m"
+ },
+ "learned_included": false,
+ "regressions": [
+  "Tier 0 astype: p90 rel_err 102% -> 226%",
+  "Tier 0 drop_duplicates: p90 rel_err 80% -> 171%",
+  "Tier 0 groupby: median rel_err 82% -> 86%",
+  "Tier 0 groupby: same bucket 23.0 -> 15 points",
+  "Tier 0 merge: median rel_err 27% -> 39%",
+  "Tier 0 merge: p90 rel_err 68% -> 82%",
+  "Tier 0 merge: same bucket 21.0 -> 20 points",
+  "Tier 0 pandas.read_csv: p90 rel_err 178% -> 770%",
+  "Tier 0 pandas.read_csv: coverage 94% -> 82%",
+  "Tier 0 sort_values: p90 rel_err 94% -> 372%",
+  "Tier 0 sort_values: same bucket 20.0 -> 18 points",
+  "Tier 0 ALL: p90 rel_err 164% -> 194%",
+  "Tier 1 pandas.concat: median rel_err 35% -> 38%",
+  "Tier 1 pandas.read_csv: coverage 94% -> 82%",
+  "Tier 1 sort_values: p90 rel_err 94% -> 372%",
+  "Tier 1 sort_values: same bucket 20.0 -> 18 points",
+  "RAM tier 1 merge: width 5.13 -> 5.23"
+ ],
+ "ram_rows_changed": 42
+}

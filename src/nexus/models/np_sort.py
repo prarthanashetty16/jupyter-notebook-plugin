@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from nexus.analyzer import DetectedOp
+from nexus.models import _time as tt
 from nexus.models import _util as u
 from nexus.models.base import Estimate, NoEstimateError, OperationModel
 from nexus.registry import register_model
@@ -36,9 +37,8 @@ class NpSortModel(OperationModel):
 
     def estimate(self, features: dict[str, Any], tier: int) -> Estimate:
         u.require_tier0(tier)
-        size = features["size"]
         nbytes = features["nbytes"]
-        seconds = size * u.log2n(size) * u.machine().np_sort_s
+        seconds = tt.np_sort(features)
         return u.build(
             (0.9 * nbytes, nbytes, 1.3 * nbytes),
             (seconds * 0.1, seconds, seconds * 4),

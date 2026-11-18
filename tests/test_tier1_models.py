@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -74,14 +76,20 @@ def test_tier1_never_changes_the_users_frame(df):
     pd.testing.assert_frame_equal(df, before)
 
 
-def test_time_band_is_not_narrowed_by_statistics(df):
+def test_time_ranges_come_from_the_calibration_per_tier(df):
+    """Phase 6: each tier's range is its own calibrated (conformal) range, around its own expected."""
+    from nexus import timecal
+
     t0 = run('df.groupby("s")["f0"].sum()', {"df": df}, 0).estimate
     t1 = run('df.groupby("s")["f0"].sum()', {"df": df}, 1).estimate
     assert t1.tier == 1
-    # same band relative to the expected time: 0.25x .. 4x, wider than the +-40% session variance
-    assert t1.time_low / t1.time_expected == pytest.approx(t0.time_low / t0.time_expected)
-    assert t1.time_high / t1.time_expected == pytest.approx(t0.time_high / t0.time_expected)
-    assert t1.time_low / t1.time_expected <= 0.6 and t1.time_high / t1.time_expected >= 1.4
+    art = timecal.artifact()
+    for est, tier in ((t0, "0"), (t1, "1")):
+        entry = art["tier01"][tier]["groupby"]
+        assert entry["range"] == "per-operation"
+        widen = 3.0  # tests run on an uncalibrated machine (generic profile)
+        assert est.time_low / est.time_expected == pytest.approx(math.exp(entry["q_lo"]) / widen)
+        assert est.time_high / est.time_expected == pytest.approx(math.exp(entry["q_hi"]) * widen)
 
 
 def test_stats_overhead_stays_inside_the_budget(df):

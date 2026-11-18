@@ -1,0 +1,18 @@
+pandas 3.1.1, numpy 2.5.5
+read_csv, 4 columns of one type, 500k rows (C engine, default dtypes)
+  int                 13.6 MiB  0.018 s     8.9 ns/field    805.7 MB/s    7.1 B/field
+  float               35.1 MiB  0.029 s    14.4 ns/field   1275.6 MB/s   18.4 B/field
+  text12              25.3 MiB  0.307 s   153.5 ns/field     86.3 MB/s   13.3 B/field
+  text_distinct24     48.2 MiB  0.377 s   188.4 ns/field    134.1 MB/s   25.3 B/field
+  date                38.6 MiB  0.355 s   177.7 ns/field    114.0 MB/s   20.3 B/field
+astype(str), 1M values: ns per element
+  int (1M distinct)       96.5
+  int (1500 distinct)     91.5
+  float                  367.7
+  datetime               177.3
+matmul GFLOP/s (m, k, p): float64 / float32 / ratio
+  (2000, 2000, 2000):   214.3 /   551.2 / 2.57
+  (4000, 4000, 4000):   184.3 /   555.4 / 3.01
+  (6000, 6000, 6000):   187.5 /   556.6 / 2.97
+  (6000, 6000, 600):   212.0 /   563.5 / 2.66
+  float64 2000^3 single thread: 58.8 GFLOP/s; logical CPUs 16

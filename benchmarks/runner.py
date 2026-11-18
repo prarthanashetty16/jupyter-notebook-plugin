@@ -31,7 +31,7 @@ from benchmarks.planner import decide
 from benchmarks.split import DEV, SEALED_DIR, SEALED_GROUPS, TEST, VAL, VAL_DIR
 from benchmarks.suite import CsvInput, GridPoint, build_grid
 from nexus.calibrate import ensure_profile
-from nexus.machine import MachineProfile
+from nexus.machine import generic_profile
 from nexus.measure import (
     DEFAULT_RAM_FLOOR_BYTES,
     DEFAULT_TIME_FLOOR_S,
@@ -456,10 +456,18 @@ def run_suite(cfg: RunConfig, points: Iterable[GridPoint] | None = None) -> tupl
         grid = grid[: cfg.max_points]
     stores = Stores(out)
 
-    profile = ensure_profile() if cfg.calibrate else MachineProfile()
+    frozen: dict[str, Any] = {}
+    if any(p.split in SEALED_GROUPS for p in grid):  # held-out run: the frozen stack only
+        from benchmarks.frozen import require_frozen
+
+        frozen = require_frozen()
+    profile = ensure_profile() if cfg.calibrate else generic_profile()
     env = env_info()
-    meta = {**env, "suite": cfg.suite, "started": time.strftime("%Y-%m-%d %H:%M:%S")}
+    meta = {**env, **frozen, "suite": cfg.suite, "started": time.strftime("%Y-%m-%d %H:%M:%S")}
     meta.update(cap_bytes=cap, machine_profile=asdict(profile))
+    from nexus.calibrate import power_plugged
+
+    meta["power_plugged_start"] = power_plugged()  # battery throttling changes Tier 1 budgets
     meta["machine_calibration"] = {"calibrated": profile.calibrated, "profile_meta": profile.meta}
     if cfg.require_calibration and not profile.calibrated:
         raise RuntimeError(

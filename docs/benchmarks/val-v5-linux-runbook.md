@@ -18,7 +18,8 @@ matmul dimensions to 16000; the per-case size lists in the suite bound the rest)
 ```bash
 sudo apt-get update && sudo apt-get install -y git python3-venv python3-dev build-essential
 git clone <your NEXUS repository URL> nexus && cd nexus
-git checkout <the commit that froze val-v5 AND the controller>     # record: git rev-parse HEAD
+git checkout models-frozen-v1                                      # the frozen model stack (Phase 6); record: git rev-parse HEAD
+python -m benchmarks.frozen check                                   # must print no problems (exit 0)
 python3 -m venv .venv && source .venv/bin/activate
 pip install --upgrade pip
 pip install -e ".[dev,bench]"
@@ -26,6 +27,11 @@ python -c "import pandas, numpy, psutil; print(pandas.__version__, numpy.__versi
 sudo swapoff -a; free -g; df -h .                                   # swap off, RAM and disk as expected
 python -m pytest tests -q                                           # ~1 min; NOT while the benchmark runs
 ```
+
+**Freeze guard (Phase 6).** `full --splits val-v5` and `evaluate --val` abort unless the tracked files outside `docs/` are
+identical to the tag `models-frozen-v1` (`benchmarks/frozen.py`); the tag commit is recorded in `meta.json` and in the
+report. Any model change after the freeze invalidates the held-out status of the run. Run on mains / server power: the
+calibration refuses to measure on battery.
 
 ## Calibrate the machine FIRST (recorded)
 

@@ -1,0 +1,27 @@
+{
+  "copy_bps": 3063153612.759214,
+  "num_hash_s": 2.2933212499992804e-08,
+  "text_hash_s": 1.3205440000456293e-07,
+  "num_argsort_s": 3.6695091199370308e-09,
+  "text_argsort_s": 3.5242705437568004e-08,
+  "np_sort_s": 5.855934060335679e-10,
+  "csv_parse_bps": 551596191.8909476,
+  "blas_flops": 218930061421.56305,
+  "cast_s": 1.3812437496198981e-09,
+  "to_str_s": 9.486269999615616e-08,
+  "agg_s": 6.515949999993608e-09,
+  "warm_copy_bps": 6610750732.650441,
+  "first_touch_bps": 2709224061.1869283,
+  "page_fault_s_per_byte": 2.413382812846976e-10,
+  "calibrated": true,
+  "meta": {
+    "timestamp": "2026-11-18 22:43:54",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "cpu_count": 16,
+    "python": "3.12.5",
+    "numpy": "2.5.5",
+    "pandas": "3.1.1",
+    "quick": false,
+    "calibration_version": 2
+  }
+}

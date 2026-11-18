@@ -1,0 +1,465 @@
+{
+ "format": 1,
+ "name": "calibration-v1",
+ "created": "2026-11-18",
+ "git_commit": "b385fe1",
+ "selected_candidate": "D+m",
+ "data": {
+  "results": "benchmarks/results/phase6-dev-mains",
+  "sha256_16": "c1bfbe8a39314dbb",
+  "tier2_results": "benchmarks/results/tier2-dev-b",
+  "tier2_sha256_16": "73f595974b4edb75",
+  "points_tier01": 422,
+  "configurations": 109,
+  "split": "dev (benchmarks/split.json v6)"
+ },
+ "machine_profile_id": "987c455be3cc",
+ "machine_profile_meta": {
+  "timestamp": "2026-11-18 22:14:17",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "machine": "AMD64",
+  "processor": "Intel64 Family 6 Model 186 Stepping 2, GenuineIntel",
+  "cpu_count": 16,
+  "python": "3.12.5",
+  "numpy": "2.5.5",
+  "pandas": "3.1.1",
+  "quick": false,
+  "calibration_version": 3,
+  "format": 3,
+  "seconds": 41.5,
+  "power_plugged_start": true,
+  "power_plugged_end": true
+ },
+ "versions": {
+  "python": "3.12.5",
+  "pandas": "3.1.1",
+  "numpy": "2.5.5"
+ },
+ "validated_pandas": [
+  "3.1"
+ ],
+ "alpha": 0.1,
+ "generic_alpha": 0.05,
+ "min_configurations": 8,
+ "tier01": {
+  "0": {
+   "astype": {
+    "residual": 0.9237401688673907,
+    "n_points": 37,
+    "n_configurations": 17,
+    "range": "per-operation",
+    "q_lo": -1.3297990121988803,
+    "q_hi": 1.6124426427173064,
+    "alpha": 0.1,
+    "loco_coverage_conformal": 0.9459459459459459,
+    "loco_coverage_band": 0.918918918918919
+   },
+   "concat": {
+    "residual": 1.1650115454779146,
+    "n_points": 16,
+    "n_configurations": 9,
+    "range": "band",
+    "q_lo": -1.3862943611198906,
+    "q_hi": 1.3862943611198906,
+    "alpha": 0.1,
+    "loco_coverage_conformal": 0.75,
+    "loco_coverage_band": 0.8125
+   },
+   "drop_duplicates": {
+    "residual": 2.196466256333872,
+    "n_points": 38,
+    "n_configurations": 17,
+    "range": "per-operation",
+    "q_lo": -3.049242011032314,
+    "q_hi": 0.918895974478273,
+    "alpha": 0.1,
+    "loco_coverage_conformal": 0.9473684210526315,
+    "loco_coverage_band": 0.9210526315789473
+   },
+   "groupby": {
+    "residual": 0.31570147600380416,
+    "n_points": 31,
+    "n_configurations": 18,
+    "range": "per-operation",
+    "q_lo": -1.2849519852717304,
+    "q_hi": 2.309819350290997,
+    "alpha": 0.1,
+    "loco_coverage_conformal": 0.9354838709677419,
+    "loco_coverage_band": 0.7419354838709677
+   },
+   "matmul": {
+    "residual": 1.0016747606520933,
+    "n_points": 19,
+    "n_configurations": 6,
+    "range": "generic"
+   },
+   "merge": {
+    "residual": 2.798914214719872,
+    "n_points": 24,
+    "n_configurations": 19,
+    "range": "per-operation",
+    "q_lo": -1.1564262797879188,
+    "q_hi": 0.9387469951791045,
+    "alpha": 0.1,
+    "loco_coverage_conformal": 0.9166666666666666,
+    "loco_coverage_band": 1.0
+   },
+   "np_sort": {
+    "residual": 1.0037333475474608,
+    "n_points": 3,
+    "n_configurations": 3,
+    "range": "generic"
+   },
+   "read_csv": {
+    "residual": 0.9217730748458131,
+    "n_points": 17,
+    "n_configurations": 10,
+    "range": "per-operation",
+    "q_lo": -2.2559264445115543,
+    "q_hi": 0.3130264798593273,
+    "alpha": 0.1,
+    "loco_coverage_conformal": 0.8235294117647058,
+    "loco_coverage_band": 0.7647058823529411
+   },
+   "sort_values": {
+    "residual": 1.7045935750996193,
+    "n_points": 26,
+    "n_configurations": 10,
+    "range": "band",
+    "q_lo": -1.3862943611198906,
+    "q_hi": 1.3862943611198906,
+    "alpha": 0.1,
+    "loco_coverage_conformal": 0.7692307692307693,
+    "loco_coverage_band": 0.8846153846153846
+   }
+  },
+  "1": {
+   "astype": {
+    "residual": 1.2500408910343848,
+    "n_points": 37,
+    "n_configurations": 17,
+    "range": "per-operation",
+    "q_lo": -0.9376341836333777,
+    "q_hi": 0.5978399044760976,
+    "alpha": 0.1,
+    "loco_coverage_conformal": 0.9459459459459459,
+    "loco_coverage_band": 1.0
+   },
+   "concat": {
+    "residual": 0.8534474000652283,
+    "n_points": 16,
+    "n_configurations": 9,
+    "range": "band",
+    "q_lo": -1.3862943611198906,
+    "q_hi": 1.3862943611198906,
+    "alpha": 0.1,
+    "loco_coverage_conformal": 0.75,
+    "loco_coverage_band": 0.875
+   },
+   "drop_duplicates": {
+    "residual": 0.696315714042856,
+    "n_points": 38,
+    "n_configurations": 17,
+    "range": "per-operation",
+    "q_lo": -1.203239512665199,
+    "q_hi": 1.0008249297208194,
+    "alpha": 0.1,
+    "loco_coverage_conformal": 0.9473684210526315,
+    "loco_coverage_band": 1.0
+   },
+   "groupby": {
+    "residual": 0.7760075439787619,
+    "n_points": 31,
+    "n_configurations": 18,
+    "range": "per-operation",
+    "q_lo": -1.1661814890231548,
+    "q_hi": 0.6444568673421354,
+    "alpha": 0.1,
+    "loco_coverage_conformal": 0.8709677419354839,
+    "loco_coverage_band": 1.0
+   },
+   "matmul": {
+    "residual": 1.0016747606520933,
+    "n_points": 19,
+    "n_configurations": 6,
+    "range": "generic"
+   },
+   "merge": {
+    "residual": 1.4338705967626728,
+    "n_points": 24,
+    "n_configurations": 19,
+    "range": "per-operation",
+    "q_lo": -1.0759141978777758,
+    "q_hi": 0.6885891167217493,
+    "alpha": 0.1,
+    "loco_coverage_conformal": 0.9166666666666666,
+    "loco_coverage_band": 1.0
+   },
+   "np_sort": {
+    "residual": 1.0037333475474608,
+    "n_points": 3,
+    "n_configurations": 3,
+    "range": "generic"
+   },
+   "read_csv": {
+    "residual": 1.0108748510596053,
+    "n_points": 17,
+    "n_configurations": 10,
+    "range": "band",
+    "q_lo": -1.3862943611198906,
+    "q_hi": 1.3862943611198906,
+    "alpha": 0.1,
+    "loco_coverage_conformal": 0.8235294117647058,
+    "loco_coverage_band": 1.0
+   },
+   "sort_values": {
+    "residual": 1.7045935750996193,
+    "n_points": 26,
+    "n_configurations": 10,
+    "range": "band",
+    "q_lo": -1.3862943611198906,
+    "q_hi": 1.3862943611198906,
+    "alpha": 0.1,
+    "loco_coverage_conformal": 0.7692307692307693,
+    "loco_coverage_band": 0.8846153846153846
+   }
+  }
+ },
+ "tier01_generic": {
+  "0": {
+   "q_lo": -2.107308804184971,
+   "q_hi": 2.021749171857269,
+   "alpha": 0.05,
+   "n_points": 211
+  },
+  "1": {
+   "q_lo": -1.1661814890231548,
+   "q_hi": 0.9069320197681461,
+   "alpha": 0.05,
+   "n_points": 211
+  }
+ },
+ "tier2": {
+  "astype": {
+   "n_points": 36,
+   "n_configurations": 17,
+   "q": 2.909031770899458,
+   "range": "per-operation"
+  },
+  "drop_duplicates": {
+   "n_points": 29,
+   "n_configurations": 15,
+   "q": 2.3759494857561694,
+   "range": "per-operation"
+  },
+  "groupby": {
+   "n_points": 14,
+   "n_configurations": 10,
+   "q": 4.4306049543912795,
+   "range": "per-operation"
+  },
+  "merge": {
+   "n_points": 20,
+   "n_configurations": 17,
+   "q": 1.0282444839114029,
+   "range": "per-operation"
+  },
+  "numpy.sort": {
+   "n_points": 3,
+   "n_configurations": 3,
+   "range": "generic"
+  },
+  "operator.matmul": {
+   "n_points": 6,
+   "n_configurations": 5,
+   "range": "generic"
+  },
+  "pandas.concat": {
+   "n_points": 5,
+   "n_configurations": 4,
+   "range": "generic"
+  },
+  "pandas.read_csv": {
+   "n_points": 15,
+   "n_configurations": 8,
+   "q": 0.5753700158754266,
+   "range": "per-operation"
+  },
+  "sort_values": {
+   "n_points": 20,
+   "n_configurations": 10,
+   "q": 2.326535410458781,
+   "range": "per-operation"
+  }
+ },
+ "tier2_generic": {
+  "q": 3.220967913600758,
+  "alpha": 0.05
+ },
+ "fitted_parameters": [
+  {
+   "name": "tier0.astype.residual",
+   "fitted_on": "37 valid dev time points in 17 configurations"
+  },
+  {
+   "name": "tier0.astype.q_lo/q_hi",
+   "fitted_on": "37 valid dev time points in 17 configurations"
+  },
+  {
+   "name": "tier0.concat.residual",
+   "fitted_on": "16 valid dev time points in 9 configurations"
+  },
+  {
+   "name": "tier0.concat.range=band (LOCO coverage rule)",
+   "fitted_on": "16 valid dev time points in 9 configurations"
+  },
+  {
+   "name": "tier0.drop_duplicates.residual",
+   "fitted_on": "38 valid dev time points in 17 configurations"
+  },
+  {
+   "name": "tier0.drop_duplicates.q_lo/q_hi",
+   "fitted_on": "38 valid dev time points in 17 configurations"
+  },
+  {
+   "name": "tier0.groupby.residual",
+   "fitted_on": "31 valid dev time points in 18 configurations"
+  },
+  {
+   "name": "tier0.groupby.q_lo/q_hi",
+   "fitted_on": "31 valid dev time points in 18 configurations"
+  },
+  {
+   "name": "tier0.matmul.residual",
+   "fitted_on": "19 valid dev time points in 6 configurations"
+  },
+  {
+   "name": "tier0.merge.residual",
+   "fitted_on": "24 valid dev time points in 19 configurations"
+  },
+  {
+   "name": "tier0.merge.q_lo/q_hi",
+   "fitted_on": "24 valid dev time points in 19 configurations"
+  },
+  {
+   "name": "tier0.np_sort.residual",
+   "fitted_on": "3 valid dev time points in 3 configurations"
+  },
+  {
+   "name": "tier0.read_csv.residual",
+   "fitted_on": "17 valid dev time points in 10 configurations"
+  },
+  {
+   "name": "tier0.read_csv.q_lo/q_hi",
+   "fitted_on": "17 valid dev time points in 10 configurations"
+  },
+  {
+   "name": "tier0.sort_values.residual",
+   "fitted_on": "26 valid dev time points in 10 configurations"
+  },
+  {
+   "name": "tier0.sort_values.range=band (LOCO coverage rule)",
+   "fitted_on": "26 valid dev time points in 10 configurations"
+  },
+  {
+   "name": "tier0.generic.q_lo/q_hi",
+   "fitted_on": "all models of the tier"
+  },
+  {
+   "name": "tier1.astype.residual",
+   "fitted_on": "37 valid dev time points in 17 configurations"
+  },
+  {
+   "name": "tier1.astype.q_lo/q_hi",
+   "fitted_on": "37 valid dev time points in 17 configurations"
+  },
+  {
+   "name": "tier1.concat.residual",
+   "fitted_on": "16 valid dev time points in 9 configurations"
+  },
+  {
+   "name": "tier1.concat.range=band (LOCO coverage rule)",
+   "fitted_on": "16 valid dev time points in 9 configurations"
+  },
+  {
+   "name": "tier1.drop_duplicates.residual",
+   "fitted_on": "38 valid dev time points in 17 configurations"
+  },
+  {
+   "name": "tier1.drop_duplicates.q_lo/q_hi",
+   "fitted_on": "38 valid dev time points in 17 configurations"
+  },
+  {
+   "name": "tier1.groupby.residual",
+   "fitted_on": "31 valid dev time points in 18 configurations"
+  },
+  {
+   "name": "tier1.groupby.q_lo/q_hi",
+   "fitted_on": "31 valid dev time points in 18 configurations"
+  },
+  {
+   "name": "tier1.matmul.residual",
+   "fitted_on": "19 valid dev time points in 6 configurations"
+  },
+  {
+   "name": "tier1.merge.residual",
+   "fitted_on": "24 valid dev time points in 19 configurations"
+  },
+  {
+   "name": "tier1.merge.q_lo/q_hi",
+   "fitted_on": "24 valid dev time points in 19 configurations"
+  },
+  {
+   "name": "tier1.np_sort.residual",
+   "fitted_on": "3 valid dev time points in 3 configurations"
+  },
+  {
+   "name": "tier1.read_csv.residual",
+   "fitted_on": "17 valid dev time points in 10 configurations"
+  },
+  {
+   "name": "tier1.read_csv.range=band (LOCO coverage rule)",
+   "fitted_on": "17 valid dev time points in 10 configurations"
+  },
+  {
+   "name": "tier1.sort_values.residual",
+   "fitted_on": "26 valid dev time points in 10 configurations"
+  },
+  {
+   "name": "tier1.sort_values.range=band (LOCO coverage rule)",
+   "fitted_on": "26 valid dev time points in 10 configurations"
+  },
+  {
+   "name": "tier1.generic.q_lo/q_hi",
+   "fitted_on": "all models of the tier"
+  },
+  {
+   "name": "tier2.astype.q",
+   "fitted_on": "36 accepted Tier 2 time fits in 17 configurations"
+  },
+  {
+   "name": "tier2.drop_duplicates.q",
+   "fitted_on": "29 accepted Tier 2 time fits in 15 configurations"
+  },
+  {
+   "name": "tier2.groupby.q",
+   "fitted_on": "14 accepted Tier 2 time fits in 10 configurations"
+  },
+  {
+   "name": "tier2.merge.q",
+   "fitted_on": "20 accepted Tier 2 time fits in 17 configurations"
+  },
+  {
+   "name": "tier2.pandas.read_csv.q",
+   "fitted_on": "15 accepted Tier 2 time fits in 8 configurations"
+  },
+  {
+   "name": "tier2.sort_values.q",
+   "fitted_on": "20 accepted Tier 2 time fits in 10 configurations"
+  },
+  {
+   "name": "tier2.generic.q",
+   "fitted_on": "all accepted Tier 2 time fits"
+  }
+ ]
+}

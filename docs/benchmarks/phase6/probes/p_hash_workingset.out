@@ -1,0 +1,19 @@
+pandas 3.1.1, numpy 2.5.5
+kind     G        n   factorize ns/row  groupby-sum ns/row  astype-category ns/row
+numeric       100 2,000,000          4.7             11.0                8.2
+numeric    10,000 2,000,000         14.2             20.2               18.2
+numeric   100,000 2,000,000         20.0             39.3               24.0
+numeric 1,000,000 2,000,000         44.2            107.9               72.6
+numeric 3,000,000 3,000,000         74.0            186.5              117.9
+text          100 2,000,000         27.4             53.3               49.0
+text       10,000 2,000,000         44.6             71.9               67.7
+text      100,000 2,000,000         88.1            136.2              130.4
+text    1,000,000 2,000,000        258.3            798.5              806.7
+text    3,000,000 3,000,000        407.2           1383.4             1364.1
+
+object take (concat of differing categoricals): ns per element vs distinct objects k
+k=    1,000: 5.4 ns/element
+k=   10,000: 6.3 ns/element
+k=  100,000: 11.4 ns/element
+k=1,000,000: 65.0 ns/element
+k=3,000,000: 57.5 ns/element

@@ -1,0 +1,6 @@
+pandas 3.1.1
+rows/frame  same   peak MiB   moved MiB   peak-moved B/row/catcol   result dtype
+ 4,000,000  True         362        402        -1.77                category
+ 4,000,000  False        539        402         5.98                str
+ 6,000,000  True         553        628        -2.17                category
+ 6,000,000  False        831        628         5.91                str

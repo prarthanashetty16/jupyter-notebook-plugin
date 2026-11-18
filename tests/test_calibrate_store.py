@@ -17,31 +17,37 @@ from nexus import machine as machine_mod
 from nexus.machine import MachineProfile, load_profile, machine, save_profile
 from nexus.pipeline import Pipeline
 
-THROUGHPUTS = (
-    "copy_bps", "num_hash_s", "text_hash_s", "num_argsort_s", "text_argsort_s", "np_sort_s",
-    "csv_parse_bps", "blas_flops", "cast_s", "to_str_s", "agg_s",
+CURVE_NAMES = (
+    "copy_bps", "read_bps", "num_factorize_s", "text_factorize_s", "object_take_s",
+    "num_argsort_s", "text_argsort_s", "np_sort_s", "blas64_flops", "blas32_flops",
+)  # fmt: skip
+SCALARS = (
+    "csv_num_field_s", "csv_text_field_s", "int_to_str_s", "float_to_str_s", "datetime_to_str_s",
+    "cast_s", "agg_s", "first_touch_bps",
 )  # fmt: skip
 
 
 def test_default_profile_is_uncalibrated():
     assert machine().calibrated is False
-    assert machine().copy_bps == MachineProfile().copy_bps
+    assert machine().meta.get("generic") is True  # the documented generic profile
 
 
 def test_quick_calibration_is_finite_positive_and_plausible():
     profile = calibrate.measure_profile(quick=True)
-    assert profile.calibrated and profile.meta["quick"] is True
-    for name in THROUGHPUTS:
+    assert profile.calibrated and profile.meta["quick"] is True and profile.is_current_format
+    for name in CURVE_NAMES:
+        pts = profile.curves[name]
+        assert len(pts) >= 2, name
+        assert all(math.isfinite(y) and y > 0 for _, y in pts), name
+    for name in SCALARS:
         value = getattr(profile, name)
         assert math.isfinite(value) and value > 0, name
-    assert 1e8 < profile.copy_bps < 1e12
-    assert 1e8 < profile.blas_flops < 1e14
-    assert profile.text_hash_s > profile.num_hash_s
+    assert 1e8 < profile.at("copy_bps", 1e6) < 1e12
+    assert 1e8 < profile.at("blas64_flops", 1e7) < 1e14
+    assert profile.at("text_factorize_s", 1e4) > profile.at("num_factorize_s", 1e4)
+    assert profile.csv_text_field_s > profile.csv_num_field_s
     assert profile.meta["calibration_version"] == calibrate.CALIBRATION_VERSION
-    for name in ("warm_copy_bps", "first_touch_bps"):
-        assert getattr(profile, name) > 0, name
     assert profile.page_fault_s_per_byte >= 0.0
-    assert profile.copy_bps > 0 and profile.copy_bps < profile.warm_copy_bps * 1.5  # cold <= warm
 
 
 def test_profile_cache_roundtrip_and_ensure(tmp_path, monkeypatch):
@@ -49,8 +55,8 @@ def test_profile_cache_roundtrip_and_ensure(tmp_path, monkeypatch):
     monkeypatch.setenv(machine_mod.ENV_VAR, str(path))
     assert load_profile() is None
     first = calibrate.ensure_profile(quick=True)
-    assert path.exists() and load_profile().copy_bps == first.copy_bps
-    assert calibrate.ensure_profile(quick=True).copy_bps == first.copy_bps  # cached, not re-run
+    assert path.exists() and load_profile().profile_id == first.profile_id
+    assert calibrate.ensure_profile(quick=True).profile_id == first.profile_id  # cached, not re-run
     assert machine().calibrated is True
     forced = calibrate.ensure_profile(quick=True, force=True)
     assert forced.meta["timestamp"] >= first.meta["timestamp"]
@@ -65,15 +71,17 @@ def test_corrupt_profile_falls_back_to_defaults(tmp_path, monkeypatch):
 
 
 def test_models_read_the_profile(tmp_path, monkeypatch):
+    from nexus.machine import reference_profile, scaled
+
     monkeypatch.setenv(machine_mod.ENV_VAR, str(tmp_path / "m.json"))
     df = pd.DataFrame({"k": range(5000), "v": np.arange(5000.0)})
 
-    def time_estimate(copy_bps):
-        save_profile(MachineProfile(copy_bps=copy_bps, calibrated=True))
+    def time_estimate(factor):
+        save_profile(scaled(reference_profile(), factor))
         report = Pipeline(tier=0).run("df.copy()\ndf.sort_values('v')", {"df": df, "pd": pd})
         return next(e for e in report.estimates if e.op.name == "sort_values").estimate
 
-    slow, fast = time_estimate(1e6), time_estimate(1e12)
+    slow, fast = time_estimate(10.0), time_estimate(0.1)
     assert slow.time_expected > fast.time_expected
     assert slow.ram_expected == fast.ram_expected  # RAM models are untouched by the profile
 

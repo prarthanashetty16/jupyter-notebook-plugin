@@ -6,6 +6,7 @@ from typing import Any
 
 from nexus import stats
 from nexus.analyzer import DetectedOp
+from nexus.models import _time as tt
 from nexus.models import _util as u
 from nexus.models._util import khash_presized_bytes
 from nexus.models.base import Estimate, NoEstimateError, OperationModel, Tier1Context
@@ -194,8 +195,8 @@ class MergeModel(OperationModel):
         else:
             lo, mid, hi = output_rows_range(nl, nr, features.get("how", "inner"))
         base = max(nl, nr)
-        hash_s = u.machine().text_hash_s if features["key_text"] else u.machine().num_hash_s
-        seconds = (nl + nr) * hash_s + base * (row_l + row_r) / u.machine().copy_bps
+        del base, row_l, row_r  # the time terms are in nexus.models._time
+        seconds = tt.merge(features)
         if features.get("out_rows_source") == "tier1":
             el = features.get("left_elided", False)
             rd = features.get("right_distinct") or (nr, nr, nr)

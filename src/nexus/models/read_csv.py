@@ -6,6 +6,7 @@ from typing import Any
 
 from nexus import stats
 from nexus.analyzer import DetectedOp
+from nexus.models import _time as tt
 from nexus.models import _util as u
 from nexus.models.base import Estimate, NoEstimateError, OperationModel, Tier1Context
 from nexus.registry import register_model
@@ -166,7 +167,7 @@ class ReadCsvModel(OperationModel):
             ram = (at(w_hi) * MODEL_BAND[0], at(w_mid), at(w_lo) * MODEL_BAND[1])
         return u.build(
             ram,
-            u.time_band_for_tier(size / u.machine().csv_parse_bps, tier),
+            u.time_band_for_tier(tt.read_csv(features), tier),
             0.4,
             tier,
             [

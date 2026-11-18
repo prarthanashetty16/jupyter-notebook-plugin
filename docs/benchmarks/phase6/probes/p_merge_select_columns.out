@@ -1,0 +1,5 @@
+pandas 3.1.1
+shape      rows       full MiB  selected MiB  saving  inputs MiB
+unique     6,000,000        184           176      5%       336
+fanout2    3,000,000        550           188     66%       191
+overlap50  6,000,000        276           122     56%       328

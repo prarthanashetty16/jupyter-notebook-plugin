@@ -9,7 +9,7 @@ import pandas as pd
 import psutil
 import pytest
 
-from nexus import dryrun
+from nexus import dryrun, timecal
 from nexus.controller import Controller, ControllerConfig, dryrun_need_bytes, triggers
 from nexus.dryrun_fit import FitResult
 from nexus.dryrun_safety import SafetyVerdict
@@ -177,18 +177,18 @@ def test_tier_2_never_lowers_any_ram_bound_property():
 def test_time_comes_from_tier_2_for_read_csv_astype_and_merge(op):
     spy = Spy(dryrun.DryRunResult(ram=BAD, time=fit(2.0, 3.0, 5.0)))
     out, _ = run(op, est(t=9.0), spy)
-    assert (out.time_low, out.time_expected, out.time_high) == (2.0, 3.0, 5.0) and out.tier == 2
+    (lo, e, hi), _flags = timecal.calibrate_tier2(op, 2.0, 3.0, 5.0)  # Phase 6: calibrated range
+    assert (out.time_low, out.time_expected, out.time_high) == (lo, e, hi) and out.tier == 2
+    assert out.time_expected == 3.0 and lo <= 3.0 <= hi
     assert (out.ram_low, out.ram_expected, out.ram_high) == (10 * MIB, 20 * MIB, 40 * MIB)
 
 
 def test_groupby_time_high_gets_the_pre_registered_multiplier():
     spy = Spy(dryrun.DryRunResult(ram=BAD, time=fit(2.0, 3.0, 5.0)))
     out, _ = run("groupby", est(t=9.0), spy)
-    assert (out.time_low, out.time_expected, out.time_high) == (
-        2.0,
-        3.0,
-        7.5,
-    )  # high x 1.5 = 1 / 0.667
+    (lo, e, hi), _flags = timecal.calibrate_tier2("groupby", 2.0, 3.0, 5.0)
+    assert (out.time_low, out.time_expected) == (lo, 3.0)
+    assert out.time_high == pytest.approx(hi * 1.5)  # calibrated high x 1.5 = 1 / 0.667
     assert "x1.5" in out.note
 
 

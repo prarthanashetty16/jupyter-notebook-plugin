@@ -7,6 +7,7 @@ from typing import Any
 
 from nexus import stats
 from nexus.analyzer import DetectedOp
+from nexus.models import _time as tt
 from nexus.models import _util as u
 from nexus.models._util import (
     group_ids_overflow,
@@ -213,10 +214,7 @@ class DropDuplicatesModel(OperationModel):
             ]
         ram = [ram[0] * MODEL_BAND[0], ram[1], ram[2] * MODEL_BAND[1]]
         out = size * fracs[1]
-        seconds = (
-            n * ((k - kt) * u.machine().num_hash_s + kt * u.machine().text_hash_s)
-            + out / u.machine().copy_bps
-        )
+        seconds = tt.drop_duplicates(features, out)
         return u.build(
             ram,  # type: ignore[arg-type]
             u.time_band_for_tier(seconds, tier),

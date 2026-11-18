@@ -1334,3 +1334,128 @@ may be real; groupby (the other half of the rule) was not probed; one pandas ver
 ### Next steps
 Phase 6 (calibration) with the inputs above; a new frozen suggestion split for any further S1-S4 claim.
 
+
+## Phase 6: calibration (time models, time ranges, two RAM gaps), freeze
+
+**Status: done on DEV only (LOCO; one Windows laptop on mains power); frozen as tag `models-frozen-v1`. test-v2 and val-v5
+sealed and unrun; no real notebook or real-notebook data used. Machine transfer is untested until val-v5.** Pre-registration
+`docs/benchmarks/phase6-preregistration.md` (commit `a34747a`, before any Phase 6 number) and Amendment 1 (commit `b385fe1`,
+power state; written after the first comparison was read, disclosed there). Results: `docs/benchmarks/phase6/README.md`,
+full tables `docs/benchmarks/phase6/phase6_dev.md`, probes `docs/benchmarks/phase6/probes/`.
+
+- [x] 0. Pre-registration: targets (a)-(d), LOCO protocol, split-conformal ranges, min. 8 configurations, learned-model
+  margin 10%, failure statement, machine-transfer risk. Amendment 1: every prediction used for fitting is made with a profile
+  measured on mains; F recomputed on a mains v2 profile; clarifications (configurations with valid points; policy B applied to
+  the stored F's policy-A RAM rows; one candidate for both tiers; learned model must pass at both tiers).
+- [x] 1. Machine profile format 3 (`nexus.machine`, `nexus.calibrate`, 41 s): curves over the working set (cold copy and
+  streaming read 256 KiB-256 MiB; factorize per row vs distinct keys 100-3M, int and str; object take vs distinct objects;
+  argsort / np.sort per n log n vs n; float64 / float32 BLAS vs product size) plus first touch, page-fault cost, CSV field
+  costs by type, astype-to-str by source, single-thread BLAS. Measured only on dedicated primitives. Provenance: content id,
+  versions, power state at start and end (the CLI refuses to measure on battery). Required input: without a calibrated
+  format-3 profile the generic profile (reference machine x2 slower) is used and estimates carry "uncalibrated machine" and
+  ranges widened x3. A repeat measurement agreed within a median ratio of 1.00 (worst curve point 0.77 / 1.25).
+- [x] 2. Derived time models (`nexus/models/_time.py`); every mechanism probed first (`probes/README.md`, re-run on mains):
+  hash cost by distinct count (int 4.7 -> 74 ns/row, str 27 -> 407 ns/row, G = 100 -> 3M) plus the G log G sort of the uniques
+  in groupby / astype("category") (explains groupby 2.6x over and astype under at high cardinality); concat of categoricals with
+  DIFFERENT categories materialises `str` pointers (12-14 ns per row and column vs < 1 ns; the category-heavy concat was 5-11x
+  under), with an object-take cost that follows the distinct objects (5 -> 65 ns); read_csv per field by type (9-14 ns numeric,
+  154-188 ns text or dates; dates are read as text); astype(str) by source (float 368 ns, datetime 177, int 92-97); float32 BLAS
+  2.6-3.0x float64. Tier 0 (distinct counts unknown) uses the geometric middle of the extremes. Only the per-operation residual
+  was fitted (LOCO).
+- [x] 3. Ranges: LOCO split-conformal on log residuals per operation and tier (90% nominal); generic band (95%, flagged) for
+  matmul (6 configurations) and numpy.sort (3 with valid time); Tier 2 by normalised scores of its own range.
+- [x] 4. Learned residual (gradient-boosted trees, scikit-learn extra): **NOT included** (Tier 1 median log error -7.2%, needs
+  -10%; it passed at Tier 0 with -15.6%). Negative result documented.
+- [x] 5. RAM: policy B unchanged. Derived and adopted: concat Tier 1 for categoricals with differing categories
+  (`moved - codes + 8 n c + 8 n`; OS-peak probe 539 / 831 MiB measured vs 554 / 858 derived; dev Tier 1 median error 7.7% ->
+  5.8%, p90 15.7% -> 10.7%; above_high stays 0). Not derived, documented: the select_columns saving (probe: 5% for a unique N:1
+  join whose peak is key factorisation, 66% with fan-out, 56% with half overlap; the suggestion re-estimate uses the Tier 0 merge
+  model, which charges a left copy; the N:1 probe peaked at 184 MiB, just under the 200 MiB bar). Nothing re-enabled.
+- [x] 6. Calibration artifact `src/nexus/calibration/calibration-v1.json` (format 1; provenance: data hashes, git commit
+  `b385fe1` = the parent of the commit that ships it, machine profile id `987c455be3cc`, versions, date, 41 fitted parameters
+  each with what it was fitted on); loader `nexus/timecal.py` (absent / unreadable / other format: x3 widened band + "no time
+  calibration"; pandas outside 3.1: warning once, x2 widened, "unvalidated pandas version"); `nexus-calibrate` CLI (refits from a
+  results folder and applies the pre-registered range fallback mechanically; `--local` is opt-in and local only).
+  Pandas-internals probe tests (`tests/test_pandas_mechanisms.py`, marker `pandas_mechanisms`: merge left-copy elision, concat of
+  categoricals, sorted uniques, read_csv dates as text, hash cost vs distinct count, presized-table page residency, object-take
+  cost) and a CI job over pandas 2.0.3 / 2.1.4 / 2.2.3 / 3.0.* / 3.1.1 (only 3.1.1 validated; the rest informational). **Run here
+  only on pandas 3.1.1 (9 / 9 pass); no result is claimed for the other versions.**
+- [x] 7. Dev evaluation (`python -m benchmarks.phase6_eval --frozen benchmarks/results/tier2-dev-b --derived
+  benchmarks/results/phase6-dev-mains --frozen-mains docs/benchmarks/phase6/f_mains.csv --out docs/benchmarks/phase6`).
+- [x] 8. Freeze: tag `models-frozen-v1`, `docs/benchmarks/frozen-manifest.md`; held-out paths call `benchmarks.frozen.require_frozen`.
+
+### Pre-registered targets on dev (LOCO; F = frozen models recomputed on a mains profile)
+* **(a) time estimates: MET** by the selected D+m. Tier 1: median rel. error 52% -> 25%, p90 146% -> 89%, median log error 0.64 ->
+  0.25, same bucket 153 -> 181 points, within one 100% -> 100%. Tier 0: median 53% -> 33%, p90 164% -> 194% (worse), same bucket
+  151 -> 154, within one 100%. **Against the stored F (old profile, power unknown) neither D nor D+m met (a) at Tier 0 (159 vs
+  158 / 154 same-bucket points) and F would have been kept; the outcome rests on Amendment 1.**
+* **(b) ranges: PARTLY MET.** Tier 1 coverage after: astype 95%, drop_duplicates 95%, merge 92% (met); groupby 87%, read_csv 82%,
+  sort_values 77%, concat 75% (not met). Tier 0: astype, drop_duplicates 95%, groupby 94%, merge 92% (met); read_csv 82%,
+  sort_values 77%, concat 75% (not met). Fallback as pre-registered: concat and sort_values (both tiers) and read_csv Tier 1 keep the
+  0.25x-4x band around the calibrated expected value (flag "time range not calibrated"); groupby Tier 1 and read_csv Tier 0 keep
+  the conformal range. Generic band: matmul, numpy.sort 100%. Width: Tier 1 3.85 -> 2.10, Tier 0 3.85 -> 4.57. Overall Tier 1
+  coverage 89%; 11 of 109 configurations have every point outside the range (listed in the report). Tier 2: coverage 80% -> 93%
+  (astype 92%, groupby 93%, merge 95%, read_csv 93%), at a width cost (astype 1.3x -> 11x, groupby 1.3x -> 36x, merge 78x ->
+  97x; read_csv 7.3x -> 1.9x); drop_duplicates / sort_values / concat Tier 2 ranges explode (> 2,500x) but are not used at run time.
+* **(c) RAM: MET.** above_high 0% at both tiers, per point and per configuration, before and after; coverage unchanged; width
+  unchanged except concat Tier 1 1.00 -> 0.85 and merge Tier 1 5.13 -> 5.23 (see regressions).
+* **(d) regressions, each with a decision** (vs the mains F):
+  - Tier 0 p90 rel. error: astype 102% -> 226%, drop_duplicates 80% -> 171%, read_csv 178% -> 770%, sort_values 94% -> 372%,
+    merge 68% -> 82%, ALL 164% -> 194%; Tier 0 median: groupby 82% -> 86%, merge 27% -> 39%; Tier 0 same bucket: groupby 23 -> 15,
+    merge 21 -> 20, sort_values 20 -> 18. **Keep**: the candidate is selected for both tiers by the pre-registered rule; the cause
+    is Tier 0's geometric middle over unknown distinct counts / column types, now a per-row cost spanning 10-20x (Tier 0 is the
+    fallback tier; Tier 1 is what the session runs).
+  - sort_values Tier 1 p90 94% -> 372%, same bucket 20 -> 18; concat Tier 1 median 35% -> 38%. **Keep, range falls back to the
+    band**; the sort cost of object-heavy frames is not derived (the take of object columns uses the unknown-distinct middle):
+    Phase 7 input.
+  - read_csv Tier 0 / Tier 1 coverage 94% -> 82%. **Tier 1: band kept (coverage 100%); Tier 0: conformal kept** (band 76%).
+  - RAM merge Tier 1 width 5.13 -> 5.23: **keep**; one point whose Tier 1 statistics now finished inside the budget, no model change.
+
+### What was fitted, on what; what was derived; what stays uncalibrated
+* Fitted (all on the dev split, 211 valid time points in 109 configurations per tier, LOCO for every reported number; shipped
+  values on all configurations): one time residual per (tier, model) (D+m; values 0.32-2.8 at Tier 0, 0.70-1.70 at Tier 1, 1.0 for
+  matmul / np_sort), conformal log-quantiles per (tier, model) with >= 8 configurations, the generic band per tier, the Tier 2 score
+  exponent per operation (148 accepted fits in 89 configurations) and its generic value. Listed with sizes in the artifact
+  (`fitted_parameters`).
+* Derived (no fitted constant): every time term of `_time.py` (machine primitives at the working set the step touches); the concat
+  Tier 1 RAM for differing categories.
+* Not calibrated: time ranges of concat and sort_values (both tiers) and read_csv Tier 1 (band kept by the pre-registered rule);
+  matmul and numpy.sort (generic band); the select_columns saving model; Tier 2 RAM; every other RAM model (policy B as before);
+  everything off this machine.
+
+### Found on the way (outside this phase's scope; not fixed)
+* **Phase 5 risk evaluation used policy-A Tier 1 RAM ranges.** `benchmarks/risk_eval.py` replays the stored `tier1-v3` rows, whose
+  Tier 1 `ram_high` is the model's own range for 194 of 323 points (policy B is applied in the pipeline since `c95f674`, after that
+  run). The R1-R4 figures reported in Phase 5 as "policy B" are therefore policy A; under B, `high` is larger (recall can only rise,
+  false alarms too). Needs a re-run of `risk_eval` on policy-B rows (e.g. `phase6-dev-mains`) before any claim.
+* The stored F of 2026-11-16 was made with a profile 30-40% slower than this machine on mains (power state unknown).
+* The concat Tier 1 statistic exceeds the 250 ms budget at 10M rows with 3 x 500k categories (Tier 0 kept there).
+
+### Held-out runs (NOT run): exact commands; any model change after the freeze invalidates their held-out status
+val-v5 (Linux VM, >= 32 GB; `docs/benchmarks/val-v5-linux-runbook.md`):
+```bash
+git checkout models-frozen-v1 && python -m benchmarks.frozen check     # must report no problems
+pip install -e ".[dev,bench]" && nexus-calibrate-machine --force       # on the VM, mains / server power
+CAP=24
+python -m benchmarks plan --suite full --splits val-v5 --mem-limit-gb $CAP --max-size 400000000
+nohup python -m benchmarks full --splits val-v5 --tiers 0,1,2 --out benchmarks/results/val-v5 \
+      --mem-limit-gb $CAP --max-size 400000000 --require-calibrated --no-report > val-v5.log 2>&1 &
+python -m benchmarks evaluate benchmarks/results/val-v5 --val \
+      --reason "held-out check of models-frozen-v1 (Phase 4d S1-S5; Phase 6 time calibration)"
+```
+Phase 8a real-notebook test: **no accuracy harness exists yet.** The available held-out command is the static coverage study,
+which now refuses to run unless the tree is the frozen stack and records the tag commit:
+```bash
+git checkout models-frozen-v1 && python -m benchmarks.frozen check
+python -m benchmarks.realworld.coverage <folder of .ipynb> --heldout --out docs/benchmarks/phase8a/coverage
+```
+Any Phase 8a measurement harness written later must call `benchmarks.frozen.require_frozen()` before reading real data; it is a
+code change, so it cannot be added after the tag without a new freeze. **Any model change after the freeze invalidates the
+held-out status of both runs** (a new freeze, a new tag and new held-out groups would be needed).
+
+### Next steps
+1. Run val-v5 on the Linux VM from the tag (commands above); read once.
+2. Write the Phase 8a accuracy harness (calls the freeze guard) BEFORE touching real notebooks; freezing it means a new tag.
+3. Phase 7 inputs: sort_values time of object-heavy frames; Tier 0 time where distinct counts are unknown; a cheaper concat
+   category comparison; the select_columns re-estimate at Tier 1 (left-copy elision); re-run the Phase 5 risk evaluation on
+   policy-B rows.

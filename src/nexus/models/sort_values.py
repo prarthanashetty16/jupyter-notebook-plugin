@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from nexus.analyzer import DetectedOp
+from nexus.models import _time as tt
 from nexus.models import _util as u
 from nexus.models.base import Estimate, OperationModel
 from nexus.registry import register_model
@@ -72,6 +73,7 @@ class SortValuesModel(OperationModel):
             "n_text_keys": n_text if keys else 0,
             "input_bytes": df.nbytes,
             "moved_bytes": df.moved_bytes,
+            "n_text_cols": df.text_columns,
         }
 
     def estimate(self, features: dict[str, Any], tier: int) -> Estimate:
@@ -92,8 +94,7 @@ class SortValuesModel(OperationModel):
             expected,
             take_phase + sort_phase + distinct_tables,
         )
-        cmp_s = (k - kt) * u.machine().num_argsort_s + kt * u.machine().text_argsort_s
-        seconds = n * u.log2n(n) * cmp_s + size / u.machine().copy_bps
+        seconds = tt.sort_values(features)
         return u.build(
             ram,
             u.time_band(seconds),
