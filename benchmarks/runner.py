@@ -47,7 +47,7 @@ INSTRUMENT = "os-peak-v2"
 ENV_FIELDS = [
     "instrument", "python", "pandas", "numpy", "pyarrow", "pandas_str_default", "text_dtype",
     "os", "cpu", "cpu_count", "cpu_max_mhz", "total_ram", "git_commit",
-    "read_csv_engine", "read_csv_text_dtype",
+    "read_csv_engine", "read_csv_text_dtype", "kernel", "os_release", "cpu_model", "swap_total",
 ]  # fmt: skip
 ACTUAL_FIELDS = [
     "point_id", "suite", "case", "op", "size", "source", "status", "error", "repeats_ok",
@@ -81,6 +81,30 @@ def read_csv_defaults() -> tuple[str, str]:
         return engine, str(pd.read_csv(path)["s"].dtype)
 
 
+def _os_release() -> str:
+    """Distribution name (Linux: /etc/os-release PRETTY_NAME), else the platform release."""
+    try:
+        for line in Path("/etc/os-release").read_text(encoding="utf-8").splitlines():
+            if line.startswith("PRETTY_NAME="):
+                return line.split("=", 1)[1].strip().strip('"')
+    except OSError:
+        pass
+    return platform.release()
+
+
+def _cpu_model() -> str:
+    """CPU model name (Linux: /proc/cpuinfo), else ``platform.processor()``."""
+    try:
+        for line in (
+            Path("/proc/cpuinfo").read_text(encoding="utf-8", errors="replace").splitlines()
+        ):
+            if line.lower().startswith("model name"):
+                return line.split(":", 1)[1].strip()
+    except OSError:
+        pass
+    return platform.processor() or platform.machine()
+
+
 def env_info() -> dict[str, Any]:
     """Library versions, string dtype and hardware, recorded in every result row."""
     try:
@@ -110,6 +134,10 @@ def env_info() -> dict[str, Any]:
         "cpu_count": psutil.cpu_count(logical=True),
         "cpu_max_mhz": round(freq.max) if freq else "",
         "total_ram": psutil.virtual_memory().total,
+        "kernel": platform.release(),
+        "os_release": _os_release(),
+        "cpu_model": _cpu_model(),
+        "swap_total": psutil.swap_memory().total,
         "git_commit": commit,
         "read_csv_engine": engine,
         "read_csv_text_dtype": text_dtype,
@@ -278,6 +306,7 @@ class RunConfig:
     out_dir: Path
     tiers: tuple[int, ...] = (0,)
     mem_limit_bytes: int | None = None
+    require_calibration: bool = False  # abort unless nexus-calibrate-machine has produced a profile
     plan_with_model: bool = True  # skip points whose NEXUS upper bound cannot fit under the cap
     ops: set[str] | None = None
     retry_failed: bool = False
@@ -300,7 +329,7 @@ def _summary(m: Measurement) -> str:
 
 
 class Stores:
-    """dev results in ``out/``; test-v2 in ``out/sealed/``; val-v4 in ``out/validation/``.
+    """dev results in ``out/``; test-v2 in ``out/sealed/``; val-v5 in ``out/validation/``.
 
     Development tooling reads only ``out/actuals.csv`` and ``out/predictions.csv``.
     """
@@ -394,6 +423,11 @@ def run_suite(cfg: RunConfig, points: Iterable[GridPoint] | None = None) -> tupl
     env = env_info()
     meta = {**env, "suite": cfg.suite, "started": time.strftime("%Y-%m-%d %H:%M:%S")}
     meta.update(cap_bytes=cap, machine_profile=asdict(profile))
+    meta["machine_calibration"] = {"calibrated": profile.calibrated, "profile_meta": profile.meta}
+    if cfg.require_calibration and not profile.calibrated:
+        raise RuntimeError(
+            "the machine is not calibrated: run `nexus-calibrate-machine --force` first"
+        )
     (out / "meta.json").write_text(json.dumps(meta, indent=2, default=str))
     runnable = [p for p in grid if p.est_footprint_bytes() <= cap]
     log.info(

@@ -61,7 +61,7 @@ def _select_args(p: argparse.ArgumentParser) -> None:
     p.add_argument(
         "--splits",
         default="dev",
-        help="comma list of dev, test-v2, val-v4. A protected group is measured only when "
+        help="comma list of dev, test-v2, val-v5. A protected group is measured only when "
         "named here; its log lines show id, status and elapsed time only",
     )
     p.add_argument("--max-size", type=int, help="skip points with size above this")
@@ -166,6 +166,11 @@ def main() -> None:  # noqa: C901
         p.add_argument("--retry-failed", action="store_true", help="re-run points that errored")
         p.add_argument("--no-report", action="store_true")
         p.add_argument(
+            "--require-calibrated",
+            action="store_true",
+            help="abort unless nexus-calibrate-machine has produced a profile (recorded in meta.json)",
+        )
+        p.add_argument(
             "--no-model-planning",
             action="store_true",
             help="decide skipping by the static input-size rule only (default: predict first and "
@@ -187,7 +192,7 @@ def main() -> None:  # noqa: C901
     ev.add_argument("results", type=Path)
     ev.add_argument("--final", action="store_true", help="evaluate the sealed TEST split (logged)")
     ev.add_argument(
-        "--val", action="store_true", help="evaluate the held-out val-v4 split (logged)"
+        "--val", action="store_true", help="evaluate the held-out val-v5 split (logged)"
     )
     ev.add_argument("--reason", help="required with --final / --val; recorded in docs/PROGRESS.md")
     _floor_args(ev)
@@ -239,6 +244,7 @@ def main() -> None:  # noqa: C901
         splits=_splits(args),
         tiers=tuple(int(t) for t in args.tiers.split(",")),
         plan_with_model=not args.no_model_planning,
+        require_calibration=args.require_calibrated,
     )
     if args.no_calibrate:
         os.environ[ENV_VAR] = str(out / "no_profile.json")  # nonexistent: models use defaults

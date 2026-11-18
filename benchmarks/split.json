@@ -1,7 +1,7 @@
 {
-  "version": 5,
+  "version": 6,
   "frozen": "2026-11-18",
-  "rule": "dev = every case development tooling may read (Phases 3-3b cases, the former exposed-v1, val-v3 and val-v4, whose reports were read); test-v2 = sealed, never run; no held-out validation group exists in this version",
+  "rule": "dev = every case development tooling may read (Phases 3-4c: the former exposed-v1, val-v3 and val-v4 included); test-v2 = sealed, never run; val-v5 = held-out validation for a Linux machine with >= 32 GB RAM, frozen before it is run, evaluated only by `evaluate --val` (logged)",
   "history": [
     {
       "version": 1,
@@ -45,6 +45,15 @@
         "dev": "a00a733e10ed9d80fc3be7a2330d98e5da63b17ae4f0f425bc6bdf45e4db3de5",
         "test-v2": "597a5180924bcc484564337492775f171b7d600d3624ac7af90cbe98f7f1d296",
         "val-v4": "63cb9e48a7f3ae51fa5d16f47c7f499c31a57d6c4365a9e08612d1ef7450a3fd"
+      }
+    },
+    {
+      "version": 6,
+      "frozen": "2026-11-18",
+      "event": "freeze val-v5 (47 new configurations, sizes up to the multi-GiB regime) as the held-out validation group for a Linux machine with >= 32 GB RAM; created before it is run",
+      "sha256_v5": {
+        "dev": "a4a4d3a8dea35acfc213073f251747cb969f928e9a1cfe5a50fd35fb5eb8817d",
+        "test-v2": "597a5180924bcc484564337492775f171b7d600d3624ac7af90cbe98f7f1d296"
       }
     }
   ],
@@ -314,6 +323,59 @@
       ],
       "sha256": "597a5180924bcc484564337492775f171b7d600d3624ac7af90cbe98f7f1d296",
       "status": "sealed"
+    },
+    "val-v5": {
+      "cases": [
+        "v5/astype/datetime_to_str_nulls6",
+        "v5/astype/float_to_str_nulls9",
+        "v5/astype/int_to_category_card25000",
+        "v5/astype/int_to_str_card2500",
+        "v5/astype/str_to_category_card0p08",
+        "v5/astype/str_to_category_card200000",
+        "v5/astype/str_to_category_card45000",
+        "v5/astype/str_to_category_card7_long",
+        "v5/astype/str_to_category_card9000",
+        "v5/concat/three_uneven_nulls",
+        "v5/concat/two_category_heavy4",
+        "v5/concat/two_numeric_nulls",
+        "v5/drop_duplicates/int_subset_card70000",
+        "v5/drop_duplicates/no_nulls_dup80",
+        "v5/drop_duplicates/null_heavy_full",
+        "v5/drop_duplicates/null_subset_cat_date",
+        "v5/drop_duplicates/null_subset_floats",
+        "v5/drop_duplicates/null_subset_texts",
+        "v5/drop_duplicates/numeric_wide_nulls14",
+        "v5/groupby/category_key_sum",
+        "v5/groupby/int_card90000_mean",
+        "v5/groupby/str_card0p0025_two_values",
+        "v5/groupby/str_card0p55_mean",
+        "v5/groupby/str_card9_sum",
+        "v5/groupby/two_keys_card17000",
+        "v5/groupby/two_keys_card70",
+        "v5/groupby/zipf_int_card0p008",
+        "v5/matmul/float32_tall_thin_big",
+        "v5/matmul/three_quarter_by_third",
+        "v5/merge/inner_large_out_ov97",
+        "v5/merge/inner_small_out_ov08_fo6p5",
+        "v5/merge/inner_small_out_ov12_fo13",
+        "v5/merge/inner_small_out_ov28_fo8p5",
+        "v5/merge/inner_small_out_ov38_fo11",
+        "v5/merge/left_bigright_ov75_fo5p5",
+        "v5/merge/left_small_out_ov18_fo15",
+        "v5/merge/outer_zipf2_ov60",
+        "v5/merge/right_text_ov22_fo2p8",
+        "v5/np_sort/few_unique_int32",
+        "v5/np_sort/reverse_int64",
+        "v5/np_sort/sorted_int64",
+        "v5/read_csv/dates_ints5",
+        "v5/read_csv/text_nulls25",
+        "v5/read_csv/wide_floats16",
+        "v5/sort_values/datetime_nulls",
+        "v5/sort_values/float_int_card0p0025",
+        "v5/sort_values/str_desc_nulls7"
+      ],
+      "sha256": "a4fc850b12d8a2df26094b83993493c87781a305410622aaa7b7a9f94b353dbd",
+      "status": "held-out validation (values hidden; `evaluate --val` logs each use)"
     }
   }
 }
