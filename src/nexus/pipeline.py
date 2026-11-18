@@ -10,6 +10,7 @@ from typing import Any
 
 from nexus import dryrun, guard, ranges
 from nexus.analyzer import DetectedOp, analyze_cell
+from nexus.controller import Controller
 from nexus.failsafe import Deadline
 from nexus.models.base import Estimate, NoEstimateError, Tier1Context
 from nexus.models.builtin import load_builtin_models
@@ -51,7 +52,8 @@ class Pipeline:
         tier: int = 0,
         tier1_budget_s: float = 0.2,
         tier2_budget_s: float = 40.0,
-        tier2_escalate: str = "when_needed",
+        tier2_escalate: str = "controller",
+        controller: Controller | None = None,
     ) -> None:
         if registry is None:
             load_builtin_models()
@@ -62,7 +64,10 @@ class Pipeline:
         self._tier = tier
         self._tier1_budget_s = tier1_budget_s
         self._tier2_budget_s = tier2_budget_s
-        self._tier2_escalate = tier2_escalate  # "always" or "when_needed" (dryrun.should_escalate)
+        self._tier2_escalate = (
+            tier2_escalate  # "controller" (pre-registered rules) or "always" (Phase 4c evaluation)
+        )
+        self._controller = controller or Controller()
 
     def run(  # noqa: C901
         self, source: str, namespace: Mapping[str, Any], deadline: Deadline | None = None
@@ -87,6 +92,7 @@ class Pipeline:
                         raise NoEstimateError(f"tier {self._tier} not implemented")
                     features = model.features(op, inspection)
                     tier0_features = features
+                    tier0 = None
                     used = 0
                     if self._tier >= 1:
                         features, used = self._tier1(model, op, features, namespace, source, t0)
@@ -109,10 +115,10 @@ class Pipeline:
                         else:
                             raise NoEstimateError(f"tier 1 rejected ({problem}) and no Tier 0")
                     else:
-                        estimate = model.estimate(features, used)
+                        estimate = tier0 = model.estimate(features, used)
                     if self._tier >= 2 and isinstance(estimate, Estimate):
                         estimate, features = self._tier2(
-                            op, estimate, features, source, namespace, dry
+                            op, estimate, features, source, namespace, dry, tier0, inspection
                         )
                     if not isinstance(estimate, Estimate):
                         raise TypeError(f"{model.name} returned {type(estimate).__name__}")
@@ -140,10 +146,32 @@ class Pipeline:
 
     def _tier2(
         self, op: DetectedOp, estimate: Estimate, features: dict[str, Any], source: str,
-        namespace: Mapping[str, Any], dry: dict[str, Any],
+        namespace: Mapping[str, Any], dry: dict[str, Any], tier0: Estimate | None, inspection: Inspection,
     ) -> tuple[Estimate, dict[str, Any]]:  # fmt: skip
-        """Refine with a sandboxed dry run when the cell qualifies; never raises, never mutates."""
+        """Refine with the adaptive controller (or, for the Phase 4c evaluation, always); never raises."""
         try:
+            if self._tier2_escalate != "always":
+                names = list(dict.fromkeys(op.variables))
+                descs = [inspection.variables[n] for n in names if n in inspection.variables]
+                size = float(
+                    sum(d.nbytes for d in descs) + sum(f.nbytes for f in inspection.files.values())
+                )
+                rows = (
+                    max((float(d.shape[0]) for d in descs if getattr(d, "shape", ())), default=0.0)
+                    or None
+                )
+                refined, info = self._controller.refine(
+                    op.name,
+                    estimate,
+                    tier0,
+                    features,
+                    source,
+                    namespace,
+                    self._available_bytes(),
+                    size,
+                    rows,
+                )
+                return refined, {**features, "controller": info}
             if "verdict" not in dry:
                 dry["verdict"] = dryrun.analyze_safety(source, namespace)
             verdict = dry["verdict"]
@@ -153,19 +181,11 @@ class Pipeline:
                 or not dryrun.matching_op(verdict.recipe.kind, op.name)
             ):
                 return estimate, features
-            if self._tier2_escalate != "always" and not dryrun.should_escalate(
-                estimate, self._available_bytes()
-            ):
-                return estimate, {
-                    **features,
-                    "tier2": {"reason": "not escalated: the range is narrow and no risk"},
-                }
             if "result" not in dry:
                 dry["result"] = dryrun.run_dryrun(source, namespace, budget_s=self._tier2_budget_s)
             result = dry["result"]
             refined = dryrun.tier2_estimate(result, estimate)
-            features = {**features, "tier2": result.diagnostics()}
-            return (refined or estimate), features
+            return (refined or estimate), {**features, "tier2": result.diagnostics()}
         except Exception:
             log.debug("nexus: tier 2 failed", exc_info=True)
             return estimate, features

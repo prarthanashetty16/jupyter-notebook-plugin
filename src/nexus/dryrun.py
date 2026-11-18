@@ -253,6 +253,11 @@ def _fit(
     return fit_scaling([p[0] for p in points], [p[1] for p in points], target)
 
 
+def kind_of_op(op_name: str) -> str | None:
+    """The recipe kind that a detected operation name corresponds to (None: no dry run for it)."""
+    return next((k for k, names in OP_NAMES.items() if op_name in names), None)
+
+
 def matching_op(recipe_kind: str, op_name: str) -> bool:
     return op_name in OP_NAMES.get(recipe_kind, set())
 
