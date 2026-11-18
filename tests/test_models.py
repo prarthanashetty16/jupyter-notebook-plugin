@@ -132,9 +132,14 @@ def test_tier1_on_a_small_complete_frame_is_exact_not_sampled():
     assert item.features["tier1"]["used"] and item.features["tier1"]["method"] == "complete"
 
 
-def test_tiers_above_one_are_not_implemented():
-    report = Pipeline(tier=2).run("df.drop_duplicates()", {"df": frame()})
+def test_tiers_above_two_are_not_implemented():
+    report = Pipeline(tier=3).run("df.drop_duplicates()", {"df": frame()})
     assert report.ops and report.estimates == []
+
+
+def test_tier_2_on_a_small_frame_keeps_the_tier_1_estimate():
+    report = Pipeline(tier=2).run("df.drop_duplicates()", {"df": frame()})
+    assert report.estimates and report.estimates[0].estimate.tier <= 1
 
 
 def test_features_are_logged_with_estimate(pipeline):

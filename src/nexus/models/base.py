@@ -36,6 +36,7 @@ class Estimate:
     tier: int
     drivers: list[str] = field(default_factory=list)
     note: str | None = None  # e.g. why a Tier 1 estimate was rejected and Tier 0 kept
+    diagnostics: dict[str, Any] | None = None  # Tier 2: sample sizes, measurements, fit quality
 
     def __post_init__(self) -> None:
         if not 0 <= self.ram_low <= self.ram_expected <= self.ram_high:

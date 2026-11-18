@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from nexus import guard, ranges
+from nexus import dryrun, guard, ranges
 from nexus.analyzer import DetectedOp, analyze_cell
 from nexus.failsafe import Deadline
 from nexus.models.base import Estimate, NoEstimateError, Tier1Context
@@ -50,6 +50,8 @@ class Pipeline:
         probe: ResourceProbe | None = None,
         tier: int = 0,
         tier1_budget_s: float = 0.2,
+        tier2_budget_s: float = 40.0,
+        tier2_escalate: str = "when_needed",
     ) -> None:
         if registry is None:
             load_builtin_models()
@@ -59,6 +61,8 @@ class Pipeline:
         self._probe = probe or ResourceProbe()
         self._tier = tier
         self._tier1_budget_s = tier1_budget_s
+        self._tier2_budget_s = tier2_budget_s
+        self._tier2_escalate = tier2_escalate  # "always" or "when_needed" (dryrun.should_escalate)
 
     def run(  # noqa: C901
         self, source: str, namespace: Mapping[str, Any], deadline: Deadline | None = None
@@ -73,12 +77,13 @@ class Pipeline:
         paths = [p for op in ops for p in candidate_paths(op)]
         inspection = self._inspector.inspect(names, namespace, paths=paths, deadline=deadline)
         estimates: list[OpEstimate] = []
+        dry: dict[str, Any] = {}  # one dry run per cell, shared by its ops
         for op in ops:
             if deadline is not None:
                 deadline.check()
             for model in self.registry.find(op):
                 try:
-                    if self._tier > 1:
+                    if self._tier > 2:
                         raise NoEstimateError(f"tier {self._tier} not implemented")
                     features = model.features(op, inspection)
                     tier0_features = features
@@ -105,6 +110,10 @@ class Pipeline:
                             raise NoEstimateError(f"tier 1 rejected ({problem}) and no Tier 0")
                     else:
                         estimate = model.estimate(features, used)
+                    if self._tier >= 2 and isinstance(estimate, Estimate):
+                        estimate, features = self._tier2(
+                            op, estimate, features, source, namespace, dry
+                        )
                     if not isinstance(estimate, Estimate):
                         raise TypeError(f"{model.name} returned {type(estimate).__name__}")
                 except NoEstimateError as why:
@@ -128,6 +137,45 @@ class Pipeline:
             resources=resources,
             elapsed_s=time.perf_counter() - t0,
         )
+
+    def _tier2(
+        self, op: DetectedOp, estimate: Estimate, features: dict[str, Any], source: str,
+        namespace: Mapping[str, Any], dry: dict[str, Any],
+    ) -> tuple[Estimate, dict[str, Any]]:  # fmt: skip
+        """Refine with a sandboxed dry run when the cell qualifies; never raises, never mutates."""
+        try:
+            if "verdict" not in dry:
+                dry["verdict"] = dryrun.analyze_safety(source, namespace)
+            verdict = dry["verdict"]
+            if (
+                not verdict.safe
+                or verdict.recipe is None
+                or not dryrun.matching_op(verdict.recipe.kind, op.name)
+            ):
+                return estimate, features
+            if self._tier2_escalate != "always" and not dryrun.should_escalate(
+                estimate, self._available_bytes()
+            ):
+                return estimate, {
+                    **features,
+                    "tier2": {"reason": "not escalated: the range is narrow and no risk"},
+                }
+            if "result" not in dry:
+                dry["result"] = dryrun.run_dryrun(source, namespace, budget_s=self._tier2_budget_s)
+            result = dry["result"]
+            refined = dryrun.tier2_estimate(result, estimate)
+            features = {**features, "tier2": result.diagnostics()}
+            return (refined or estimate), features
+        except Exception:
+            log.debug("nexus: tier 2 failed", exc_info=True)
+            return estimate, features
+
+    def _available_bytes(self) -> float | None:
+        try:
+            snap = self._probe.snapshot()
+            return float(snap.effective_available)
+        except Exception:
+            return None
 
     @staticmethod
     def _tier0_estimate(model: Any, features: dict[str, Any]) -> Estimate | None:

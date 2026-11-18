@@ -85,9 +85,11 @@ def predict(state: State, tier: int) -> dict[str, Any]:
     """Run NEXUS on the cell source against the live namespace; report estimates and overhead."""
     from nexus.pipeline import Pipeline
 
-    pipeline = Pipeline(tier=tier)
+    pipeline = Pipeline(
+        tier=tier, tier2_escalate="always"
+    )  # evaluation: escalate every qualifying cell
     cold = pipeline.run(state.source, state.ns)
-    warm = pipeline.run(state.source, state.ns)
+    warm = cold if tier >= 2 else pipeline.run(state.source, state.ns)  # a dry run is not repeated
     return {
         "overhead_cold_s": cold.elapsed_s,
         "overhead_warm_s": warm.elapsed_s,
