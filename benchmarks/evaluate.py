@@ -766,6 +766,9 @@ def write_validation_report(
                 "## Tier 0 vs Tier 1 on dev\n\n**Omitted:** no development results here.\n"
             )
         tier1_compare.write(val, results_dir / "tier1_val", "Tier 0 vs Tier 1 on val-v5", "val-v5")
+        from benchmarks import controller_eval  # the pre-registered success criteria S1-S5
+
+        lines.append(controller_eval.validation_section(val))
     lines.append("\n## Measurement caveats\n")
     lines.append(CAVEATS)
     report = results_dir / "validation_report.md"

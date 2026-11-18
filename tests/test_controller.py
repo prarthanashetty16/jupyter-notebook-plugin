@@ -305,3 +305,53 @@ def test_tier_1_only_pipelines_never_touch_the_controller(monkeypatch):
     df = pd.DataFrame({"f": np.arange(5000.0)})
     report = Pipeline(tier=1).run('df["f"].astype(str)', {"df": df, "pd": pd, "np": np})
     assert report.estimates
+
+
+# -- the replay used for the dev evaluation and for `evaluate --val` -------------------------------------------------------
+def _fake_frame():
+    rows = []
+    for i in range(30):
+        big = i < 25  # 25 points get escalated by trigger (b)
+        rows.append({
+            "point_id": f"p{i}", "case": f"c{i % 6}", "op": "merge", "size": 1_000_000, "origin": "dev", "ram_class": "valid",
+            "ram_value": 100 * MIB, "time_class": "valid", "time_value": 20.0, "input_bytes": 50 * MIB, "inspected_bytes": 50 * MIB,
+            "ram_low": 50 * MIB, "ram_expected": 90 * MIB, "ram_high": 130 * MIB, "time_low": 0.5, "time_expected": 12.0 if big else 1.0,
+            "time_high": 40.0, "features1": "{}", "t0_ram_low": 10 * MIB, "t0_ram_expected": 80 * MIB, "t0_ram_high": 500 * MIB,
+            "t0_time_low": 1.0, "t0_time_expected": 10.0, "t0_time_high": 100.0,
+            "t2_ram_low": 90 * MIB, "t2_ram_expected": 105 * MIB, "t2_ram_high": 140 * MIB,
+            "t2_time_low": 15.0, "t2_time_expected": 19.0, "t2_time_high": 26.0,
+            "dry": {"kind": "merge", "overhead_s": 3.0, "ram": {"ok": True, "best_law": "linear"}, "time": {"ok": True, "best_law": "linear"}},
+            "avail": 64 * GIB,
+        })  # fmt: skip
+    return pd.DataFrame(rows)
+
+
+def test_the_replay_applies_the_real_controller_and_the_criteria_are_judged():
+    from benchmarks.controller_eval import GIB as G
+    from benchmarks.controller_eval import criteria, run_scenario
+
+    d = _fake_frame()
+    ctl = run_scenario(d, None, ControllerConfig())
+    assert ctl["escalated"].sum() == 25 and ctl["used"].sum() == 25
+    assert (ctl["ram_high"] >= 500 * MIB).all() and (
+        ctl["time_expected"][ctl["used"]] == 19.0
+    ).all()  # merge: time from Tier 2
+    table = criteria(d, ctl).set_index("criterion")["met"]
+    assert (
+        table.iloc[0] == "MET" and table.iloc[1] == "MET" and table.iloc[2] == "MET"
+    )  # S3: 3 s of 20 s = 15%
+    assert table.iloc[3] == "MET" and table.iloc[4] == "MET"
+    few = run_scenario(d.iloc[:10], None, ControllerConfig())
+    assert (
+        criteria(d.iloc[:10], few).iloc[2]["met"] == "INCONCLUSIVE"
+    )  # fewer than 20 escalated points
+    assert G == GIB
+
+
+def test_s1_fails_when_the_held_out_actual_exceeds_the_high_bound():
+    from benchmarks.controller_eval import criteria, run_scenario
+
+    d = _fake_frame()
+    d["ram_value"] = 900 * MIB  # far above every bound
+    ctl = run_scenario(d, None, ControllerConfig())
+    assert criteria(d, ctl).iloc[0]["met"] == "FAILED"

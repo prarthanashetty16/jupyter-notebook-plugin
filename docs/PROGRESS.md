@@ -1069,3 +1069,75 @@ needs larger samples).
 1. A held-out split must be frozen before anything about Tier 2 is claimed.
 2. Run the Linux large-size job and rerun `tier2_eval` there: the regime where a ~2 s dry run is cheap compared with the cell.
 3. Phase 5 (risk and suggestions) can consume Tier 1 now; Tier 2 time for read_csv / merge / groupby is the useful part.
+
+
+## Phase 4d: the adaptive controller, val-v5, and the ablation
+
+**Status: controller implemented exactly as pre-registered; evaluated on DEVELOPMENT data only (replay); NOT validated.**
+`val-v5` is frozen and was NOT run. Tier 0, Tier 1, the guard, policy B and the Tier 2 estimator are untouched;
+`test-v2` is sealed. Pre-registration (committed before any Phase 4d number): `docs/benchmarks/phase4d-preregistration.md`.
+
+- [x] 0. Pre-registration (rules R0-R4, success criteria S1-S5, failure statement, minimum evidence), commit `2611658`.
+  The groupby multiplier 1.5 = 1 / 0.667, the Tier 2 groupby time bias already reported in Phase 4c.
+- [x] 1. `nexus/controller.py`: R1 Tier 2 RAM only raises `high` to its expected value; R2 time from Tier 2 for read_csv /
+  astype / merge, groupby with `high` x1.5, everything else Tier 1 (bucket); R3 escalation only on (a) RAM high > 50% of free
+  RAM, (b) Tier 1 time >= 5 s, (c) Tier 1 fell back on its time budget with a wide Tier 0 range, AND safe AND the dry-run
+  memory budget (need = 200 MiB + f x (inputs + RAM high), budget = 25% of free RAM, child cap = min(budget, 8 GiB)); fail
+  closed with a recorded reason; 60 s total budget; every Estimate carries tier + reason in `note` and the decision in
+  `diagnostics["controller"]`. `Pipeline(tier=2)` uses it (the Phase 4c always-escalate path stays for the evaluation).
+  35 mocked-model tests: each trigger, no-trigger, unsafe cells, free RAM low / unknown, budget exhaustion, child timeout /
+  died / memory_limit through the real dry run, an exception in the dry run, a property test that no RAM bound is ever
+  lowered, and a **stress test with 10 MiB of free RAM: no child process is started, the estimate is Tier 1 with "fail closed",
+  the frame is unchanged**.
+- [x] 2. Multi-statement coverage (`docs/benchmarks/phase4d-dev/multistatement.md`, 51 realistic cells, analyzer NOT loosened):
+  **6 of 51 accepted (12%)**: the 5 single-operation controls and a `%time`-prefixed cell. Rejected: 17 more than one statement,
+  15 method chain / computed receiver, 7 non-literal argument (a variable such as `keys`), 3 other statements (import, def,
+  loop, with), 1 column assignment, 1 in-place call, 1 operation outside the allowlist. 0 of 8 variable-argument, 0 of 7
+  intermediate-assignment, 0 of 9 chain, 0 of 6 filter, 0 of 5 pipeline cells pass. Seven relaxation PROPOSALS (resolve literal
+  names, per-statement dry runs, whitelisted chains, pure wrappers, literal filters, literal agg dicts, whitelisted imports) with
+  their risks are listed; none implemented. **Most real notebook cells never reach Tier 2.**
+- [x] 3. `val-v5` (split version 6, digest-frozen, leak-protected like val-v3 / val-v4): 47 configurations (merge 9 incl. 5
+  non-unique-right small-output shapes, drop_duplicates 7 null-heavy, astype 9 incl. card 9k / 45k / 200k and nulls, groupby 8,
+  sort 3, concat 3 incl. category-heavy, read_csv 3, matmul 2, np.sort 3), seeds >= 501, no knob value / seed / array shape shared
+  with any dev split or test-v2 (tests pin it); row sizes 3M / 10M / 30M, np.sort 100M-400M, matmul 8000-16000: 141 points, 27 with
+  > 2 GiB of inputs, 140 runnable under a 24 GiB cap. Group constants refactored (val-v3 / val-v4 are provenance labels). The runner
+  now records kernel, distribution, CPU model, swap, and the machine calibration (`meta.json`), and `--require-calibrated` refuses to
+  run without it; paths are `pathlib` throughout. `evaluate --val` appends the controller section with S1-S5 verdicts
+  (MET / FAILED / INCONCLUSIVE).
+- [x] 4. Controller replay on dev (`docs/benchmarks/phase4d-dev/controller_vs_tier1.md`, 322 points; **all dev**). Tier 1 alone
+  vs controller, ALL operations:
+
+  | free RAM | Tier 2 attempted | Tier 2 used | fail-closed | unsafe | RAM above_high | RAM err_med | time err_med | time within one | overhead med (s) / of real run |
+  |---|---|---|---|---|---|---|---|---|---|
+  | 2.5 GiB (dev cap) | 14% | 8% (25) | 2% (6) | 2% (5) | 0% -> 0% | 3% -> 3% | 53% -> 44% | 100% -> 100% | 2.7 s / 4.1x |
+  | 8 GiB | 4% | 2% (6) | 0 | 1 | 0% -> 0% | 3% -> 3% | 53% -> 52% | 100% -> 100% | 2.3 s / 1.1x |
+  | 32 GiB | 2% | 0 | 0 | 1 | 0% -> 0% | identical | identical | 100% -> 100% | 6.1 s / 0.6x (8 cells, trigger (b) on ops without a Tier 2 time rule) |
+
+  Per operation at 2.5 GiB: merge time err 38% -> 20% (46% of points use Tier 2), read_csv 68% -> 44% (33% use it; at 8 GiB 25%),
+  everything else unchanged; RAM unchanged in every scenario (above_high 0%, width 178% both). Triggers at 2.5 GiB: (a) 47, (a)+(b) 4, (b) 4. **What this says:** on
+  dev, whose cells run 0.2-0.9 s, trigger (b) almost never fires, trigger (a) fires only because the free-RAM scenario is
+  small (policy B's `high` is Tier 0's wide high), so the controller is mostly "Tier 1 kept" and its measurable gain is the time
+  of merge / read_csv under a small RAM. It never made RAM worse (no bound lowered, above_high 0% both). The dry run cost 2-6 s
+  and exceeded the real run time at the median (4.1x at 2.5 GiB): where it fires only because of RAM risk the overhead is not the
+  point; where it fires for time (b) on a long cell it is 0.6x. **WHAT-IF (not pre-registered), always escalate when safe, 32 GiB:**
+  Tier 2 used on 112 of 322, time err_med 53% -> 28%, time coverage 92% -> 88%, RAM above_high 0% but width 178% -> 189%, overhead 2.0 s / 8.5x of the
+  real run: Tier 2 time is better but not cheap on short cells.
+- [x] 5. VM runbook written (`docs/benchmarks/val-v5-linux-runbook.md`): install, `nexus-calibrate-machine --force` first
+  (recorded), plan (`--mem-limit-gb 24 --max-size 400000000`), full run with `--tiers 0,1,2 --require-calibrated`, `evaluate --val`.
+  Expected 20-30 h wall-clock, tens of dollars (estimates, not measurements). **Not run.**
+
+### Design decisions and alternatives
+| decision | alternative | why |
+|---|---|---|
+| the controller is a pure function of (Tier 0, Tier 1, free RAM, stored dry run), replayed from stored dry runs | re-run the dry runs live on dev | the dry runs already exist (360 points); a live rerun would cost ~35 min and add noise without testing the rules |
+| (c) = Tier 1 fell back on its time budget AND a wide Tier 0 range | "the cell is expected to exceed the analysis budget" read as an input-size test | the pre-registered reading needs no new statistic; it never fired on dev (the 250 ms budget was never exhausted) |
+| RAM cross-check raises `high` to Tier 2's EXPECTED value | raise to Tier 2's `high` | Tier 2's `high` is 2-5x wider than its expected (ranges up to 450%) and would raise on every point |
+| free-RAM scenarios (2.5 / 8 / 32 GiB) declared up front | the dev machine's actual free RAM per point | the dev machine's free RAM at run time (~2 GiB) would put every point under the (a) trigger |
+| for val-v5 the replay uses each point's recorded free RAM at its start | a fixed scenario | the controller would have seen exactly that value |
+
+### Next steps
+1. Run val-v5 on the Linux VM (runbook); read the report once; S1-S5 as pre-registered decide. Fewer than 20 escalated points makes
+   S3 inconclusive; many 10M+ text-key cells are "no sample" (text keys above 6M rows are not hashed), which limits it.
+2. If the controller is validated: relaxations P1 / P2 (resolve literal names, per-statement dry runs) are the only route to
+   Tier 2 on real notebook cells (12% accepted today), each needs its own safety review and a fresh split.
+3. Phase 5 (risk and suggestions) can consume Tier 1 / policy B and the controller's recorded tier and reason.
