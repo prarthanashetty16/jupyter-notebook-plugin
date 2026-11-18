@@ -26,7 +26,15 @@ def _ns(n=2000):
          "c": rng.integers(0, 100, n), "s": rng.choice(["x", "y", "z"], n)}
     )  # fmt: skip
     right = pd.DataFrame({"k": np.arange(50), "w": rng.random(50), "z": rng.random(50)})
-    return {"left": left, "right": right, "pd": pd, "np": np, "cols": ["a"], "keys": ["k"], "f": print}
+    return {
+        "left": left,
+        "right": right,
+        "pd": pd,
+        "np": np,
+        "cols": ["a"],
+        "keys": ["k"],
+        "f": print,
+    }
 
 
 def propose(rule, src, ns=None, op_name=None):
@@ -150,7 +158,7 @@ def test_downcast_labels_and_proves_integer_range():
     s = propose(DowncastRule(), 'left.groupby("k")["a"].sum()')
     assert s.semantics == "changes_precision" and "'c': 'int8'" in s.modified_source
     ns = _ns()
-    ns["left"]["c"] = np.arange(len(ns["left"])) * 1_000_000  # does not fit int32: not narrowed
+    ns["left"]["c"] = np.arange(len(ns["left"])) * 10_000_000  # exceeds int32: not narrowed
     s = propose(DowncastRule(), 'left.groupby("k")["a"].sum()', ns)
     assert "'c'" not in s.modified_source
 
