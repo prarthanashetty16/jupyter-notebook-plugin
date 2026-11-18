@@ -157,3 +157,36 @@ the residuals are partly machine-specific (cache sizes, memory bandwidth, BLAS l
 coverage will be lower than dev coverage; that risk is untested until val-v5 and is stated in every report of this phase. The
 working-set-dependent profile is meant to move the machine-specific part into measured primitives; whether it does is exactly what
 val-v5 checks.
+
+---
+
+## Amendment 1 (2026-11-18, written after the first dev comparison was read; nothing above is changed)
+
+**What I had seen when writing this.** The candidate table on the stored predictions: D and D+m lower the Tier 1 pooled
+median log error (0.58 -> 0.33 / 0.25) but neither meets target (a) at Tier 0 (same bucket 159 points for F, 158 for D,
+154 for D+m), so under section 3 F would be kept; a learned residual on top of the stored F passed the section-5 margin
+at Tier 1 (0.58 -> 0.27). I had not computed anything with F recomputed on a mains profile.
+
+**Power state (the reason for this amendment).** The development laptop was on battery during part of the session. A first
+prediction re-run made on battery showed 13 Tier 1 fallbacks for "time budget" and one timeout that the earlier run did not
+have, and the first Phase 6 machine profile has no recorded power state. The calibration tool now records the power state
+and refuses to measure on battery. The stored F predictions (`tier2-dev-b`) were made with the v2 profile of 2026-11-16
+23:40, whose power state is unknown. A residual, a conformal quantile or a learned model fitted on predictions made with
+one profile does not apply to estimates made with another, so a calibration fitted on the stored F could not be shipped for
+this machine whatever the comparison says.
+
+**Change.** Every prediction used for fitting or for the comparison is made with a profile measured on mains power:
+* D: `benchmarks/results/phase6-dev-mains` (v3 profile of 2026-11-18 22:14, mains recorded at start and end; the battery
+  run `phase6-dev` is discarded);
+* F: recomputed from the stored features of `tier2-dev-b` with the frozen pre-Phase-6 code (commit `a34747a`) and a v2
+  profile measured now on mains with that commit's `nexus-calibrate-machine`. The stored-F comparison is reported next to
+  it, and both are in the report; the decision uses the mains F.
+
+**Clarifications (no change of rule).** (i) The minimum of 8 configurations counts configurations with valid time points
+for the metric (numpy.sort has 8 configurations but 3 with valid time points; matmul 6). (ii) The stored F rows hold each
+model's own Tier 1 RAM range (policy A; policy B has been applied in the pipeline since commit `c95f674`, after that run);
+the RAM comparison applies policy B to them. (iii) Target (a) applies to each tier and one candidate is selected for the
+stack, as written in sections 2-3. (iv) The learned residual model (section 5) must meet its conditions at Tier 0 and at
+Tier 1 (consistent with (a) applying to each tier); this reading is written after seeing its Tier 1 result on the stored F
+and before any Tier 0 or mains-F result. (v) Tier 2 time ranges are used at run time only for the controller's R2
+operations (read_csv, astype, merge, groupby); the others are reported but not used.
