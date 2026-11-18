@@ -909,3 +909,74 @@ shows failures, fix only what is structural and create `val-v5`.
 2. Unexplained: drop_duplicates 8-13% under-prediction on 9-column frames at 0.5-1M rows (4a), the +-17% of the merge
    sort path between fan-out 2 and 6, read_csv over-prediction on nulls/dates (1.4x on val-v3).
 3. Phase 6: calibrate the time models (inputs above); Tier 1 may then narrow time ranges.
+
+
+## Phase 4b.3: val-v4 failed; astype bug, sanity guard, merge diagnosis, global range fallback
+
+**Status: done on development data; NOT validated.** There is no held-out validation group in split version 5
+and none was created or run in this phase; `test-v2` is sealed and unrun. Details and evidence:
+`docs/benchmarks/val-v4-diagnosis.md`; tables in `docs/benchmarks/tier1-v3/`.
+
+### val-v4 outcome (the one held-out check of the 4b.2 models)
+Tier 1 RAM, 93 valid points: median error 4%, p90 28%, coverage 92%, **above_high 5.4% (5 points; criterion: <= 3%)**,
+below_low 2%. The criterion FAILED. The five points: 3 x astype `float_to_str_nulls` (Tier 1 expected 0: a bug) and 2 x
+merge `inner_overlap20_fanout10` (fold 0.79 / 0.83). The other families did not regress (groupby 2% / 17%,
+sort / matmul / numpy.sort / read_csv as before). The OOM `high` rule had one false negative at 2048 MB (the
+astype zero estimate). val-v4 is dev from split version 5 (access log, `provenance["val-v4"]`, results in
+`benchmarks/results/dev-v5`). The 4b.2 claim "the repaired Tier 1 meets the criterion" is **not supported**.
+
+- [x] 1. astype root cause: pandas 3 keeps a null as a null in `astype(str)`, so the sampled lengths were NaN, the
+  estimate NaN, and `build` turned `max(0.0, nan)` into 0. Fixed (null share modelled: a null costs no string object;
+  66.6 MiB measured = 69.8 B/row vs 69.4 modelled), `build` now refuses non-finite figures, regression tests,
+  and a 40-cell audit of every Tier 1 path (`tests/test_tier1_audit.py`). Stored predictions of all 360 dev points:
+  0 non-finite, 0 non-positive (before: 3). int / datetime / float all checked (int cannot hold nulls).
+- [x] 2. Sanity guard (`nexus/guard.py`): reject a Tier 1 estimate (Tier 0 kept, reason in `Estimate.note`) if it failed,
+  is NaN / infinite, has a non-positive expected RAM or time, or its expected RAM is more than 2x outside Tier 0's
+  [low, high]. Counted on all 360 dev points before adopting the range condition: the strict "outside Tier 0's range"
+  fired on 3 of 211 Tier 1 estimates, exactly the three zeros, and on 0 correct points; I nevertheless widened it to 2x
+  because Tier 0 does not know about nulls (datetime with 4% nulls -> str: correct 69.5 B/row vs Tier 0 low 70.5; the
+  strict rule rejects it, regression test). After the re-run the guard rejected 0 of 360 on dev.
+- [x] 3. merge diagnosis (20 inner points, `merge_inner_table.md`): output-row estimates are right everywhere
+  (0.96-1.03); under-prediction (fold 0.79-0.89) occurs in all 6 non-unique-right points with M / n_left <= 0.14 and in no
+  other point; not low overlap, not fan-out, not output size alone. 4b.2 **partly patched a symptom**: the union-table
+  term is real (pandas 3.1 `_factorize_keys` source: right keys first, then left keys into the same table), but its
+  coefficients came from a grid whose own 0.83-1.17 scatter is this residual. **Mechanism of the residual not found**
+  (probes pf1-pf4: peak 65 / 49 / 59 MiB for fan-out 2 / 6 / 10 at fixed n, reproducible; factorize alone flat; join step
+  below the setup peak; table residency identical). Known limitation: up to ~20% low at Tier 1 expected for non-unique right
+  keys with M / n_left <= ~0.15. No constant fitted.
+- [x] 4. Range policy B (candidate C: `[Tier 1 low, Tier 1 expected, Tier 0 high]`) adopted globally
+  (`nexus.ranges.UPPER_IS_TIER0_HIGH`). Pre-registered criterion on all 284 dev points: A (own range) above_high 1.1% (1.7%
+  of 120 configurations), coverage 97.5%, width 0.64 -> admissible and still the criterion's winner; C 0.0% / 0.0%, 98.6%,
+  width 1.78: adopted by decision (the only candidate with 0 points above high). val-v4 alone after the astype fix: A 2.2%
+  (the 2 merge points), C 0.0%. Per operation C's width cost: astype x2.1, drop_duplicates x1.2, groupby x3.9, **merge
+  x9.1 (above_high 8.1% -> 0%)**, read_csv x5.2, others x1.0; overall x2.9. Per-operation alternatives (C only for merge;
+  a merge high from M / n_left; A everywhere with merge as a documented limitation) are **hypotheses needing a fresh
+  split**. The stored dev predictions are the models' own ranges (A); C is applied in the pipeline and was scored from them.
+- [x] 5. The one OOM false negative at 2048 MB (`high` rule): `v4/astype/float_to_str_nulls|n=10000000` (actual 665 MiB +
+  input 1,689 MiB = 2,354 MiB; Tier 1 high = 0, Tier 0 high 839 MiB would have warned). The planner would NOT have
+  caught it (baseline 939 MiB + Tier 1 high 0). After the fix: Tier 1 649 / 662 / 675 MiB, NEXUS warns, dev OOM table at
+  2048 MB `high`: 0 false negatives, recall 100% at every limit 64-4096 MB (322 valid points), precision 75% at 2048.
+  Planner caveat: its baseline uses the estimated, not the deep-measured, input size (object-heavy frames).
+- [x] 6. Large-size gap: 8 of 283 valid RAM points exceed 1 GiB (drop_duplicates 2, read_csv 6; astype, groupby, merge,
+  numpy.sort, matmul, concat, sort_values 0), maximum 1.51 GiB; 37 of 360 dev points were skipped by the cap (merge 20,
+  drop_duplicates 7, astype 3, groupby 3, read_csv 2, matmul 1, sort_values 1). Everything multi-GiB is extrapolated.
+  Commands for a >= 32 GB Linux machine (install, calibrate, plan, run, evaluate; NOT run):
+  `docs/benchmarks/large-size-linux.md`.
+- [x] 7. Dev re-run with the fixed code (`benchmarks/results/tier1-v3`, commit of the run recorded in the CSV), docs
+  in `docs/benchmarks/tier1-v3/`. Before -> after on the val-v4 slice (Tier 1): coverage 92% -> 96%, above_high 5% -> 2%,
+  p90 28% -> 24%. Split version 5 (val-v4 -> dev; `supersede_to_v5`, `maintenance migrate-val4`; the protected-group guards are tested with a
+  temporary split that has a fake val case), `load_split` now resolves the path per call.
+
+### Phase 6 inputs (not changed in 4b.3)
+- **Time:** concat under-predicted (val-v4 bias 0.19x, 60% of points above `high`; val-v3 was 1.25x over, so the bias
+  depends on the frame: category-heavy concat), groupby over-predicted (3.34x val-v4, 2.24x val-v3), astype over-predicted
+  (1.41x, 2.20x), read_csv under-predicted (0.31x, 0.36x), float32 matmul over-predicted (2.84x). Shown to the user as buckets.
+- **RAM:** concat of category-heavy frames is 23% low (`v4/concat/two_category_heavy` 10M: 595 MiB expected, 785 measured);
+  merge sort path up to ~20% low when M / n_left <= 0.15 (unexplained); drop_duplicates 8-13% low on 9-column frames at
+  0.5-1M rows (unexplained, 4a); read_csv over-predicts 1.2-1.4x on null / date columns.
+
+### Next steps
+1. A held-out split is needed before any claim; it must be created and frozen BEFORE it is run, and the 4b.3 changes
+   (astype nulls, guard, policy C) are the frozen model state it would test.
+2. Run the Linux large-size job (above) to replace the extrapolation above 4M rows.
+3. Phase 6: time-model calibration; the merge residual; concat category-heavy RAM.

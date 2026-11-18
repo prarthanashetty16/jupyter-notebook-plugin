@@ -82,6 +82,7 @@ pip install -e ".[dev,bench]"   # matplotlib for figures
 nexus-calibrate-machine       # per-machine throughputs (the runner calibrates once if missing)
 ```
 Phase 4b.2 tooling: `python -m benchmarks.range_policy <dir>` selects the Tier 1 RAM-range policy under the pre-registered criterion (leave-one-configuration-out); `python -m benchmarks.tier1_before_after <before> <after> <out>` compares old and new predictions on identical actuals (per point and per configuration); `python -m benchmarks.planner_report <dir>` lists the points the model-based planner (baseline + NEXUS `high` vs the cap, `benchmarks/planner.py`) would skip; `python -m benchmarks.maintenance migrate-val3 <src> <dest>` copies the former val-v3 rows into a dev results dir. The probes behind the 4b.2 fixes are in `docs/benchmarks/val-v3-diagnosis/probes/` (diagnosis: `docs/benchmarks/val-v3-diagnosis.md`). `full` predicts before measuring and skips points whose model upper bound cannot fit (`--no-model-planning` restores the static rule). The user-facing time is an order-of-magnitude bucket (`nexus.timebuckets`).
+Phase 4b.3 tooling: `python -m benchmarks.oom_misses <dir> --limit-mb 2048` lists the false negatives of the simulated OOM warning and whether the planner would have flagged them; `nexus/guard.py` rejects insane Tier 1 estimates (Tier 0 kept, reason in `Estimate.note`); `nexus/ranges.py` holds the global range policy (Tier 1 low/expected, Tier 0 high). Large-size run commands: `docs/benchmarks/large-size-linux.md`.
 Phase 4a tooling: `python -m benchmarks.pressure <dir>` screens time points for memory pressure (available RAM, swap and page faults are recorded per run); `python -m benchmarks.tier0_compare <before> <after> <out>` scores old vs new predictions on identical actuals; the probe scripts behind the model derivations are in `docs/benchmarks/tier0-v2/probes/`.
 RAM is measured with OS peak counters on inputs loaded from disk (`nexus.measure`); the instrument is validated by `tests/test_measure_validation.py` and must stay green.
 Do not run tests or other heavy work while a benchmark runs (it distorts memory measurements).
@@ -93,17 +94,17 @@ python -m benchmarks full   --mem-limit-gb 2.5 --max-size 10000000      # dev on
 python -m benchmarks status benchmarks/results/full
 python -m benchmarks evaluate benchmarks/results/full          # dev split only
 ```
-The cap must stay well below free RAM. **Splits (`benchmarks/split.json` version 4, frozen, digest-checked):** `dev`
-(83 cases: the Phase 3-3b cases, the former exposed-v1 and the former val-v3, whose report was read in Phase 4b.2;
-both lists are kept as `provenance`) may be read by all tooling (`load_joined`, reports, `diagnose`). Two groups are
-protected and opt-in (`--splits test-v2` / `--splits val-v4`); runner/log/console/status output for them shows only
-point id, status and elapsed time. `test-v2` (17 cases, sealed, never run; results in `<results>/sealed/`) is read only
-by `evaluate <dir> --final --reason "..."`. `val-v4` (40 cases, the held-out validation split after Phase 4b.2; results
-in `<results>/validation/`) is read only by `evaluate <dir> --val --reason "..."`. Every use of either is logged in the
-"Test-split access log" in docs/PROGRESS.md. Never print, plot or paste protected values anywhere; never edit
-`split.json` (create a new version instead); never read `sealed/` or `validation/` directly. Develop and tune on dev,
-check on val-v4 (once per frozen model state; once read, it becomes dev and a new group is needed), run test-v2 only
-once models are frozen.
+The cap must stay well below free RAM. **Splits (`benchmarks/split.json` version 5, frozen, digest-checked):** `dev`
+(123 cases: the Phase 3-3b cases and the former exposed-v1, val-v3 and val-v4, whose reports were read; all three
+lists are kept as `provenance`) may be read by all tooling (`load_joined`, reports, `diagnose`). **There is no
+held-out validation group in version 5**; a new one must be created (new split version, frozen) before it is run.
+`test-v2` (17 cases, sealed, never run; results in `<results>/sealed/`) is protected and opt-in (`--splits test-v2`);
+runner/log/console/status output for it shows only point id, status and elapsed time, and it is read only by
+`evaluate <dir> --final --reason "..."`. A held-out group, when one exists, is read only by `evaluate <dir> --val
+--reason "..."` (`<results>/validation/`). Every use is logged in the "Test-split access log" in docs/PROGRESS.md.
+Never print, plot or paste protected values anywhere; never edit `split.json` (create a new version instead); never
+read `sealed/` or `validation/` directly. Develop and tune on dev, check on a held-out group once per frozen model
+state (once read it becomes dev and a new group is needed), run test-v2 only once models are frozen.
 
 ### Commit message style
 - First line: imperative, ~50 chars. Example: "Add Tier 0 estimator for DataFrame.sum()"
