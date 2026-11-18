@@ -8,6 +8,14 @@ are the winner's per-model multipliers of ``expected``, fitted on every developm
 
 ``TIER1_BANDS`` maps a model name to ``(low_multiplier, high_multiplier)``; an empty table means
 "keep the range the model emits" (candidate A).
+
+Phase 4b.3: val-v4 failed the criterion (above_high 5.4% per point; 3 astype points were a bug, fixed,
+and 2 merge points are a model limitation that is not understood), so the pre-registered fallback C
+is adopted GLOBALLY: ``[Tier 1 low, Tier 1 expected, Tier 0 high]``. On the development data the
+criterion's own winner is still A (narrower and admissible); C is chosen by decision because it is the
+only candidate with 0 points above ``high`` on all 284 development points, at a width cost of x2.9
+(x9 for merge). The per-operation alternatives in docs/benchmarks/tier1-v3 are hypotheses that need
+a fresh split.
 """
 
 from __future__ import annotations
@@ -21,7 +29,7 @@ TIER1_BANDS: dict[str, tuple[float, float]] = {}
 # True: the upper end never exceeds Tier 0's high (candidates C / D), False: no ceiling
 CEILING_AT_TIER0_HIGH = False
 # True: the upper end IS Tier 0's high (candidate C)
-UPPER_IS_TIER0_HIGH = False
+UPPER_IS_TIER0_HIGH = True
 
 
 def apply(model: str, estimate: Estimate, tier0: Estimate | None) -> Estimate:

@@ -53,6 +53,7 @@ def test_band_multipliers_are_applied_to_the_expected_value_and_stay_ordered():
 
 def test_tier_0_high_as_a_ceiling_or_as_the_upper_end():
     ranges.TIER1_BANDS["m"] = (0.7, 3.0)
+    ranges.UPPER_IS_TIER0_HIGH = False
     ranges.CEILING_AT_TIER0_HIGH = True
     assert (
         ranges.apply("m", _est(), _est(tier=0, high=200)).ram_high == 200
@@ -60,3 +61,13 @@ def test_tier_0_high_as_a_ceiling_or_as_the_upper_end():
     assert ranges.apply("m", _est(), _est(tier=0, high=400)).ram_high == 300
     ranges.CEILING_AT_TIER0_HIGH, ranges.UPPER_IS_TIER0_HIGH = False, True
     assert ranges.apply("m", _est(), _est(tier=0, high=400)).ram_high == 400
+
+
+def test_the_adopted_global_policy_is_tier_1_low_expected_and_tier_0_high():
+    """Phase 4b.3: fallback C adopted globally after val-v4 failed the criterion."""
+    assert ranges.UPPER_IS_TIER0_HIGH and not ranges.TIER1_BANDS
+    out = ranges.apply(
+        "any", _est(low=80, exp=100, high=120), _est(tier=0, low=10, exp=300, high=900)
+    )
+    assert (out.ram_low, out.ram_expected, out.ram_high) == (80, 100, 900)
+    assert ranges.apply("any", _est(), None).ram_high == 120  # no Tier 0 to take the ceiling from

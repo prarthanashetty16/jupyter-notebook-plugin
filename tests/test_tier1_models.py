@@ -14,6 +14,14 @@ from nexus.pipeline import Pipeline
 N = 300_000
 
 
+@pytest.fixture(autouse=True)
+def _native_tier1_range(monkeypatch):
+    """These tests are about the models' own Tier 1 ranges, not the global range policy."""
+    from nexus import ranges
+
+    monkeypatch.setattr(ranges, "UPPER_IS_TIER0_HIGH", False)
+
+
 @pytest.fixture(scope="module")
 def df():
     rng = np.random.default_rng(11)

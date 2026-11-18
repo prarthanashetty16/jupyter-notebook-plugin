@@ -28,7 +28,7 @@ PCT = {"ram_err_med", "ram_err_p90", "ram_cov", "ram_above_high", "ram_below_low
 def _frame(directory: Path, tier: int, floors: Floors | None) -> pd.DataFrame:
     df = load_joined(directory, floors)
     df = df[(df["tier"] == tier) & (df["ram_class"] == "valid") & ~df["ram_lower_bound"]]
-    return df.assign(split=df["origin"].where(df["origin"] == "val-v3", "dev"))
+    return df.assign(split=df["origin"].where(df["origin"].isin(["val-v3", "val-v4"]), "dev"))
 
 
 def table(df: pd.DataFrame) -> pd.DataFrame:
@@ -80,7 +80,7 @@ def main(argv: list[str] | None = None) -> None:
         ca = per_config(_frame(after_dir, tier, None))
         tb.to_csv(out / f"tier{tier}_before.csv", index=False)
         ta.to_csv(out / f"tier{tier}_after.csv", index=False)
-        for split in ("dev", "val-v3"):
+        for split in ("dev", "val-v3", "val-v4"):
             lines.append(f"\n## Tier {tier}: {split} (per point)\n")
             lines.append(
                 md_table(

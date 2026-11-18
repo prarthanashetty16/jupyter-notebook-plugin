@@ -191,7 +191,7 @@ def load_joined(results_dir: Path, floors: Floors | None = None) -> pd.DataFrame
     df["split"] = df["case"].map(group_of)
     sp = load_split()
     df["origin"] = [
-        EXPOSED if c in sp.exposed else VAL3 if c in sp.val3 else g
+        EXPOSED if c in sp.exposed else VAL3 if c in sp.val3 else "val-v4" if c in sp.val4 else g
         for c, g in zip(df["case"], df["split"], strict=True)
     ]
     leaked = sorted(set(df.loc[df["split"].isin([TEST, VAL]), "case"]))

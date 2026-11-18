@@ -214,6 +214,29 @@ def markdown(table: pd.DataFrame, winner: str | None, per_op: dict[str, pd.DataF
     return "\n".join(out)
 
 
+def compare_policies(
+    pop: pd.DataFrame, base: str = "A current", other: str = "C [T1 low, T0 high]"
+) -> str:
+    """Per operation: both policies side by side (per point and per configuration) and the width cost."""
+    cands = candidates(pop)
+    rows = []
+    for op in [*sorted(pop["op"].unique()), "ALL"]:
+        mask = (pop["op"] == op).to_numpy() if op != "ALL" else np.ones(len(pop), dtype=bool)
+        sub = pop[mask].reset_index(drop=True)
+        a = score(sub, cands[base][mask].reset_index(drop=True))
+        c = score(sub, cands[other][mask].reset_index(drop=True))
+        rows.append(
+            f"| {op} | {a['points']} | {a['configs']} | {a['above_high']:.1%} -> {c['above_high']:.1%} | "
+            f"{a['cfg_above_high']:.1%} -> {c['cfg_above_high']:.1%} | {a['coverage']:.1%} -> {c['coverage']:.1%} | "
+            f"{a['width']:.2f} -> {c['width']:.2f} | x{c['width'] / a['width']:.2f} |"
+        )
+    head = (
+        f"| op | points | configs | above_high (point) {base} -> {other} | above_high (config) | coverage | "
+        "width | width cost |\n|---|---|---|---|---|---|---|---|\n"
+    )
+    return head + "\n".join(rows)
+
+
 def main(argv: list[str] | None = None) -> None:
     import argparse
 
@@ -222,10 +245,14 @@ def main(argv: list[str] | None = None) -> None:
         "results", type=Path, help="results directory with dev actuals and Tier 0/1 predictions"
     )
     ap.add_argument("--out", type=Path, help="write the markdown report here")
+    ap.add_argument("--compare", action="store_true", help="add the per-operation A vs C table")
     args = ap.parse_args(argv)
     pop = population(args.results)
     table, winner, per_op = evaluate(pop)
     text = markdown(table, winner, per_op)
+    if args.compare:
+        text += "\n\n## Per operation: A (model range) vs C (Tier 1 low, expected, Tier 0 high)\n\n"
+        text += compare_policies(pop) + "\n"
     print(text)
     if args.out:
         args.out.write_text(text + "\n", encoding="utf-8")

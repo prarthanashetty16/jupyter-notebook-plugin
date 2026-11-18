@@ -194,6 +194,9 @@ def build(
     tier: int,
     drivers: list[str],
 ) -> Estimate:
+    if not all(math.isfinite(x) for x in (*ram, *time)):
+        # max(0.0, nan) is 0.0: a NaN used to become a silent zero estimate (val-v4 astype)
+        raise ValueError(f"non-finite estimate: ram={ram} time={time}")
     r = sorted(max(0.0, x) for x in ram)
     t = sorted(max(0.0, x) for x in time)
     return Estimate(

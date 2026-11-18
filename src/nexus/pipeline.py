@@ -5,10 +5,10 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
-from nexus import ranges
+from nexus import guard, ranges
 from nexus.analyzer import DetectedOp, analyze_cell
 from nexus.failsafe import Deadline
 from nexus.models.base import Estimate, NoEstimateError, Tier1Context
@@ -85,11 +85,26 @@ class Pipeline:
                     used = 0
                     if self._tier >= 1:
                         features, used = self._tier1(model, op, features, namespace, source, t0)
-                    estimate = model.estimate(features, used)
+                    estimate = None
                     if used >= 1:
-                        estimate = ranges.apply(
-                            model.name, estimate, self._tier0_estimate(model, tier0_features)
-                        )
+                        tier0 = self._tier0_estimate(model, tier0_features)
+                        try:
+                            estimate = model.estimate(features, used)
+                            problem = guard.tier1_problem(estimate, tier0)
+                        except NoEstimateError:
+                            raise
+                        except Exception as exc:
+                            problem = f"estimate failed ({type(exc).__name__})"
+                        if problem is None:
+                            estimate = ranges.apply(model.name, estimate, tier0)
+                        elif tier0 is not None:  # keep Tier 0 and say why
+                            estimate = replace(tier0, note=f"Tier 1 rejected: {problem}")
+                            features = {**features, "tier1": {"used": False, "reason": problem}}
+                            log.debug("nexus: tier 1 rejected for %s: %s", model.name, problem)
+                        else:
+                            raise NoEstimateError(f"tier 1 rejected ({problem}) and no Tier 0")
+                    else:
+                        estimate = model.estimate(features, used)
                     if not isinstance(estimate, Estimate):
                         raise TypeError(f"{model.name} returned {type(estimate).__name__}")
                 except NoEstimateError as why:

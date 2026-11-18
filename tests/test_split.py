@@ -80,7 +80,11 @@ def _protected_validation_group(request, tmp_path, monkeypatch):
     raw = json.loads(split_mod.SPLIT_PATH.read_text(encoding="utf-8"))
     dev = [c for c in raw["groups"]["dev"]["cases"] if c != VAL_CASE]
     raw["groups"]["dev"] = {"cases": dev, "sha256": digest(dev), "status": "development"}
-    raw["groups"]["val-v4"] = {"cases": [VAL_CASE], "sha256": digest([VAL_CASE]), "status": "held-out"}
+    raw["groups"]["val-v4"] = {
+        "cases": [VAL_CASE],
+        "sha256": digest([VAL_CASE]),
+        "status": "held-out",
+    }
     raw["provenance"].pop("val-v4", None)
     path = tmp_path / "fake_split.json"
     path.write_text(json.dumps(raw), encoding="utf-8")

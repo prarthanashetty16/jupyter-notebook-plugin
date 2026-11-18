@@ -165,7 +165,12 @@ class AstypeModel(OperationModel):
             pos = stats.sample_positions(n, 100_000)
             sample = stats.take(series, pos)
             ctx.deadline.check()
-            lengths = sample.astype(str).str.len().to_numpy()
+            as_str = sample.astype(str)
+            present = as_str.notna().to_numpy()  # pandas 3 keeps a null as a null, not as "nan"
+            if not present.any():
+                return None  # nothing to measure: stay at Tier 0
+            lengths = as_str.str.len().to_numpy()[present]
+            null_fraction = 1.0 - float(present.mean())
             classes = -(-(STR_HEADER_BYTES + lengths) // PYMALLOC_ALIGNMENT) * PYMALLOC_ALIGNMENT
             mean = float(classes.mean())
             half = stats.Z95 * float(classes.std(ddof=0)) / (len(classes) ** 0.5)
@@ -178,6 +183,7 @@ class AstypeModel(OperationModel):
                 "str_obj_bytes_low": mean - half,
                 "str_obj_bytes_high": mean + half,
                 "int_object_fraction": big,
+                "null_fraction": null_fraction,
                 "tier1": {"sample": len(lengths), "confidence": 1.0 - half / max(mean, 1.0)},
             }
         return None
@@ -235,8 +241,9 @@ class AstypeModel(OperationModel):
                     fixed = POINTER_BYTES + (
                         POINTER_BYTES + INT_OBJECT_BYTES * big if kind == "int" else 0
                     )
+                    present = 1.0 - features.get("null_fraction", 0.0)  # a null has no str object
                     per_row = [
-                        fixed + features.get(f"str_obj_bytes{k}", tier1)
+                        fixed + present * features.get(f"str_obj_bytes{k}", tier1)
                         for k in ("_low", "", "_high")
                     ]
                     ram_range = (
