@@ -1,7 +1,7 @@
 {
-  "version": 4,
-  "frozen": "2026-11-17",
-  "rule": "dev = every case development tooling may read (Phases 3-3b cases, the former exposed-v1 and the former val-v3, whose report was read); test-v2 = sealed, never run; val-v4 = held-out validation after Phase 4b.2, new configurations, evaluated only by `evaluate --val` (logged)",
+  "version": 5,
+  "frozen": "2026-11-18",
+  "rule": "dev = every case development tooling may read (Phases 3-3b cases, the former exposed-v1, val-v3 and val-v4, whose reports were read); test-v2 = sealed, never run; no held-out validation group exists in this version",
   "history": [
     {
       "version": 1,
@@ -35,6 +35,16 @@
         "dev": "5195edbd6f492566b73aa012ecf184fbe90b32e859cf6b95f1024f3c16f0d8ad",
         "test-v2": "597a5180924bcc484564337492775f171b7d600d3624ac7af90cbe98f7f1d296",
         "val-v3": "194a5bf248a6885d26887040432629bf1097d59ac65443289de78fe970f1731c"
+      }
+    },
+    {
+      "version": 5,
+      "frozen": "2026-11-18",
+      "event": "reclassify val-v4 as dev (it failed its pre-registered criterion and its report was read in Phase 4b.3); no held-out group in this version",
+      "sha256_v4": {
+        "dev": "a00a733e10ed9d80fc3be7a2330d98e5da63b17ae4f0f425bc6bdf45e4db3de5",
+        "test-v2": "597a5180924bcc484564337492775f171b7d600d3624ac7af90cbe98f7f1d296",
+        "val-v4": "63cb9e48a7f3ae51fa5d16f47c7f499c31a57d6c4365a9e08612d1ef7450a3fd"
       }
     }
   ],
@@ -104,6 +114,52 @@
       ],
       "sha256": "194a5bf248a6885d26887040432629bf1097d59ac65443289de78fe970f1731c",
       "status": "former val-v3 (held-out in Phase 4b); dev since version 4"
+    },
+    "val-v4": {
+      "cases": [
+        "v4/astype/float_to_str_nulls",
+        "v4/astype/int_to_category_card15000",
+        "v4/astype/int_to_str_card1500",
+        "v4/astype/str_to_category_card0p12",
+        "v4/astype/str_to_category_card150000",
+        "v4/astype/str_to_category_card40000",
+        "v4/astype/str_to_category_card400_long",
+        "v4/astype/str_to_category_card6000",
+        "v4/concat/three_uneven",
+        "v4/concat/two_category_heavy",
+        "v4/drop_duplicates/int_subset_lowdup",
+        "v4/drop_duplicates/no_nulls_full",
+        "v4/drop_duplicates/null_heavy_full",
+        "v4/drop_duplicates/null_subset_cat_date",
+        "v4/drop_duplicates/null_subset_floats",
+        "v4/drop_duplicates/null_subset_texts",
+        "v4/drop_duplicates/numeric_wide_nulls12",
+        "v4/groupby/int_card40000_mean",
+        "v4/groupby/str_card0p003_two_values",
+        "v4/groupby/str_card0p9_mean",
+        "v4/groupby/str_card3_sum",
+        "v4/groupby/two_keys_card60",
+        "v4/groupby/two_keys_card6000",
+        "v4/groupby/zipf_int_card0p006",
+        "v4/matmul/float32_thin",
+        "v4/matmul/three_quarter_rect",
+        "v4/merge/inner_overlap20_fanout10",
+        "v4/merge/inner_overlap35_fanout7",
+        "v4/merge/inner_overlap55_fanout4p5",
+        "v4/merge/inner_overlap95_fanout1p1",
+        "v4/merge/left_overlap40_fanout9",
+        "v4/merge/outer_overlap70_zipf1p5",
+        "v4/merge/right_overlap15_text",
+        "v4/np_sort/float32_nearly_sorted",
+        "v4/np_sort/int64_random",
+        "v4/read_csv/dates_ints",
+        "v4/read_csv/text_nulls",
+        "v4/read_csv/wide_floats",
+        "v4/sort_values/float_int_lowcard",
+        "v4/sort_values/str_desc_nulls"
+      ],
+      "sha256": "63cb9e48a7f3ae51fa5d16f47c7f499c31a57d6c4365a9e08612d1ef7450a3fd",
+      "status": "former val-v4 (held-out in Phase 4b.2; failed its criterion); dev since version 5"
     }
   },
   "groups": {
@@ -191,36 +247,7 @@
         "v3/read_csv/two_columns",
         "v3/sort_values/float_desc_nulls",
         "v3/sort_values/int_datetime_lowcard",
-        "v3/sort_values/two_str_keys"
-      ],
-      "sha256": "a00a733e10ed9d80fc3be7a2330d98e5da63b17ae4f0f425bc6bdf45e4db3de5",
-      "status": "development"
-    },
-    "test-v2": {
-      "cases": [
-        "v2/astype/float_to_int64",
-        "v2/astype/int_to_category_lowcard",
-        "v2/concat/five_small_frames",
-        "v2/concat/unequal_variable_strings",
-        "v2/drop_duplicates/clustered_nulls_varstr_dup60",
-        "v2/drop_duplicates/subset_f0_d0_wide_floats",
-        "v2/groupby/int_key_heavy_zipf_mean",
-        "v2/groupby/two_str_keys_multi_agg",
-        "v2/matmul/tall_skinny",
-        "v2/merge/big_right_low_overlap",
-        "v2/merge/zipf_right_left_join",
-        "v2/np_sort/int64_few_unique",
-        "v2/np_sort/nearly_sorted",
-        "v2/read_csv/category_heavy_dates",
-        "v2/read_csv/variable_strings_clustered_nulls",
-        "v2/sort_values/block_sorted_int",
-        "v2/sort_values/multikey_str_float_desc"
-      ],
-      "sha256": "597a5180924bcc484564337492775f171b7d600d3624ac7af90cbe98f7f1d296",
-      "status": "sealed"
-    },
-    "val-v4": {
-      "cases": [
+        "v3/sort_values/two_str_keys",
         "v4/astype/float_to_str_nulls",
         "v4/astype/int_to_category_card15000",
         "v4/astype/int_to_str_card1500",
@@ -262,8 +289,31 @@
         "v4/sort_values/float_int_lowcard",
         "v4/sort_values/str_desc_nulls"
       ],
-      "sha256": "63cb9e48a7f3ae51fa5d16f47c7f499c31a57d6c4365a9e08612d1ef7450a3fd",
-      "status": "held-out validation (values hidden; `evaluate --val` logs each use)"
+      "sha256": "a4a4d3a8dea35acfc213073f251747cb969f928e9a1cfe5a50fd35fb5eb8817d",
+      "status": "development"
+    },
+    "test-v2": {
+      "cases": [
+        "v2/astype/float_to_int64",
+        "v2/astype/int_to_category_lowcard",
+        "v2/concat/five_small_frames",
+        "v2/concat/unequal_variable_strings",
+        "v2/drop_duplicates/clustered_nulls_varstr_dup60",
+        "v2/drop_duplicates/subset_f0_d0_wide_floats",
+        "v2/groupby/int_key_heavy_zipf_mean",
+        "v2/groupby/two_str_keys_multi_agg",
+        "v2/matmul/tall_skinny",
+        "v2/merge/big_right_low_overlap",
+        "v2/merge/zipf_right_left_join",
+        "v2/np_sort/int64_few_unique",
+        "v2/np_sort/nearly_sorted",
+        "v2/read_csv/category_heavy_dates",
+        "v2/read_csv/variable_strings_clustered_nulls",
+        "v2/sort_values/block_sorted_int",
+        "v2/sort_values/multikey_str_float_desc"
+      ],
+      "sha256": "597a5180924bcc484564337492775f171b7d600d3624ac7af90cbe98f7f1d296",
+      "status": "sealed"
     }
   }
 }

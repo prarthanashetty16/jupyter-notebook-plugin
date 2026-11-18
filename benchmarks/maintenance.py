@@ -77,13 +77,13 @@ def migrate_exposed(results_dir: Path) -> dict[str, int]:
 
 
 def migrate_val3(
-    src_results: Path, dest_results: Path, *, predictions: bool = True
+    src_results: Path, dest_results: Path, *, predictions: bool = True, former: str = "val3"
 ) -> dict[str, int]:
     """Copy former val-v3 rows into ``dest_results``' development files (split=dev). Idempotent.
 
     The source stays as it is (audit trail). Allowed only because split version 4 made val-v3 dev.
     """
-    val3 = load_split().val3
+    val3 = getattr(load_split(), former)  # the former held-out group: val3 or val4
     dest_results.mkdir(parents=True, exist_ok=True)
     copied = {"actuals": 0, "predictions": 0}
     for name, fields, key in (
@@ -138,8 +138,9 @@ def scrub_logs(results_dir: Path) -> int:
 
 
 def main() -> None:
-    if len(sys.argv) == 4 and sys.argv[1] == "migrate-val3":
-        print(migrate_val3(Path(sys.argv[2]), Path(sys.argv[3])))
+    if len(sys.argv) == 4 and sys.argv[1] in ("migrate-val3", "migrate-val4"):
+        former = sys.argv[1].split("-")[1]
+        print(migrate_val3(Path(sys.argv[2]), Path(sys.argv[3]), former=former))
         return
     if len(sys.argv) != 3 or sys.argv[1] not in ("migrate-exposed", "scrub-logs"):
         raise SystemExit(__doc__)

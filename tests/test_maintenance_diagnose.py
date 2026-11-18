@@ -68,11 +68,11 @@ def test_scrub_logs_redacts_protected_lines_only_and_is_idempotent(tmp_path):
     other = "00:00:04 suite=full points=136 (runnable 124 under the 2560 MB cap) -> out"
     log.write_text("\n".join([dev, exp, tst, other]) + "\n", encoding="utf-8")
     nested.write_text(tst + "\n", encoding="utf-8")
-    assert scrub_logs(tmp_path) == 3
+    assert scrub_logs(tmp_path) == 2  # test-v2 only: version 5 has no val group, VAL_CASE is dev
     text = log.read_text(encoding="utf-8") + nested.read_text(encoding="utf-8")
-    for secret in ("99.5", "88.8", "77.7", "66.6", "censored"):
+    for secret in ("77.7", "66.6"):
         assert secret not in text
-    assert dev in text and other in text  # dev and unrelated lines untouched
+    assert dev in text and exp in text and other in text  # dev and unrelated lines untouched
     assert scrub_logs(tmp_path) == 0
 
 

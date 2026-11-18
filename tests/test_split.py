@@ -36,6 +36,7 @@ from benchmarks.split import (
     supersede_to_v2,
     supersede_to_v3,
     supersede_to_v4,
+    supersede_to_v5,
 )
 from benchmarks.suite import (
     BASE,
@@ -57,27 +58,57 @@ TEST_CASE = "v2/drop_duplicates/clustered_nulls_varstr_dup60"
 VAL_CASE = "v4/drop_duplicates/null_heavy_full"
 
 
+REAL_SPLIT_TESTS = {
+    "test_split_loads_and_covers_every_case_exactly_once",
+    "test_every_operation_has_dev_and_test_v2_configurations",
+    "test_former_val_v4_covers_the_failing_families_and_the_ones_that_worked",
+    "test_history_records_the_exposure_and_the_reclassifications",
+    "test_former_val_v4_shares_no_generator_parameter_value_or_seed_with_test_v2",
+    "test_most_test_v2_cases_use_generator_knobs_no_dev_case_uses",
+    "test_test_v2_cases_were_never_seen_in_any_committed_report",
+    "test_full_suite_reaches_floor_and_large_points",
+    "test_tampering_is_detected",
+}
+
+
+@pytest.fixture(autouse=True)
+def _protected_validation_group(request, tmp_path, monkeypatch):
+    """Version 5 has no held-out group; tests of the protected-group machinery get a copy of the
+    real split in which ``VAL_CASE`` is a (fake) val-v4 case, so the guards stay tested."""
+    if request.node.originalname in REAL_SPLIT_TESTS:
+        return
+    raw = json.loads(split_mod.SPLIT_PATH.read_text(encoding="utf-8"))
+    dev = [c for c in raw["groups"]["dev"]["cases"] if c != VAL_CASE]
+    raw["groups"]["dev"] = {"cases": dev, "sha256": digest(dev), "status": "development"}
+    raw["groups"]["val-v4"] = {"cases": [VAL_CASE], "sha256": digest([VAL_CASE]), "status": "held-out"}
+    raw["provenance"].pop("val-v4", None)
+    path = tmp_path / "fake_split.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+    monkeypatch.setattr(split_mod, "SPLIT_PATH", path)
+
+
 # -- the frozen split ----------------------------------------------------------------------------
 def test_split_loads_and_covers_every_case_exactly_once():
     sp = load_split()
     names = {c.name for c in CASES}
     assert sp.dev | sp.test | sp.val == names
     assert not (sp.dev & sp.test) and not (sp.dev & sp.val) and not (sp.test & sp.val)
-    assert (len(sp.dev), len(sp.test), len(sp.val)) == (83, 17, 40)
-    assert all(n.startswith("v2/") for n in sp.test) and all(n.startswith("v4/") for n in sp.val)
+    assert (len(sp.dev), len(sp.test), len(sp.val)) == (123, 17, 0)  # version 5: no held-out group
+    assert all(n.startswith("v2/") for n in sp.test)
     assert len(sp.exposed) == 18 and sp.exposed <= sp.dev  # exposed-v1 is dev, kept as provenance
+    assert len(sp.val3) == 36 and len(sp.val4) == 40 and (sp.val3 | sp.val4) <= sp.dev
     assert sp.of(EXPOSED_CASE) == DEV
 
 
-def test_every_operation_has_dev_test_v2_and_val_v4_configurations():
+def test_every_operation_has_dev_and_test_v2_configurations():
     sp = load_split()
     for op in {c.op for c in CASES}:
-        for group in (sp.dev, sp.test, sp.val):
+        for group in (sp.dev, sp.test):
             assert any(c.op == op and c.name in group for c in CASES), (op, sorted(group)[:1])
 
 
-def test_val_v4_covers_the_failing_families_and_the_ones_that_worked():
-    names = sorted(load_split().val)
+def test_former_val_v4_covers_the_failing_families_and_the_ones_that_worked():
+    names = sorted(load_split().val4)
     for needle in (
         "astype/str_to_category_card6000",
         "astype/str_to_category_card40000",
@@ -106,17 +137,19 @@ def test_val_v4_covers_the_failing_families_and_the_ones_that_worked():
 
 def test_history_records_the_exposure_and_the_reclassifications():
     meta = load_split().meta
-    assert meta["version"] == 4 and len(meta["history"]) == 4
+    assert meta["version"] == 5 and len(meta["history"]) == 5
     old = meta["history"][0]["sha256"]["test"]
     assert old == digest(load_split().exposed)  # exposed-v1 is exactly the old sealed list
     assert "exposure" in meta["history"][1]["event"] or "exposed" in meta["history"][1]["event"]
     assert "reclassify exposed-v1 as dev" in meta["history"][2]["event"]
     assert "reclassify val-v3 as dev" in meta["history"][3]["event"]
+    assert "reclassify val-v4 as dev" in meta["history"][4]["event"]
     assert meta["provenance"]["exposed-v1"]["sha256"] == digest(load_split().exposed)
     sp = load_split()
     assert meta["provenance"]["val-v3"]["sha256"] == digest(sp.val3)
     assert len(sp.val3) == 36 and sp.val3 <= sp.dev and not (sp.val3 & sp.val)  # val-v3 is dev now
     assert all(n.startswith("v3/") for n in sp.val3)
+    assert meta["provenance"]["val-v4"]["sha256"] == digest(sp.val4) and not sp.val
 
 
 def test_test_v2_cases_were_never_seen_in_any_committed_report():
@@ -203,12 +236,13 @@ def test_fresh_splits_differ_from_every_other_configuration(fresh):
     assert not (s_mine & s_other), s_mine & s_other
 
 
-def test_val_v4_shares_no_generator_parameter_value_or_seed_with_dev_or_test_v2():
+def test_former_val_v4_shares_no_generator_parameter_value_or_seed_with_test_v2():
     sp = load_split()
-    shared = _knob_values(sp.val) & _knob_values(sp.dev | sp.test)
+    others = (sp.dev - sp.val4) | sp.test
+    shared = _knob_values(sp.val4) & _knob_values(others)
     assert not shared, sorted(map(str, shared))
-    _, val_seeds = _configs(sp.val)
-    _, other_seeds = _configs(sp.dev | sp.test)
+    _, val_seeds = _configs(sp.val4)
+    _, other_seeds = _configs(others)
     assert not (val_seeds & other_seeds)
     assert (
         min(val_seeds - {0, 1}) >= 401
@@ -235,7 +269,7 @@ def test_most_test_v2_cases_use_generator_knobs_no_dev_case_uses():
             uses += novel
     assert uses >= 10
     for c in CASES:  # and none of those knobs appears in dev (the val-v3 cases are dev now)
-        if c.name not in load_split().dev or c.name in load_split().val3:
+        if c.name not in load_split().dev or c.name in (load_split().val3 | load_split().val4):
             continue
         for spec in _specs(c):
             cfg = getattr(spec, "cfg", None) or getattr(spec, "left", None)
@@ -707,6 +741,12 @@ def test_supersede_to_v4_merges_val_v3_into_dev_and_keeps_provenance(tmp_path):
     assert sp.meta["version"] == 4 and len(sp.meta["history"]) == 4
     with pytest.raises(ValueError, match="not a version-3"):
         supersede_to_v4(["f/1"], "again", path=path)
+    supersede_to_v5("reclassify val-v4 as dev", path=path)
+    sp = load_split(path)
+    assert (sp.dev, sp.val, sp.val4) == ({"a/1", "b/1", "d/1", "e/1"}, set(), {"e/1"})
+    assert sp.meta["version"] == 5 and "val-v4" not in json.loads(path.read_text())["groups"]
+    with pytest.raises(ValueError, match="not a version-4"):
+        supersede_to_v5("again", path=path)
 
 
 def test_migrate_val3_copies_only_former_val_v3_rows_into_dev_files(tmp_path):
