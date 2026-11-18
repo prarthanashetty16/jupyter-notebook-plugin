@@ -210,3 +210,9 @@ def test_patch_keeps_comments_and_non_ascii():
     src = '# é comment\nm = left.merge(right, on="k")  # keep\nm["a"].sum()'
     s = propose(SELECT, src)
     assert "# é comment" in s.modified_source and "# keep" in s.modified_source
+
+
+def test_downcast_is_not_proposed_for_merge_after_the_measured_harm():
+    assert not DowncastRule().applies(
+        analyze_cell('left.merge(right, on="k")["a"]', _ns())[0], None
+    )

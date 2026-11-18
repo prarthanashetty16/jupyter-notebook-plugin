@@ -1186,3 +1186,51 @@ needs larger samples).
 1. Give me the notebook folder and run the coverage command; decide on relaxations (still proposals, each needing a safety
    review and a fresh split) only from real counts.
 2. Run the Linux commands (or Docker) before the VM; then the one-hour pilot (`--pilot 12`), then the full val-v5 run.
+
+## Phase 5: risk engine and rule-based suggestions
+
+**Status: done on dev; held-out suggestion run NOT executed; Tier 0/1/2, guard, range policy B and controller untouched;
+test-v2 and val-v5 sealed and unrun. Nothing was tuned on held-out data.** Pre-registration: `docs/benchmarks/phase5-preregistration.md`
+(committed `aa95a21` before any Phase 5 number existed; Amendment 1 written after reading dev run 1).
+
+- [x] 0. Pre-registration (risk classes, margin 0.85, confidence floor 0.30, HIGH_RISK on `expected > headroom`, UNKNOWN never OK,
+  time as bucket only, R1-R4, B2 thresholds 20% / 64 MiB, S1-S5, held-out design).
+- [x] 1. `nexus/risk.py` (`classify`, `assess`, `RiskReport`); `ResourceSnapshot` gained optional `swap_free` / `rss`. 20 tests:
+  zero free RAM, huge swap, cgroup below host RAM, low confidence, guard fallback, no estimate, partly covered cell, non-finite.
+  Session prints WARN / HIGH_RISK by default, everything in verbose.
+- [x] 2. `nexus/suggestions/` (7 rules, conservative liveness, textual patches that keep comments, magics refused). Refusal battery
+  30 cells (all refused), acceptance battery 15 (all accepted with the right label), preserving results verified equal.
+- [x] 3. Re-estimation on a virtual state with the frozen models; filters and ranking as pre-registered; hidden candidates kept
+  only for evaluation (`keep_hidden`).
+- [x] 4. `%nexus status | explain | suggestions | apply <n>` (apply prints, never runs or edits).
+- [x] 5. Suggestion benchmark `benchmarks/suggestions/` (split v3: 40 configurations, 21 dev / 19 held-out, sha256 per family,
+  digest-checked; held-out access gated and logged to `docs/benchmarks/phase5-heldout-access-log.md`).
+- [x] 6. Risk evaluation on dev, stored data only (`python -m benchmarks.risk_eval benchmarks/results/tier1-v3 --out docs/benchmarks/phase5-risk-dev`).
+
+### Risk engine on dev (stored Tier 1 predictions, simulated limits 64 MB - 4 GiB; dev, not validation)
+R1 recall 100% (1119/1119, Wilson lower 99.7%) PASS; R2 pooled false alarms 14.0% (per limit 56% at 64 MB, 46%, 41%, 12%, 10%, 5%
+at 2048 MB; per op 0-44%, read_csv highest, no op above the 50% bar) PASS; R3 HIGH_RISK precision 98.6% PASS; R4 0 UNKNOWN, 0
+missed crashes. Caveats: at 4096 MB there are 0 positives (no claim); numpy.sort has 16 positives; the false-alarm rate is high at
+the smallest limits where few points are negative; this is dev data and the single baseline of the existing OOM table.
+
+### Suggestions on dev (`docs/benchmarks/phase5-suggestions-dev/`)
+Run 1: S2, S3, S4 FAILED (one `downcast_numeric` on merge: predicted -27% RAM, measured +47%). Fixed by refusing merge for that
+rule (Amendment 1). Run 2 (same dev configurations): S1 PASS (0 preserving bugs), S2 PASS (0 of 15 harmful, 0 increases), S3 PASS
+(n=11, median |error| 10.0 pp, p90 33.2 pp, bias +7.2 pp), S4 PASS (12 of 15 = 80.0%, exactly at the bar). **These passes follow a fix
+made after reading run 1 on the same data.** Honest limits: only 19 of 40 dev cells were risky (pre-registered >= 30 NOT met); 15 shown
+suggestions; rule-level claims for avoid_copy (4), downcast (3) and read_csv (6) only; `select_columns` and `key_dtype` have 1 shown
+each and their predictions are optimistic (46% predicted vs 13-17% measured), the frozen Tier 0 model overstates column savings.
+`text_to_category` produced no risky cell; `delete_unreferenced` produced no suggestion (not measured for peak). Hidden candidates
+(filtered out) were not measured beyond those listed.
+
+### Held-out suggestion run (NOT executed)
+```
+python -m benchmarks.suggestions run --heldout --reason "Phase 5 held-out check of the rule-based suggestions (S1-S4)"
+python -m benchmarks.suggestions evaluate --heldout --reason "Phase 5 held-out check of the rule-based suggestions (S1-S4)" --out docs/benchmarks/phase5-suggestions-heldout
+```
+Run it once on the frozen state; afterwards the 19 configurations are dev data. Needs ~3 GB free RAM; ~30 min.
+
+### Next steps
+Phase 6 (calibration); a risk validation split on a large Linux machine with positives at 4 GiB+; improve the column-saving prediction
+(needs a model change, out of scope here); more risky suggestion cells.
+

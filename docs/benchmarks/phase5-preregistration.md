@@ -203,3 +203,30 @@ run to tune anything.
 
 `%nexus status`, `%nexus explain`, `%nexus suggestions`, `%nexus apply <n>`; text / HTML only; `apply` prints the modified
 source and never executes or edits; time only as a bucket; quiet for OK cells unless verbose.
+
+---
+
+## Amendment 1 (2026-11-18, written after the Phase 5 dev run 1 was read; no held-out data exist)
+
+Everything above is unchanged. What changed and why, in the order it happened:
+
+1. **Rule refinements chosen for safety, made while implementing (before any measurement).** `downcast_numeric` is never
+   `preserving` (the B4 check compares dtypes, so a narrower dtype is `changes_dtype`; floats `changes_precision`); `read_csv`
+   `usecols` and the merge column-selection are `changes_results` when the result is bound to a name (later cells may use the
+   dropped columns) and `preserving` only when consumed inside the expression; `read_csv dtype=` is not proposed (the frozen
+   model has no dtype feature, so a saving cannot be re-estimated); `copy` and `delete` suggestions have no frozen operation
+   model, so their saving is the exact descriptor size (`estimate_source = "descriptor"`), thresholds still apply.
+   Re-estimation of both "before" and "after" uses the frozen model at Tier 0 on a virtual state plus the materialised
+   temporary (`temp_bytes`); Tier 1 statistics are not re-run on virtual data.
+2. **Benchmark design changed three times BEFORE any suggestion was measured** (split files v1 -> v2 -> v3, all kept in
+   `benchmarks/suggestions/`). A baseline-only pass on DEV cells showed that most cells were not "risky" (peak < 200 MiB: pandas
+   groupby / merge / sort on these frames are cheap), so frame sizes were set by target bytes, groupby / sort templates were
+   replaced by more memory-hungry ones, and the split was re-created by the same sha256 rule. Only dev baseline peaks (no suggestion
+   outcome, no held-out value) informed this. Final: v3, 40 configurations, 21 dev / 19 held-out, digest in `split_v3.json`.
+3. **Run 1 on dev (reported in full in `docs/benchmarks/phase5-suggestions-dev/suggestions_dev_run1.md`): S2, S3 and S4 FAILED.**
+   One shown suggestion (`downcast_numeric` on a merge) was modelled at +27% saving and measured -47% (RAM increased). The rule
+   was changed to refuse `merge` (this amendment). Run 2 re-ran the same dev configurations; its report is the one in
+   `suggestions_dev.md`. **Run 2 is a re-measurement of the same dev data after a fix made from run 1, so its pass is not
+   evidence of generalisation; only the held-out part can be.**
+4. **Not met as pre-registered:** at least 30 dev cells that are risky. Of 40 dev cells only 19 were risky (peak >= 200 MiB), and
+   only 15 candidates were shown and measured. Rule-level claims exist for 3 rule families only (>= 3 shown).

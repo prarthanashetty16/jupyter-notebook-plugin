@@ -23,7 +23,9 @@ from benchmarks.suggestions.cases import all_configs
 
 SALT = "phase5-suggestions-v1:"
 HELDOUT_FRACTION = 0.4
-SPLIT_FILE = Path(__file__).with_name("split.json")
+SPLIT_FILE = Path(__file__).with_name(
+    "split_v3.json"
+)  # v1 and v2 files are kept as history (see PROGRESS)
 
 
 @dataclass(frozen=True)
@@ -38,7 +40,9 @@ def assign(keys_by_family: dict[str, list[str]]) -> tuple[list[str], list[str]]:
     dev: list[str] = []
     held: list[str] = []
     for family in sorted(keys_by_family):
-        ordered = sorted(keys_by_family[family], key=lambda k: hashlib.sha256((SALT + k).encode()).hexdigest())
+        ordered = sorted(
+            keys_by_family[family], key=lambda k: hashlib.sha256((SALT + k).encode()).hexdigest()
+        )
         n_held = max(1, math.ceil(HELDOUT_FRACTION * len(ordered)))
         dev += ordered[:-n_held]
         held += ordered[-n_held:]
@@ -61,7 +65,7 @@ def create(path: Path = SPLIT_FILE) -> SuggestionSplit:
     if path.exists():
         raise FileExistsError(f"{path} exists: create a new version instead of overwriting")
     dev, held = assign(_by_family())
-    data = {"version": 1, "salt": SALT, "dev": dev, "heldout": held, "digest": digest(dev, held)}
+    data = {"version": 3, "salt": SALT, "dev": dev, "heldout": held, "digest": digest(dev, held)}
     path.write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8")
     return load(path)
 
@@ -79,4 +83,6 @@ def load(path: Path = SPLIT_FILE) -> SuggestionSplit:
 
 if __name__ == "__main__":
     s = create()
-    print(f"created version {s.version}: {len(s.dev)} dev and {len(s.heldout)} held-out configurations, digest {s.digest}")
+    print(
+        f"created version {s.version}: {len(s.dev)} dev and {len(s.heldout)} held-out configurations, digest {s.digest}"
+    )

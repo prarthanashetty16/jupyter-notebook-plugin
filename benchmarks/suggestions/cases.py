@@ -13,8 +13,12 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-SIZES = (1_000_000, 2_000_000)  # rows of the main frame (the dev machine has ~3 GB free RAM)
-CSV_SIZES = (800_000, 1_600_000)
+FRAME_MB = (
+    300,
+    600,
+)  # target in-memory size of the main frame (the dev machine has ~3 GB free RAM)
+COPY_SIZES = (2_000_000, 4_000_000)
+CSV_SIZES = (1_500_000, 3_000_000)
 
 # cell templates: names ``left`` / ``right`` / ``junk`` / ``path`` are bound by the harness
 TEMPLATES: dict[str, str] = {
@@ -23,6 +27,8 @@ TEMPLATES: dict[str, str] = {
     "M1": 'r = left.merge(right, on="k")["v"]',
     "M2": 'm = left.merge(right, on="k")\nr = m["v"].sum()',
     "S1": 'r = left.sort_values("v").head(10)',
+    "S2": 'r = left.sort_values("k").head(10)',
+    "D2": 'r = left.drop_duplicates(subset=["k"]).shape[0]',
     "D1": 'r = left.drop_duplicates(subset=["k", "c"])["v"].sum()',
     "C_S": 'r = left.copy().sort_values("v").head(10)',
     "C_G": 'r = left.copy().groupby("k")["v"].sum()',
@@ -30,7 +36,7 @@ TEMPLATES: dict[str, str] = {
     "C_M": 'r = left.copy().merge(right, on="k")["v"]',
     "R_B": 'df = pd.read_csv(PATH)\nr = df["a"].sum()',
     "R_C": 'r = pd.read_csv(PATH)["a"].sum()',
-    "R_K": "df = pd.read_csv(PATH)",
+    "R_K": "r = pd.read_csv(PATH)",
     "X": 'r = left["v"].sum()',  # the cell never touches ``junk`` (delete-unreferenced rule)
 }
 
@@ -51,15 +57,15 @@ class Shape:
 
 
 SHAPES: dict[str, Shape] = {
-    "w6": Shape("w6", n_float=3, n_int=1),
-    "w12": Shape("w12", n_float=8, n_int=2, n_text=1),
-    "w20": Shape("w20", n_float=14, n_int=3, n_text=2),
+    "w6": Shape("w6", n_float=3, n_int=1, key_card=500_000),
+    "w12": Shape("w12", n_float=8, n_int=2, n_text=1, key_card=500_000),
+    "w20": Shape("w20", n_float=14, n_int=3, n_text=2, key_card=500_000),
     "num8": Shape("num8", n_float=5, n_int=2),
     "int8": Shape("int8", n_float=1, n_int=6),
     "t2": Shape("t2", n_float=2, n_int=1, n_text=2, text_card=100),
     "t3long": Shape("t3long", n_float=2, n_int=1, n_text=3, text_card=1000, text_len=24),
-    "k_int": Shape("k_int", n_float=3, n_int=1, key_card=5000),
-    "k_wide": Shape("k_wide", n_float=6, n_int=2, key_card=200),
+    "k_int": Shape("k_int", n_float=3, n_int=1, key_card=50_000),
+    "k_wide": Shape("k_wide", n_float=6, n_int=2, key_card=2_000),
     "csv8": Shape("csv8", csv_cols=8),
     "csv16": Shape("csv16", csv_cols=16),
     "junk": Shape("junk", n_float=2, n_int=1),
@@ -72,7 +78,7 @@ class Config:
     family: str
     template: str
     shape: str
-    sizes: tuple[int, ...] = SIZES
+    sizes: tuple[int, ...] = ()
     extra: dict[str, Any] = field(default_factory=dict, compare=False, hash=False)
 
     @property
@@ -80,18 +86,34 @@ class Config:
         return f"{self.family}/{self.template}/{self.shape}"
 
 
+def str_object_bytes(length: int) -> int:
+    return -(-(49 + length) // 16) * 16  # compact ASCII str: header + chars, 16-byte classes
+
+
+def rows_for(shape: Shape, target_mb: int) -> int:
+    row = 8 * (3 + shape.n_float + shape.n_int) + shape.n_text * (
+        8 + str_object_bytes(shape.text_len)
+    )
+    return max(100_000, int(round(target_mb * 2**20 / row, -5)))
+
+
 def _cfgs(family: str, templates: list[str], shapes: list[str], **kw: Any) -> list[Config]:
-    return [Config(family, t, s, **kw) for t in templates for s in shapes]
+    out = []
+    for t in templates:
+        for s in shapes:
+            sizes = kw.get("sizes") or tuple(rows_for(SHAPES[s], mb) for mb in FRAME_MB)
+            out.append(Config(family, t, s, sizes=sizes))
+    return out
 
 
 def all_configs() -> list[Config]:
     out: list[Config] = []
     out += _cfgs("select_columns", ["G1", "G2", "M1", "M2"], ["w6", "w12", "w20"])
-    out += _cfgs("downcast_numeric", ["G1", "S1", "D1"], ["num8", "int8"])
-    out += _cfgs("text_to_category", ["G1", "S1", "D1"], ["t2", "t3long"])
-    out += _cfgs("key_dtype", ["M1", "S1"], ["k_int", "k_wide"])
+    out += _cfgs("downcast_numeric", ["S1", "D2", "M1"], ["num8", "int8"])
+    out += _cfgs("text_to_category", ["S1", "D2", "M1"], ["t2", "t3long"])
+    out += _cfgs("key_dtype", ["M1", "S2"], ["k_int", "k_wide"])
     out += _cfgs("read_csv_options", ["R_B", "R_C", "R_K"], ["csv8", "csv16"], sizes=CSV_SIZES)
-    out += _cfgs("avoid_copy", ["C_S", "C_G", "C_D", "C_M"], ["num8"])
+    out += _cfgs("avoid_copy", ["C_S", "C_G", "C_D", "C_M"], ["num8"], sizes=COPY_SIZES)
     out += _cfgs("delete_unreferenced", ["X"], ["junk", "junk_t"], sizes=(2_000_000,))
     keys = [c.key for c in out]
     assert len(keys) == len(set(keys))
@@ -108,8 +130,9 @@ def build_frames(shape: Shape, n: int, seed: int = 7) -> dict[str, pd.DataFrame]
     for i in range(shape.n_int):
         cols[f"i{i}"] = rng.integers(0, 30_000, n)
     for i in range(shape.n_text):
-        pool = [f"{j:0{shape.text_len}d}" for j in range(shape.text_card)]
-        cols[f"s{i}"] = np.array(pool, dtype=object)[rng.integers(0, shape.text_card, n)]
+        pool = np.array([f"{j:0{shape.text_len}d}" for j in range(shape.text_card)])
+        # astype(object) gives every row its own str object, as read_csv does
+        cols[f"s{i}"] = pool[rng.integers(0, shape.text_card, n)].astype(object)
     left = pd.DataFrame(cols)
     if shape.name.startswith("junk"):  # a small working frame plus a large unreferenced one
         return {"left": left.iloc[:100_000].copy(), "junk": left}

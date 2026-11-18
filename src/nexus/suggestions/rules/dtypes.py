@@ -110,8 +110,11 @@ def _narrow(p: ColumnProfile) -> str | None:
 
 
 class DowncastRule(SuggestionRule):
+    """Not proposed for merge: on the dev run the modelled saving (+27%) was a measured INCREASE
+    (-47%, the full astype copy plus mixed-dtype merge work); see PROGRESS, Phase 5 run 1."""
+
     name = "downcast_numeric"
-    ops = FRAME_OPS
+    ops = ("groupby", "sort_values", "drop_duplicates")
 
     def propose(self, ctx: Context) -> Suggestion | None:  # noqa: C901
         if cell_is_analysable(ctx.tree):
