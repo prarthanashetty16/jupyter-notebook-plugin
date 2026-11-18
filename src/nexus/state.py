@@ -317,6 +317,8 @@ class ResourceSnapshot:
     total_ram: int
     available_ram: int
     cgroup: CgroupMemory | None = None
+    swap_free: int | None = None  # None: unknown; never added to headroom (see nexus.risk)
+    rss: int | None = None  # this kernel's resident set (already excluded from ``available_ram``)
 
     @property
     def effective_total(self) -> int:
@@ -432,6 +434,16 @@ class ResourceProbe:
     def snapshot(self) -> ResourceSnapshot:
         vm = psutil.virtual_memory()
         cgroup = read_cgroup_memory(self._root, self._proc) if self._read else None
+        swap_free = rss = None
+        try:
+            swap_free = int(psutil.swap_memory().free)
+            rss = int(psutil.Process().memory_info().rss)
+        except Exception:  # optional extras: never let them hide the RAM figures
+            pass
         return ResourceSnapshot(
-            total_ram=int(vm.total), available_ram=int(vm.available), cgroup=cgroup
+            total_ram=int(vm.total),
+            available_ram=int(vm.available),
+            cgroup=cgroup,
+            swap_free=swap_free,
+            rss=rss,
         )

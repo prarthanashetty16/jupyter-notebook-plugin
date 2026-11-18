@@ -8,7 +8,8 @@ from typing import Any
 
 from nexus.failsafe import Deadline, run_with_timeout
 from nexus.pipeline import CellReport, Pipeline
-from nexus.render import format_report
+from nexus.render import format_report, human_bytes
+from nexus.risk import RiskReport, assess
 
 log = logging.getLogger("nexus")
 
@@ -40,6 +41,9 @@ class NexusSession:
         self.enabled = True
         self.verbose = False
         self.last_report: CellReport | None = None
+        self.last_risk: RiskReport | None = None
+        self.last_source: str | None = None
+        self.suggestions: list[Any] = []
         self._in_hook = False
         self._active = 0
 
@@ -71,6 +75,9 @@ class NexusSession:
             self._in_hook = True
             try:
                 self.last_report = None
+                self.last_risk = None
+                self.last_source = source
+                self.suggestions = []
                 deadline = Deadline(self.budget_s)
                 namespace = self._shell.user_ns
                 pipeline = self.pipeline
@@ -78,8 +85,14 @@ class NexusSession:
                     lambda: pipeline.run(source, namespace, deadline), self.budget_s + _GRACE_S
                 )
                 self.last_report = report
+                self.last_risk = assess(report)
+                risk = self.last_risk
                 if self.verbose:
                     self._printer(format_report(report))
+                    if risk is not None:
+                        self._printer(risk.format())
+                elif risk is not None and risk.risk.is_alert:
+                    self._printer(risk.format() + "\n  (%nexus suggestions for ways to lower it)")
             finally:
                 self._in_hook = False
         except BaseException as exc:
@@ -97,3 +110,48 @@ class NexusSession:
         if self.last_report is not None:
             parts.append(f"last analysis: {self.last_report.elapsed_s * 1000:.1f} ms")
         return ", ".join(parts)
+
+    def explain(self) -> str:
+        """Full report of the last analysed cell (operations, estimates, risk)."""
+        if self.last_report is None:
+            return "[nexus] no analysed cell yet"
+        parts = [format_report(self.last_report)]
+        if self.last_risk is not None:
+            parts.append(self.last_risk.format())
+        return "\n".join(parts)
+
+    def show_suggestions(self, namespace: Any) -> str:
+        """Compute and list ranked suggestions for the last cell (nothing is executed)."""
+        from nexus.suggestions import suggest
+
+        report, source = self.last_report, self.last_source
+        if report is None or not report.ops or source is None:
+            return "[nexus] no analysed cell with a known operation"
+        self.suggestions = suggest(source, namespace, report.inspection, report.ops)
+        if not self.suggestions:
+            return "[nexus] no suggestion that is provably safe and saves enough memory"
+        lines = []
+        for i, sg in enumerate(self.suggestions, 1):
+            if sg.before is not None and sg.after is not None:
+                rng = (
+                    f"predicted peak {human_bytes(sg.before.ram_expected)} -> "
+                    f"{human_bytes(sg.after.ram_expected)} (range {human_bytes(sg.after.ram_low)}-"
+                    f"{human_bytes(sg.after.ram_high)}, Tier 0 re-estimate)"
+                )
+            else:
+                rng = f"saves about {human_bytes(sg.saving_bytes)} (exact size, no range)"
+            lines.append(f"[{i}] {sg.title}  [{sg.semantics}]\n    {sg.explanation}\n    {rng}")
+            lines.append(f"    semantics: {sg.semantics_detail}")
+            for note in sg.notes:
+                lines.append(f"    note: {note}")
+        lines.append("Use %nexus apply <n> to print the modified source (it is not run).")
+        return "\n".join(lines)
+
+    def apply(self, n: int) -> str:
+        """The modified source of suggestion ``n``; never executed or written anywhere."""
+        if not 1 <= n <= len(self.suggestions):
+            return "[nexus] no such suggestion; run %nexus suggestions first"
+        sg = self.suggestions[n - 1]
+        return (
+            f"# suggested cell (NOT executed) - {sg.title} [{sg.semantics}]\n{sg.modified_source}"
+        )
