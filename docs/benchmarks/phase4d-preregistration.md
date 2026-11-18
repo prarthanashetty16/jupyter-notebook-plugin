@@ -83,3 +83,41 @@ The controller is replayed on the 360 development points from the stored Tier 0 
 and compared with Tier 1 alone. Every number is dev. Because dev cells are short (median 0.2-0.9 s), trigger (b) will
 almost never fire there and the dev result is mostly "Tier 1 kept"; that is a finding, not a defect. A what-if row
 that always escalates is reported separately and labelled as such.
+
+---
+
+## Amendment 1 (dated 2026-11-18; added BEFORE val-v5 was run; the text above is unchanged)
+
+Nothing from val-v5 had been run or read when this amendment was written. The controller rules R0-R4 and S1-S3, S5 are
+unchanged. S4 and the run order / partial-run reporting are made precise.
+
+**(a) S4 "no harm vs Tier 1 alone", defined numerically.** The original S4 covered RAM only (controller `above_high` <=
+Tier 1's, no RAM bound lowered). It did not say how "harm" is measured for time or for width. S4 is now the conjunction of,
+on the valid points of the groups that completed (see (b)):
+1. RAM: the number of points whose actual exceeds the controller's `high` is <= the number for Tier 1 alone (policy B) on
+   the same points (original wording, kept);
+2. RAM: no `low`, `expected` or `high` is lower than Tier 1's (0 points);
+3. RAM width: mean (high - low) / expected of the controller <= **1.25 x** Tier 1's;
+4. time: the share of points whose expected time bucket is within one bucket of the measured one is >= Tier 1's share
+   **minus 1 percentage point**;
+5. time: the share of points whose measured time is above the controller's `time_high` is <= Tier 1's share **plus 2
+   percentage points**.
+Any one failing means S4 FAILED. The thresholds (1.25x, 1 pp, 2 pp) are fixed here by principle (a controller may widen the
+RAM range by a quarter at most; a bucket share is a ratio of a few dozen points, so 1 pp is one point of noise;
+2 pp for the above-high share) and are not derived from dev data.
+
+**(b) Run priority for val-v5.** The run may be cut short by budget, so the points run in this order (the runner orders
+val-v5 points this way; within a priority group case by case, sizes ascending):
+* P1: merge, groupby, astype, drop_duplicates, read_csv;
+* P2: concat, sort_values;
+* P3: numpy.sort, matmul (skippable if the budget runs out).
+S1-S5 are evaluated on whatever priority groups COMPLETED, and the evaluation report must list which groups completed.
+A group is completed when every point of it that the planner admits has a final status (ok, memory_limit or error; a
+point skipped by the cap counts as final); a group with a point still pending is incomplete.
+
+**(c) How a partial run is reported.** (i) The report states the completed groups and the points done / planned per group.
+(ii) Each criterion is judged on the union of the completed groups and also per completed group; a verdict is MET / FAILED /
+INCONCLUSIVE for those groups only, never for the whole of val-v5. (iii) Points of an incomplete group are listed as
+descriptive counts and are excluded from every verdict (no partial group enters S1-S5). (iv) The minimum-evidence rule (20
+escalated points) applies to the union of completed groups. (v) If P1 did not complete, the report says "val-v5 NOT
+EVALUATED" and no criterion is judged. (vi) Whatever the outcome, val-v5 is read once; the next group must be a new one.
