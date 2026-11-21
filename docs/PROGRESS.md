@@ -1504,3 +1504,43 @@ policy or threshold changed; test-v2, val-v5 and real notebooks untouched.**
 2. Whether the Tier 1 budget (250 ms, frozen) should become CPU-aware in a later version: under contention 22% of the merge
    points lose the statistics that carry their RAM estimate.
 3. Phase 8a: write the accuracy harness (now outside the freeze) before any real notebook is opened.
+
+## Phase 8a: real-notebook accuracy harness, validated, run once
+
+**Status: harness built and validated on synthetic notebooks; run once on the real notebooks; every verdict INCONCLUSIVE.
+Evaluation only: NOTHING was tuned on these results and no model, artifact, policy or threshold changed (freeze guard passed at
+every run, 40 files). test-v2 and val-v5 untouched.** Pre-registration `docs/benchmarks/phase8a-preregistration.md` (commit
+`0ff13f4`, before any notebook was opened). Report: `docs/benchmarks/phase8a/report.md`.
+
+- [x] 0. Pre-registration: valid real point (validated-model estimate, actual above the floors, not failed or censored; RAM valid
+  only when the cell raised the kernel's historical OS peak), RAM above_high <= 3% and time within-one >= 95% with a 30-point
+  minimum, risk engine at three simulated limits (free RAM, 2048 / 1024 MiB), suggestions counted (never executed), failure
+  statement, small-sample caveat (3 notebooks, one author, ML-heavy).
+- [x] 1. Read-only inventory (`benchmarks/realworld/inventory.py`, `docs/benchmarks/phase8a/inventory.md`; no code or data
+  values): 195 / 380 / 38 code cells; all three import xgboost; missing here: xgboost, rapidfuzz, pyarrow, unidecode, seaborn,
+  indic_transliteration, google (Colab); all 7 raw TSV inputs (121-486 MiB) resolve locally.
+- [x] 2. Harness `benchmarks/realworld/run_notebook.py`: a spawned IPython `InteractiveShell` per notebook (ipykernel not
+  installed), NEXUS loaded with its hook off and the analysis run before each cell outside the measured window (primary
+  `Pipeline(tier=2)` controller; secondary Tier 0 = the extension's default), parent-side 2 ms RSS sampler + OS peak counter,
+  censoring when the historical peak is not raised, watchdog (70% of free RAM), per-cell timeout, notebook budget,
+  consecutive-failure stop, freeze guard and mains-power check at start; records hashes / op names / shapes / numbers only.
+- [x] 3. Validation on 6 synthetic notebooks (`benchmarks/realworld/synthetic.py`, 8 tests in `tests/test_realworld_harness.py`,
+  `docs/benchmarks/phase8a/harness_validation.md`): a 400 MiB allocation measured 400.0 MiB, 800 MiB within 10%, the censored
+  cell censored, failing / shell / watchdog / timeout / consecutive-failure behaviour, refusal on battery and on a modified
+  frozen file.
+- [x] 4. Real run (user decisions: install xgboost, rapidfuzz, unidecode, seaborn, indic_transliteration; NOT pyarrow, to keep
+  the validated string storage): **both Amazon notebooks were stopped by the watchdog at their first large data load** (about 10
+  s in; 5.5-5.7 GiB free on the laptop, cap ~3.9 GiB); multiseed_exp skipped (Colab-only). Valid points: **2 RAM, 1 time** (both
+  `read_csv` cells): RAM 0 / 2 above high, bias 0.56; time 1 / 1 within one. **Verdicts: RAM INCONCLUSIVE, time INCONCLUSIVE;
+  risk R1-R3 no claim (too few positives).** Risk: 2 WARN (false alarms at the free-RAM limit), 1 UNKNOWN (no estimate; that cell
+  was the one killed). Suggestions: 0 shown.
+- [x] 5. Candidate gaps (proposals only, fresh split + new freeze needed): the cell combination takes the MAX of expected values
+  where several retained loads SUM (2 / 2 costly cells, bias 0.56); the cell high is the SUM of Tier 0 highs (17-29 GiB for 3.8 GiB
+  used); `read_csv` Tier 1 refuses `sep=` / `dtype=` (every TSV read stays at Tier 0); unmodelled operations (fillna, copy, apply,
+  explode) on large frames; the extension's default is Tier 0.
+
+### Needs a decision
+1. A real-notebook run that gets past the loading cells needs more free RAM (close other programs) or the Linux VM; the harness,
+   data paths and the pre-registration are ready. A second run on the same notebooks is still evaluation only (the first run's
+   results have now been read, so they are no longer held out for anything tuned afterwards).
+2. Whether the extension should default to Tier 1 (`%load_ext nexus` currently runs Tier 0).
