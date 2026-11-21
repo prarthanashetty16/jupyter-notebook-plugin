@@ -1464,3 +1464,43 @@ held-out status of both runs** (a new freeze, a new tag and new held-out groups 
 3. Phase 7 inputs: sort_values time of object-heavy frames; Tier 0 time where distinct counts are unknown; a cheaper concat
    category comparison; the select_columns re-estimate at Tier 1 (left-copy elision); re-run the Phase 5 risk evaluation on
    policy-B rows.
+
+## Phase 6b: housekeeping around the freeze
+
+**Status: done. The tag `models-frozen-v1` (commit `c3e3ee0`) is unchanged; no model, calibration artifact, profile format,
+policy or threshold changed; test-v2, val-v5 and real notebooks untouched.**
+
+- [x] 1. **Freeze guard narrowed to a manifest-based check** (`benchmarks/frozen.py`): it compares the SHA-256 (LF) of every
+  file that defines the predictions with the tag's own copy and aborts if one differs, is missing, or a new file matches a
+  frozen pattern (tests for all three). Frozen: the operation models, analyzer, state, Tier 1 statistics, registry, pipeline,
+  deadlines, guard, range policy, controller and Tier 2, risk engine, time calibration, time buckets, machine profile format
+  and measurement, the calibration artifact and reference profile, the suggestion thresholds (38 files at the tag). **Added on
+  2026-11-21 at the user's request:** `src/nexus/measure.py` and `tests/test_measure_validation.py` (40 files). Outside:
+  docs, benchmarks and evaluation scripts, CI, `.gitignore`, other tests, `pyproject.toml`, UX modules, the Phase 8a harness.
+  `docs/benchmarks/frozen-manifest.md` lists the files and hashes and records that the scope changed after the tag;
+  `git diff models-frozen-v1` on all 40 files is empty. **A new evaluation harness (Phase 8a) no longer needs a new freeze.**
+- [x] 2. `.gitignore`: notebooks ignored except `examples/**/*.ipynb` (commit `c438517`); the guard passes.
+- [x] 3. `nexus-calibrate-machine` now runs `nexus/calibrate_cli.py` (the frozen `calibrate.py` is unchanged): refuses only on
+  positively detected battery (unless `--allow-battery`), warns and records `power: unknown` without a battery sensor or on a
+  sensor error (VMs, servers); 10 tests with faked power sources. Benchmark runs record `power` in `meta.json`.
+- [x] 4. **Risk engine re-evaluated on policy-B ranges** (`docs/benchmarks/phase5-risk-policyB/`): R1 recall 100% MET; R2 pooled
+  false alarms 25.0% (<= 30%) but **R2 FAILED per operation: merge 58.8%, read_csv 78.0% (> 50%)**; R3 HIGH_RISK precision
+  98.6% MET; R4 0 UNKNOWN MET. **The risk engine does not meet all of its pre-registered criteria.** Errata added to the Phase 5
+  section and the Phase 5 pre-registration. Candidate risk-v2 fixes (incl. a per-operation policy for read_csv) are dated
+  hypotheses for a fresh split AFTER the held-out runs, never on held-out data.
+- [x] 5. **Tier 1 fallback rate under scarce CPU** (`docs/benchmarks/phase6b/fallback_rate.md`, `benchmarks/fallback_rate.py`;
+  information only): on the 249 dev points of the six operations with Tier 1 statistics, fallbacks to Tier 0 on the 250 ms
+  budget: 16 cores 1 (0.4%); 2 dedicated cores 2 (1%); 2 cores with 2 competing busy loops 28 (11%: concat 41%, merge 22%,
+  drop_duplicates 19%, others 0%). The merge fallbacks are the fan-out / low-overlap joins, where Tier 0's median RAM error is
+  55% vs 8% at Tier 1 (policy B keeps the high). **Confounded: the 2-core run was on battery and the contended run started on
+  battery and ended on mains (run at the user's instruction).**
+- [x] 6. **Phase 6 pre-registration Amendment 2** (commit `9fa3b8f`, before any VM run): val-v5 time on the Linux machine is a
+  transfer test; success = time bucket within-one >= 95%; same-bucket, errors and bias reported without a bar; bias shifts
+  reported, not corrected.
+
+### Needs a decision
+1. **R2 failed:** keep the frozen risk engine (and say so in every report) or plan risk-v2 on a fresh split after the held-out
+   runs; any change is a new freeze.
+2. Whether the Tier 1 budget (250 ms, frozen) should become CPU-aware in a later version: under contention 22% of the merge
+   points lose the statistics that carry their RAM estimate.
+3. Phase 8a: write the accuracy harness (now outside the freeze) before any real notebook is opened.

@@ -46,9 +46,12 @@ def _busy(cores: list[int]) -> None:
         x = (x * 1103515245 + 12345) % 2147483648
 
 
-def run(condition: str, out: Path) -> None:
-    if power_state() == "battery":
-        raise SystemExit("on battery power: plug in first (the CPU would be throttled)")
+def run(condition: str, out: Path, allow_battery: bool = False) -> None:
+    if power_state() == "battery" and not allow_battery:
+        raise SystemExit(
+            "on battery power: plug in first (the CPU would be throttled), or pass --allow-battery "
+            "(the report then marks the run as confounded by battery throttling)"
+        )
     out.mkdir(parents=True, exist_ok=True)
     if not (out / "actuals.csv").exists():
         shutil.copy(BASE_ACTUALS, out / "actuals.csv")
@@ -124,6 +127,24 @@ def _dev_errors(baseline: Path, docs: Path) -> pd.DataFrame:
     return ram.merge(pd.DataFrame(trows), on=["op", "tier"], how="outer")
 
 
+def _condition_notes(runs: list[tuple[str, Path]]) -> list[str]:
+    """What each run's condition was, flagging runs made on battery (throttling confounded)."""
+    lines = []
+    for name, path in runs:
+        cond = path / "condition.json"
+        if not cond.exists():
+            continue
+        info = json.loads(cond.read_text())
+        if "battery" in (info.get("power"), info.get("power_end")):
+            lines.append(
+                f"\n**`{name}` was measured ON BATTERY** (power at start: {info.get('power')}, "
+                f"at end: {info.get('power_end')}): battery throttling and the CPU condition are "
+                "confounded; the 16-core baseline was measured on mains."
+            )
+        lines.append(f"\n`{name}`: `{json.dumps(info)}`")
+    return lines
+
+
 def report(baseline: Path, runs: list[tuple[str, Path]], out: Path, docs: Path) -> None:
     ops = OPS.split(",")
     tables = {"16 cores (baseline, phase6-dev-mains)": _tier1_status(baseline)}
@@ -136,7 +157,7 @@ def report(baseline: Path, runs: list[tuple[str, Path]], out: Path, docs: Path) 
         "Tier 1 statistics run inside the 250 ms analysis budget; when it runs out, the estimate falls back to "
         "Tier 0 (`tier1.reason = 'time budget'`). Same stored dev points and code as the frozen stack "
         "`models-frozen-v1`, prediction only. Conditions: `benchmarks/fallback_rate.py` (affinity to 2 logical "
-        "CPUs; plus 2 busy loops on the same CPUs for the contended run). All on mains power.",
+        "CPUs; plus 2 busy loops on the same CPUs for the contended run). The baseline is on mains; see the power notes of each run below.",
         "",
         "## Fallback to Tier 0 on the time budget, per operation",
         "",
@@ -157,10 +178,7 @@ def report(baseline: Path, runs: list[tuple[str, Path]], out: Path, docs: Path) 
                 f"{k} ({k / max(n, 1):.0%})" + (f", {other} prediction errors" if other else "")
             )
         lines.append(f"| {op} | {n} | " + " | ".join(cells) + " |")
-    for name, path in runs:
-        cond = path / "condition.json"
-        if cond.exists():
-            lines.append(f"\n`{name}`: {cond.read_text().strip()}")
+    lines += _condition_notes(runs)
     err = _dev_errors(baseline, docs)
     lines += [
         "",
@@ -196,6 +214,9 @@ def main(argv: list[str] | None = None) -> None:
     r = sub.add_parser("run")
     r.add_argument("condition", choices=("cores2", "cores2_contended"))
     r.add_argument("--out", type=Path, required=True)
+    r.add_argument(
+        "--allow-battery", action="store_true", help="run on battery (recorded, flagged)"
+    )
     rep = sub.add_parser("report")
     rep.add_argument("--baseline", type=Path, required=True)
     rep.add_argument("--run", action="append", default=[], help="name=results_dir")
@@ -203,7 +224,7 @@ def main(argv: list[str] | None = None) -> None:
     rep.add_argument("--phase6-docs", type=Path, default=Path("docs/benchmarks/phase6"))
     args = p.parse_args(argv)
     if args.cmd == "run":
-        run(args.condition, args.out)
+        run(args.condition, args.out, allow_battery=args.allow_battery)
     else:
         runs = [(s.split("=", 1)[0], Path(s.split("=", 1)[1])) for s in args.run]
         report(args.baseline, runs, args.out, args.phase6_docs)
