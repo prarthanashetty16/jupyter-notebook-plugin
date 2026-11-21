@@ -190,3 +190,23 @@ stack, as written in sections 2-3. (iv) The learned residual model (section 5) m
 Tier 1 (consistent with (a) applying to each tier); this reading is written after seeing its Tier 1 result on the stored F
 and before any Tier 0 or mains-F result. (v) Tier 2 time ranges are used at run time only for the controller's R2
 operations (read_csv, astype, merge, groupby); the others are reported but not used.
+
+---
+
+## Amendment 2 (2026-11-21, Phase 6b; written BEFORE any val-v5 / VM run; nothing above is changed)
+
+**The val-v5 time results on the Linux machine are judged as a TRANSFER test** of the frozen stack `models-frozen-v1`
+(time models, machine profile format 3 measured on that machine with `nexus-calibrate-machine`, and the calibration artifact
+fitted on the Windows dev machine, applied unchanged).
+
+* **Success criterion (the only pass / fail bar for time):** the expected time bucket (`nexus.timebuckets`) is within one
+  bucket of the measured one for **>= 95%** of the valid val-v5 time points (Tier 1 as the session runs it; Tier 0 and the
+  controller reported alongside, judged by the same bar). This is the same bar as Phase 4d's S2.
+* **Reported without a pass / fail bar:** the same-bucket rate, the median and p90 relative error and the bias (median
+  expected / actual), per operation and overall; the coverage of the calibrated time ranges per operation (dev target
+  [88%, 95%]) and their width.
+* **Bias shift:** the per-operation bias on val-v5 is reported next to the dev LOCO bias of the same operation; any shift is
+  reported as a finding about machine transfer and is **not corrected** (no refit, no residual change, no new artifact from
+  val-v5 data). Once read, val-v5 is dev data; a calibration fitted afterwards needs a new held-out group.
+* RAM, the controller and risk are judged by their own pre-registrations (Phase 4d S1-S5 and Amendment 1); this amendment adds
+  nothing to them.
