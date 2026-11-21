@@ -50,6 +50,8 @@ benchmarks/results/
 
 # Jupyter
 .ipynb_checkpoints/
+*.ipynb
+!examples/**/*.ipynb
 
 # OS
 .DS_Store
