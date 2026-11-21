@@ -468,6 +468,9 @@ def run_suite(cfg: RunConfig, points: Iterable[GridPoint] | None = None) -> tupl
     from nexus.calibrate import power_plugged
 
     meta["power_plugged_start"] = power_plugged()  # battery throttling changes Tier 1 budgets
+    from nexus.power import power_state
+
+    meta["power"] = power_state()  # mains / battery / unknown (VMs, servers)
     meta["machine_calibration"] = {"calibrated": profile.calibrated, "profile_meta": profile.meta}
     if cfg.require_calibration and not profile.calibrated:
         raise RuntimeError(

@@ -246,3 +246,15 @@ PASSED, S3 FAILED (n=9, median 5.5, p90 39.0 against <= 15 / <= 35), S4 FAILED (
    (Amendment 1 said "thresholds still apply", true for bytes only). This is how the held-out and dev runs actually behaved. Thresholds are not changed.
 3. **Interface.** Every shown suggestion states what its label changes in plain words, and suggestions without a model re-estimate show
    "no estimate of saving" instead of a saving.
+
+---
+
+## Erratum (2026-11-21, Phase 6b; the text above is unchanged)
+
+The Phase 5 risk evaluation (Part A6, `docs/benchmarks/phase5-risk-dev/`) was reported as computed on "stored Tier 1
+predictions under range policy B" but replayed `benchmarks/results/tier1-v3`, whose stored Tier 1 rows hold each model's own
+range (policy A) for 194 of 323 points. **The R1-R4 numbers reported in Phase 5 were therefore on the wrong ranges.** Re-run
+on policy-B ranges with no new measurement and no threshold change (`docs/benchmarks/phase5-risk-policyB/`): R1 recall 100%
+MET; R2 pooled false alarms 25.0% (<= 30% met) but **R2 FAILED** because merge (58.8%) and read_csv (78.0%) exceed the 50%
+per-operation bar; R3 HIGH_RISK precision 98.6% MET; R4 0 UNKNOWN MET. Candidate changes are proposals only (a risk-engine or
+range change after the freeze `models-frozen-v1` needs a decision, a new freeze and a held-out check).

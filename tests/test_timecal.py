@@ -235,3 +235,44 @@ def test_heldout_evaluation_and_runs_call_the_freeze_guard(monkeypatch, tmp_path
         evaluate.write_validation_report(tmp_path, "test")
     with pytest.raises(frozen.NotFrozenError):
         evaluate.write_final_report(tmp_path, "test")
+
+
+def _tag_present() -> bool:
+    import subprocess
+
+    from benchmarks import frozen
+
+    done = subprocess.run(["git", "rev-parse", "-q", "--verify", f"refs/tags/{frozen.FROZEN_TAG}"],
+                          cwd=frozen.ROOT, capture_output=True)  # fmt: skip
+    return done.returncode == 0
+
+
+@pytest.mark.skipif(not _tag_present(), reason="the freeze tag is not in this checkout")
+def test_manifest_guard_scope_and_refusals(monkeypatch, tmp_path):
+    from benchmarks import frozen
+
+    files = frozen.frozen_files()
+    assert (
+        "src/nexus/models/merge.py" in files
+        and "src/nexus/calibration/calibration-v1.json" in files
+    )
+    assert "src/nexus/measure.py" in files and "tests/test_measure_validation.py" in files
+    others = [f for f in files if f != "tests/test_measure_validation.py"]
+    assert not any(
+        f.startswith(("docs/", "tests/", "benchmarks/")) or f == ".gitignore" for f in others
+    )
+    real = frozen.tag_hashes()
+    assert frozen.frozen_state()["problems"] == [], (
+        "the working tree must match the tag on frozen files"
+    )
+    changed = dict(real)
+    changed["src/nexus/ranges.py"] = "0" * 64
+    monkeypatch.setattr(frozen, "tag_hashes", lambda tag=frozen.FROZEN_TAG: changed)
+    probs = frozen.frozen_state()["problems"]
+    assert any("differs" in p and "ranges.py" in p for p in probs)
+    fewer = {k: v for k, v in real.items() if k != "src/nexus/risk.py"}
+    monkeypatch.setattr(frozen, "tag_hashes", lambda tag=frozen.FROZEN_TAG: fewer)
+    assert any("new file under a frozen pattern" in p for p in frozen.frozen_state()["problems"])
+    extra = {**real, "src/nexus/models/gone.py": "1" * 64}
+    monkeypatch.setattr(frozen, "tag_hashes", lambda tag=frozen.FROZEN_TAG: extra)
+    assert any("missing" in p for p in frozen.frozen_state()["problems"])

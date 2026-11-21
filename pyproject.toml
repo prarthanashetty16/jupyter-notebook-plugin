@@ -46,7 +46,7 @@ learn = [
 ]
 
 [project.scripts]
-nexus-calibrate-machine = "nexus.calibrate:main"
+nexus-calibrate-machine = "nexus.calibrate_cli:main"
 nexus-calibrate = "nexus.calfit:main"
 
 [tool.setuptools.packages.find]

@@ -1208,6 +1208,11 @@ test-v2 and val-v5 sealed and unrun. Nothing was tuned on held-out data.** Pre-r
 - [x] 6. Risk evaluation on dev, stored data only (`python -m benchmarks.risk_eval benchmarks/results/tier1-v3 --out docs/benchmarks/phase5-risk-dev`).
 
 ### Risk engine on dev (stored Tier 1 predictions, simulated limits 64 MB - 4 GiB; dev, not validation)
+**ERRATUM (2026-11-21, Phase 6b): the numbers in this paragraph were computed on policy-A Tier 1 ranges, not policy B.** On
+policy B (`docs/benchmarks/phase5-risk-policyB/`): R1 100% MET, R2 pooled 25.0% but per operation merge 58.8% and read_csv 78.0% > 50%:
+**R2 FAILED per operation (merge, read_csv)**; R3 98.6% MET; R4 0 UNKNOWN. **The risk engine therefore does not meet all of its
+pre-registered criteria.** Candidate risk-v2 fixes are hypotheses for a fresh split after the held-out runs (dated note in
+`docs/benchmarks/phase5-risk-policyB/README.md`). The paragraph below is kept as it was written.
 R1 recall 100% (1119/1119, Wilson lower 99.7%) PASS; R2 pooled false alarms 14.0% (per limit 56% at 64 MB, 46%, 41%, 12%, 10%, 5%
 at 2048 MB; per op 0-44%, read_csv highest, no op above the 50% bar) PASS; R3 HIGH_RISK precision 98.6% PASS; R4 0 UNKNOWN, 0
 missed crashes. Caveats: at 4096 MB there are 0 positives (no claim); numpy.sort has 16 positives; the false-alarm rate is high at

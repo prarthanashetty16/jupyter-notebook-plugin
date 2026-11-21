@@ -153,7 +153,7 @@ def _pf(x: object) -> str:
     return "n/a" if x is None or (isinstance(x, float) and math.isnan(x)) else f"{x:.1%}"
 
 
-def report(res: dict[str, object], source: str) -> str:
+def report(res: dict[str, object], source: str, policy_note: str = "") -> str:
     v = res["verdict"]
     assert isinstance(v, dict)
     pa, pc = res["pooled_all"], res["pooled_claim"]
@@ -163,8 +163,9 @@ def report(res: dict[str, object], source: str) -> str:
     r3 = not math.isnan(v["R3"]) and v["R3"] >= HIGH_PRECISION_TARGET
     lines = [
         "# Risk engine on DEVELOPMENT data (Phase 5)\n",
-        f"Source: `{source}` (stored Tier 1 predictions under range policy B and stored actuals; no new measurement). "
-        "**Dev data, not validation.** Pre-registered criteria: `docs/benchmarks/phase5-preregistration.md` Part A6. "
+        f"Source: `{source}` (stored Tier 1 predictions and stored actuals; no new measurement). "
+        + (policy_note or "Ranges: as stored (NOT checked against policy B). ")
+        + "**Dev data, not validation.** Pre-registered criteria: `docs/benchmarks/phase5-preregistration.md` Part A6. "
         "Alert = WARN or HIGH_RISK; UNKNOWN and OK are misses on positive points.\n",
         "## Verdicts\n",
         f"* **R1 recall >= {RECALL_TARGET:.0%}:** {'PASS' if r1 else 'FAIL'}. Pooled over all (point, limit) pairs "
@@ -216,10 +217,27 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("results", type=Path)
     ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument(
+        "--policy-b",
+        action="store_true",
+        help="apply range policy B (Tier 1 high = max(Tier 0 high, Tier 1 expected)) to the stored "
+        "rows first; needed for runs whose stored Tier 1 rows hold the model's own range (policy A)",
+    )
     args = ap.parse_args(argv)
-    res = evaluate(load_joined(args.results))
+    df = load_joined(args.results)
+    note = ""
+    if args.policy_b:
+        from benchmarks.phase6_eval import policy_b
+
+        after = policy_b(df)
+        t1 = (df["tier"] == 1) & df["has_estimate"]
+        changed = int((after.loc[t1, "ram_high"] != df.loc[t1, "ram_high"]).sum())
+        note = (f"Ranges: range policy B applied to the stored rows ({changed} of {int(t1.sum())} Tier 1 "
+                "rows had a different `high` as stored). ")  # fmt: skip
+        df = after
+    res = evaluate(df)
     args.out.mkdir(parents=True, exist_ok=True)
-    (args.out / "risk_dev.md").write_text(report(res, str(args.results)), encoding="utf-8")
+    (args.out / "risk_dev.md").write_text(report(res, str(args.results), note), encoding="utf-8")
     for key in ("classified", "per_limit", "per_op", "per_size", "missed"):
         res[key].to_csv(args.out / f"{key}.csv", index=False)  # type: ignore[union-attr]
     print((args.out / "risk_dev.md").read_text(encoding="utf-8"))
