@@ -227,7 +227,8 @@ def test_read_csv_tier1_stops_overpredicting_float_heavy_files(tmp_path):
 
 def test_read_csv_options_tier1_only_when_understood(tmp_path):
     """Phase 6c: one-character sep / delimiter and header 0 / None get Tier 1 (the probe showed the
-    same cost as the default read); dtype, usecols, nrows and anything else stay at Tier 0."""
+    same cost as the default read). Phase 7b: usecols, nrows, numeric dtype targets and na_values too
+    (reader-path model); text dtype targets, parse_dates and anything else stay at Tier 0."""
     frame = pd.DataFrame({"a": range(5_000), "b": range(5_000)})
     path, tsv = tmp_path / "x.csv", tmp_path / "x.tsv"
     frame.to_csv(path, index=False)
@@ -236,10 +237,13 @@ def test_read_csv_options_tier1_only_when_understood(tmp_path):
     understood = (
         f"pd.read_csv({p}, sep=',')", f"pd.read_csv({t}, sep={tab})",
         f"pd.read_csv({t}, delimiter={tab})", f"pd.read_csv({p}, header=0)",
+        f"pd.read_csv({p}, usecols=['a'])", f"pd.read_csv({p}, dtype={{'a': 'float32'}})",
+        f"pd.read_csv({p}, nrows=100)", f"pd.read_csv({p}, na_values=['NA'])",
+        f"pd.read_csv({p}, dtype='float64')",
     )  # fmt: skip
     refused = (
-        f"pd.read_csv({p}, usecols=['a'])", f"pd.read_csv({p}, dtype={{'a': 'float32'}})",
-        f"pd.read_csv({p}, nrows=100)", f"pd.read_csv({p}, sep='::')",
+        f"pd.read_csv({p}, dtype={{'a': 'str'}})", f"pd.read_csv({p}, parse_dates=['a'])",
+        f"pd.read_csv({p}, low_memory=False)", f"pd.read_csv({p}, sep='::')",
         f"pd.read_csv({p}, names=['x', 'y'])", f"pd.read_csv({p}, chunksize=100)",
         f"pd.read_csv({p}, sep=sep)",
     )  # fmt: skip

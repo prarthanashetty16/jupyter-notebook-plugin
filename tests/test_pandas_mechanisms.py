@@ -181,3 +181,67 @@ def test_text_columns_are_an_extension_dtype():
     """FillnaModel refuses extension-dtype text columns; pandas 3 makes text an extension dtype."""
     s = pd.Series(["a", None, "c"])
     assert not isinstance(s.dtype, np.dtype)
+
+
+# -- read_csv reader path (Phase 7b; nexus.models.read_csv.reader_path) ----------------------------------
+def _pandas_path(path: str, kw: dict) -> str:
+    """Which reader pandas really takes: the parallel helper is wrapped to record a call that returned a
+    frame (it returns None when it declines, and the serial reader then runs)."""
+    from pandas.io.parsers import readers
+
+    taken = []
+    orig = readers._read_csv_parallel
+
+    def spy(*a, **k):
+        res = orig(*a, **k)
+        taken.append(res is not None)
+        return res
+
+    readers._read_csv_parallel = spy
+    try:
+        pd.read_csv(path, **kw)
+    finally:
+        readers._read_csv_parallel = orig
+    if not taken or not taken[0]:
+        return "serial"
+    return "parallel_wrap" if isinstance(kw.get("dtype"), dict) else "parallel"
+
+
+def test_read_csv_reader_path_matches_pandas(tmp_path):
+    """The reader_path decision (parallel / series wrap / serial) equals the path pandas takes, for files
+    either side of the 5 MiB threshold, the understood arguments and 1 / 2 / default workers."""
+    from nexus.models.read_csv import PARALLEL_MIN_BYTES, parallel_workers, reader_path
+
+    if parallel_workers() is None:
+        from pandas.io.parsers import readers
+
+        assert not hasattr(readers, "_read_csv_parallel")  # no parallel reader: NEXUS says "unknown"
+        assert reader_path(str(tmp_path / "x.csv"), 10 * PARALLEL_MIN_BYTES, {})[0] == "unknown"
+        return
+    rng = np.random.default_rng(0)
+    files = {}
+    for name, rows in (("small", 60_000), ("large", 120_000)):
+        df = pd.DataFrame({f"c{i}": rng.random(rows) for i in range(4)})
+        p = tmp_path / f"{name}.csv"
+        df.to_csv(p, index=False)
+        files[name] = str(p)
+    sizes = {n: os.path.getsize(p) for n, p in files.items()}
+    assert sizes["small"] < PARALLEL_MIN_BYTES < sizes["large"], sizes
+    calls = [{}, {"sep": ","}, {"na_values": ["NA"]}, {"dtype": "float32"}, {"dtype": {"c0": "float32"}},
+             {"usecols": ["c0", "c1"]}, {"nrows": 1000}, {"header": 0}]  # fmt: skip
+    for threads in (None, 1, 2):
+        ctx = pd.option_context("mode.max_threads", threads) if threads else _null()
+        with ctx:
+            for name, path in files.items():
+                for kw in calls:
+                    want = _pandas_path(path, kw)
+                    got, _ = reader_path(path, sizes[name], kw)
+                    assert got == want, (threads, name, kw, got, want)
+
+
+class _null:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False

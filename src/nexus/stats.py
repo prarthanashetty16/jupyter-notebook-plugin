@@ -630,7 +630,7 @@ def _parse_chunk(
     """Parse sampled bytes with the call's own tokenizing / conversion arguments (Phase 6c)."""
     kw = kw or {}
     header = kw.get("header", 0) if first else None
-    extra = {k: kw[k] for k in ("sep", "dtype", "usecols") if k in kw}
+    extra = {k: kw[k] for k in ("sep", "dtype", "usecols", "na_values") if k in kw}
     return pd.read_csv(io.BytesIO(raw), header=header, names=None if first else names, **extra)
 
 
