@@ -1717,3 +1717,58 @@ unrun.** Details: `docs/benchmarks/phase6c/heldout_followup.md`; report `docs/be
 1. A future held-out check of the cell model needs a NEW group (multicell split v2), since this one is now dev.
 2. Phase 7 inputs above (read_csv transient term; read_csv argument terms; the non-load biases of copy / sort_values Tier 0).
 3. Unchanged from Phase 6d: push and check CI; val-v5 on the Linux VM once; determinism at 10M rows.
+
+## Phase 7a: diagnosis and pre-registration for freeze v3
+
+**Status: done. No file in the `models-frozen-v2` manifest changed (guard: 0 problems; `git diff models-frozen-v2` on the
+manifest files is empty). Mode B: val-v5 sealed and unread (the held-out Linux run for v3); test-v2 sealed. No held-out value
+read. All probes on mains power (one run found the laptop on battery, refused, and was re-run once it was plugged in).**
+Details: `docs/benchmarks/phase7a/README.md`; probes and raw outputs `docs/benchmarks/phase7a/probes/`; pre-registration
+`docs/benchmarks/phase7-preregistration.md` (commit `549b390`); held-out designs `docs/benchmarks/phase7a/heldout_design.md`.
+
+- [x] 0. Pre-flight: guard 0 problems; tags v1 and v2 present; no notebook / dataset / output tracked (the derived Phase 8a
+  notebook metadata is kept, by the owner's decision). **CI: not run; no remote configured** (open).
+- [x] 1a. **read_csv**: pandas 3.1.1 reads local files >= 5 MiB with a threaded PARALLEL reader (min(cpus, 6, available)
+  workers). Its peak is **file bytes + 2 x values** (1.003-1.018 on 13 numeric variants, incl. `sep`, `header`, `na_values`,
+  float32); a `dtype` dict gives F + V + worker buffers (1.008). `usecols` / `nrows` / `parse_dates` use the serial reader: the
+  derived chunk term over-estimates it (0.71-0.92), and `parse_dates` is 1.36. Text columns are not derived (1.05-1.26). The
+  frozen formula measures 0.78-0.80 on numeric files, which is the 1.22-1.25x held-out over-prediction. The first (low_memory)
+  hypothesis was contradicted and is kept in the probe's docstring.
+- [x] 1b. **Non-load bias** (tracemalloc + OS prefix peaks, 4M / 10M rows): the merge OUTPUT term ignores pandas 3's left
+  elision (30.5 vs 91.8 MiB retained); rebinding releases the old object, which the cell model keeps; `copy` Tier 0 expected
+  counts string objects (213.6 measured vs 366). astype_groupby is exact at 10M (1.00).
+- [x] 1c. **Frames created in the cell**: shapes / dtypes are enough for concat (1.00), copy and sort, and bound fillna. Merge
+  (3.68x / 0.53x with shapes, 1.22x / 1.06x with statistics) and groupby (2.65x vs 1.15x) need column statistics. The read_csv
+  sample gives NaN presence correctly and a wide key-cardinality range. The first run was censored (setup peak above the
+  operation's); it was re-run with pickled frames, and the censored output is kept.
+- [x] 1d. **Coverage candidates** (bar fixed before the run: every variant +-15%): ufunc `apply` 1.000 and `Series.explode`
+  1.136 pass. set_index (0.003: no copy in pandas 3), value_counts (1.40 / 2.14), DataFrame.explode (1.33), apply with Python
+  functions (2.19 / 1.25) and text fillna (1.33 / 1.30) are contradicted and stay uncovered.
+- [x] 1e. **Determinism**: identical estimates whenever statistics ran (the seeds are constants). The non-determinism is the
+  budget gate: merge at 10M falls back in every condition, and merge at 3M flips on 2 contended cores. One native child crash
+  happened; its group was re-run alone, with identical results.
+- [x] 1f. **Risk v2** (stored dev data; rule committed first, `f8e4eba`): **C3 selected** (read_csv and merge WARN on their own
+  Tier 1 high). R1 100%, 0 misses added, R2 pooled 25.0% -> 17.7%, merge 58.8% -> 11.8%, read_csv 78.0% -> 44.1%, R3 98.6%.
+  This is a dev selection.
+- [x] 2. **Pre-registration** committed before any model change and before the v2 split existed. It holds the scope (1)-(5),
+  per-item criteria and failure rules, RAM above_high <= 3% per point AND per configuration with 95% bounds, time within-one
+  >= 95%, R1 >= 98%, R2 pooled <= 30% and per operation <= 50% (a repeat failure = FAILED), coverage v3 - v2 >= 10 points on a
+  fresh notebook set, and what fails the whole v3.
+- [x] 3. **Held-out designs**: (a) multi-statement group v2 (`benchmarks/multicell/cases_v2.py`, `split_v2.json` committed in
+  `ed7bb6a` after the pre-registration). It has 15 templates and 43 configurations; 15 configurations / 30 cells are held out
+  (new sizes 1.5M / 3M, new seeds, new `text` / `lists` shapes); the runner takes `--version 2` and logs to
+  `docs/benchmarks/phase7-heldout-access-log.md`. (b) No suggestion held-out (no rule in scope). (c) val-v5 as is (the VM must
+  have > 1 vCPU: read_csv now depends on the CPUs). (d) The Phase 8b notebook protocol: you collect >= 30 notebooks from >= 10
+  other authors, licences checked, datasets <= 1 GiB, kept outside the repository; its own pre-registration comes first.
+- [x] 4. README, PROGRESS, lint, tests, guard.
+
+### Needs a decision
+1. Push to a remote so CI runs once (both tags).
+2. Accept that the v3 read_csv estimate depends on the CPUs available to the process (parallel vs serial reader)?
+3. Allow the one pre-registered second (zero-copy) derivation for set_index in Phase 7b, or leave it uncovered?
+4. Collect the Phase 8b notebooks (`heldout_design.md` (d)).
+
+### Next steps
+Phase 7b on dev: the change list in `docs/benchmarks/phase7a/README.md`, each derived, probed and regression-checked. Then
+freeze `models-frozen-v3`, and run each held-out set once (multicell v2 here, val-v5 on the VM, Phase 8b after its own
+pre-registration).
