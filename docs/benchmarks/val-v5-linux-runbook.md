@@ -33,11 +33,17 @@ identical to the tag `models-frozen-v1` (`benchmarks/frozen.py`); the tag commit
 report. Any model change after the freeze invalidates the held-out status of the run. Run on mains / server power: the
 calibration refuses to measure on battery.
 
-**Profile check (Phase 6d).** Held-out runs also call `benchmarks.heldout_env.require_profile()`: they refuse on battery
-power, and on a machine other than the reference laptop they require a profile measured IN THIS SESSION by
-`nexus-calibrate-machine --force` (not `--quick`, not on battery, at most 12 h before the run). The profile id and the power
-state are written into every result row (`profile_id`, `power`) and into `meta.json`. If the run is resumed more than 12 h
-after the calibration, re-run `nexus-calibrate-machine --force` first (the new id is recorded).
+**Profile check (Phase 6d).** Held-out runs also call `benchmarks.heldout_env.require_profile(<results folder>)`. Every
+invocation refuses on battery power. The FIRST invocation of a run (no `heldout_profile` entry in
+`benchmarks/results/val-v5/meta.json` yet) requires, on a machine other than the reference laptop, a profile measured in
+this session by `nexus-calibrate-machine --force` (not `--quick`, not on battery, at most 12 h earlier) and PINS it: the
+profile id and a hash of the profile file go into `meta.json` (`heldout_profile`). Every LATER invocation of the same run
+(the full run after `--pilot`, a resume after an interruption, however many hours later) requires that SAME profile and
+ignores its age. **Do NOT re-run `nexus-calibrate-machine` between the pilot and the full run or before a resume**: a new
+profile (a new id, or the same id with a changed file) makes the run abort, because its rows would mix two profiles. Keep a
+copy right after calibrating (`cp ~/.cache/nexus/machine.json ~/machine.val-v5.json`; the path is `$NEXUS_MACHINE_PROFILE`
+if set, else `$XDG_CACHE_HOME/nexus/machine.json`). If the profile was lost or changed, copy that file back, or start a NEW
+run in a new results folder after a fresh calibration. The profile id and the power state are also written into every result row (`profile_id`, `power`).
 
 ## Calibrate the machine FIRST (recorded)
 

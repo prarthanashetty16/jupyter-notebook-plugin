@@ -111,10 +111,11 @@ def run(
         frozen = require_frozen()
         from benchmarks.heldout_env import require_profile
 
-        env = require_profile()  # profile id / power, or abort (Phase 6d)
-        _log_access(f"RUN held-out multicell | frozen {frozen} | profile {env} | reason: {reason}")
     keys = set(sp.heldout if heldout else sp.dev)
     out_dir = results / ("heldout" if heldout else "dev")
+    if heldout:
+        env = require_profile(out_dir)  # pins the profile on the first run, requires it on resume
+        _log_access(f"RUN held-out multicell | frozen {frozen} | profile {env} | reason: {reason}")
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / "results.jsonl"
     done = (

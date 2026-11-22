@@ -476,7 +476,10 @@ def run_suite(cfg: RunConfig, points: Iterable[GridPoint] | None = None) -> tupl
         frozen = require_frozen()
         from benchmarks.heldout_env import require_profile
 
-        frozen = {**frozen, "heldout_environment": require_profile()}  # profile id / power or abort
+        frozen = {
+            **frozen,
+            "heldout_environment": require_profile(out),
+        }  # pins / checks the profile
     profile = ensure_profile() if cfg.calibrate else generic_profile()
     env = env_info()
     meta = {**env, **frozen, "suite": cfg.suite, "started": time.strftime("%Y-%m-%d %H:%M:%S")}
@@ -492,6 +495,13 @@ def run_suite(cfg: RunConfig, points: Iterable[GridPoint] | None = None) -> tupl
         raise RuntimeError(
             "the machine is not calibrated: run `nexus-calibrate-machine --force` first"
         )
+    from benchmarks.heldout_env import PIN_KEY, _read_meta
+
+    pin = _read_meta(out).get(
+        PIN_KEY
+    )  # the held-out profile pin survives every rewrite (resume, pilot)
+    if pin:
+        meta[PIN_KEY] = pin
     (out / "meta.json").write_text(json.dumps(meta, indent=2, default=str))
     runnable = [p for p in grid if p.est_footprint_bytes() <= cap]
     log.info(

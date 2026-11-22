@@ -58,4 +58,4 @@ def _heldout_env_stub(monkeypatch):
     import benchmarks.heldout_env as he
 
     record = {"profile_id": "test-stub", "power": "mains", "profile_mode": "test"}
-    monkeypatch.setattr(he, "require_profile", lambda now=None: record)
+    monkeypatch.setattr(he, "require_profile", lambda run_dir=None, now=None: record)

@@ -245,7 +245,7 @@ def run(  # noqa: C901
     else:  # aborts (NotFrozenError) on any frozen-file difference
         from benchmarks.heldout_env import require_profile
 
-        summary.frozen = {**frozen.require_frozen(), "heldout_environment": require_profile()}
+        summary.frozen = {**frozen.require_frozen(), "heldout_environment": require_profile(out)}
     summary.power = power_state()
     if summary.power == "battery" and not allow_battery:
         raise SystemExit(

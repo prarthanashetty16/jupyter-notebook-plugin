@@ -1643,6 +1643,13 @@ held-out part sealed and unrun. No new measurements except the determinism repea
   machine (identity = platform / processor / cpu_count) it requires a full (not quick) profile, measured on mains, at most 12 h
   old (i.e. `nexus-calibrate-machine --force` in this session), and records its id. Every result row records `profile_id`
   and `power`; the runner refreshes `power` per point. The val-v5 runbook explains the check.
+  *Fix (Phase 6d, 2026-11-22; the 12 h rule above applied to EVERY invocation, which would refuse a 20-30 h val-v5 run on
+  resume or after a pilot):* `require_profile(run_dir)` now applies the 12 h / full / mains rule only to the FIRST invocation of
+  a run and pins the profile (id + SHA-256 of the profile file) in the run's `meta.json` (`heldout_profile`; the runner keeps it
+  through its meta rewrites). Every later invocation (resume, pilot -> full) requires the pinned id and an unchanged file and
+  ignores the age; a changed id or file aborts with a message (restore the file or start a new run). Battery and freeze-guard
+  aborts unchanged. Tests: first call, resume after 30 h, pilot then full through the real runner (synthetic protected-group
+  points), profile changed mid-run (new id; same id with a changed file), battery on first and resumed calls.
 - [x] 3. **CI** (`.github/workflows/ci.yml`): every checkout uses `fetch-depth: 0` and `fetch-tags: true`, so the freeze-guard
   tests run on a fresh clone. When neither tag is present they skip with a message saying so. The pandas-mechanisms matrix
   gains the copy, fillna (block copy, 4 masks) and extension-text checks next to factorize / hash-table residency. Run here:
