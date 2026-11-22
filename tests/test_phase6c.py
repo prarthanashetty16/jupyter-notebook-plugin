@@ -186,7 +186,9 @@ def test_only_the_multicell_runner_touches_its_held_out_results():
     from pathlib import Path
 
     root = Path(__file__).resolve().parent.parent
-    protected = re.compile(r"phase6c-heldout-access-log|multicell/heldout|HELDOUT_LOG")
+    protected = re.compile(
+        r"phase6c-heldout-access-log|phase7-heldout-access-log|multicell(_v2)?/heldout|HELDOUT_LOG"
+    )
     offenders = []
     for path in list((root / "src").rglob("*.py")) + list((root / "benchmarks").rglob("*.py")):
         if path.parent.name == "multicell" and path.name in ("run.py", "split.py"):

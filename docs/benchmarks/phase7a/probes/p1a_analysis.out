@@ -1,0 +1,26 @@
+variant | path | measured MiB | candidate MiB | ratio | frozen Tier 1 formula ratio
+rows 1M  8 float | parallel, direct | 273 | 270 | 1.010 | 0.790
+rows 2M  8 float | parallel, direct | 543 | 540 | 1.005 | 0.786
+rows 4M  8 float | parallel, direct | 1084 | 1080 | 1.003 | 0.784
+cols 4 float 2M | parallel, direct | 274 | 271 | 1.010 | 0.776
+cols 16 float 2M | parallel, direct | 1082 | 1078 | 1.004 | 0.791
+8 int 2M | parallel, direct | 356 | 351 | 1.014 | 0.916
+8 lowcard text 2M | parallel, direct | 338 | 269 | 1.256 | 0.754
+4 unique text 1M | parallel, direct | 375 | 325 | 1.154 | 0.982
+mix 4F 2I 2L 2M | parallel, direct | 433 | 425 | 1.018 | 0.780
+usecols 2 of 16 | serial | 47 | 66 | 0.711 | 0.046
+usecols 8 of 16 | serial | 144 | 157 | 0.917 | 0.124
+dtype float32 all 16 | parallel, direct | 837 | 834 | 1.003 | 0.612
+dtype float32 half | parallel, series wrap | 824 | 817 | 1.008 | 0.602
+nrows 500k of 2M x16 | serial | 76 | 96 | 0.791 | 0.073
+nrows 1M of 2M x16 | serial | 138 | 157 | 0.879 | 0.120
+sep tab 8 float | parallel, direct | 543 | 540 | 1.005 | 0.786
+header None 8 float | parallel, direct | 543 | 540 | 1.005 | 0.786
+8 float 10% NA | parallel, direct | 519 | 515 | 1.006 | 0.796
+8 float NA na_values | parallel, direct | 519 | 515 | 1.006 | 0.796
+date+4F no parse | parallel, direct | 332 | 316 | 1.054 | 0.791
+date+4F parse_dates | serial | 132 | 97 | 1.359 | 0.321
+{"path": "parallel, direct", "n": 15, "min_ratio": 1.0031729521743598, "max_ratio": 1.256012081081208}
+{"path": "parallel, series wrap", "n": 1, "min_ratio": 1.0083467472251122, "max_ratio": 1.0083467472251122}
+{"path": "serial", "n": 5, "min_ratio": 0.7105803356087759, "max_ratio": 1.3589228836053049}
+{"frozen_formula_with_true_shape": {"min": 0.04646864018119297, "max": 0.9817114061387294}}

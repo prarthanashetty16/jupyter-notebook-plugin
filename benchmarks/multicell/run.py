@@ -5,6 +5,10 @@
     python -m benchmarks.multicell.run run --heldout --reason "..."       # held-out: ONCE, frozen stack
     python -m benchmarks.multicell.run evaluate --heldout --reason "..." --out <dir>
 
+``--version 2`` selects the Phase 7 group (``cases_v2``, ``split_v2.json``; results in
+``benchmarks/results/multicell_v2``, access log ``docs/benchmarks/phase7-heldout-access-log.md``), the
+held-out check of freeze v3; v1 (the default) is the Phase 6c group, all dev since 2026-11-22.
+
 Each cell: the prediction (``Pipeline(tier=1)`` on the cell with its inputs loaded; the cell-level
 model ``nexus.cellpeak`` and, for comparison, the v1 aggregation ``nexus.risk.combine``) in a fresh
 process, then the measurement with the validated instrument (``nexus.measure.measure_call``: fresh
@@ -28,19 +32,27 @@ from typing import Any
 import pandas as pd
 import psutil
 
+from benchmarks.multicell import cases, cases_v2
 from benchmarks.multicell import split as split_mod
-from benchmarks.multicell.cases import all_cells, prepare, source
 
 RESULTS = Path("benchmarks/results/multicell")
 CACHE = Path("benchmarks/.cache/multicell")
 HELDOUT_LOG = Path("docs/benchmarks/phase6c-heldout-access-log.md")
+# v2 (Phase 7): its own results, cache and held-out access log; same rules
+SUITES = {
+    1: (cases, RESULTS, CACHE, HELDOUT_LOG),
+    2: (cases_v2, Path("benchmarks/results/multicell_v2"), Path("benchmarks/.cache/multicell_v2"),
+        Path("docs/benchmarks/phase7-heldout-access-log.md")),
+}  # fmt: skip
 MIB = 2**20
 ABOVE_HIGH_CELL, ABOVE_HIGH_CONFIG = 0.03, 0.05
 
 
 # -- child-process functions (module level: spawn-picklable) ------------------------------------------
 def load_inputs(paths: dict[str, str], src: str) -> dict[str, Any]:
-    ns = {"pd": pd, "df": pd.read_pickle(paths["df"]), "df2": pd.read_pickle(paths["df2"]),
+    import numpy as np
+
+    ns = {"pd": pd, "np": np, "df": pd.read_pickle(paths["df"]), "df2": pd.read_pickle(paths["df2"]),
           "right": pd.read_pickle(paths["right"]), "__src__": src}  # fmt: skip
     gc.collect()
     return ns
@@ -87,20 +99,27 @@ def predict(paths: dict[str, str], src: str) -> dict[str, Any]:
 
 
 # -- running -----------------------------------------------------------------------------------------
-def _log_access(line: str) -> None:
-    HELDOUT_LOG.parent.mkdir(parents=True, exist_ok=True)
-    with HELDOUT_LOG.open("a", encoding="utf-8") as fh:
+def _log_access(line: str, log: Path = HELDOUT_LOG) -> None:
+    log.parent.mkdir(parents=True, exist_ok=True)
+    with log.open("a", encoding="utf-8") as fh:
         fh.write(f"- {time.strftime('%Y-%m-%d %H:%M:%S')} | {line}\n")
 
 
 def run(
-    *, heldout: bool = False, reason: str = "", results: Path = RESULTS, limit: int | None = None
+    *,
+    heldout: bool = False,
+    reason: str = "",
+    results: Path | None = None,
+    limit: int | None = None,
+    version: int = 1,
 ) -> Path:
     from benchmarks.heldout_env import profile_record
     from nexus.measure import measure_call
     from nexus.power import power_state
 
-    sp = split_mod.load()
+    mod, default_results, cache, log = SUITES[version]
+    results = results or default_results
+    sp = split_mod.load(version=version)
     if power_state() == "battery":
         raise SystemExit("on battery power: plug in first")
     if heldout:
@@ -115,17 +134,20 @@ def run(
     out_dir = results / ("heldout" if heldout else "dev")
     if heldout:
         env = require_profile(out_dir)  # pins the profile on the first run, requires it on resume
-        _log_access(f"RUN held-out multicell | frozen {frozen} | profile {env} | reason: {reason}")
+        _log_access(
+            f"RUN held-out multicell v{version} | frozen {frozen} | profile {env} | reason: {reason}",
+            log,
+        )
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / "results.jsonl"
     done = (
         {json.loads(line)["id"] for line in out.open(encoding="utf-8")} if out.exists() else set()
     )
-    cells = [c for c in all_cells(keys) if c.id not in done][:limit]
+    cells = [c for c in mod.all_cells(keys) if c.id not in done][:limit]
     for i, cell in enumerate(cells, 1):
         t0 = time.monotonic()
-        paths = prepare(CACHE, cell.config.shape, cell.rows)
-        src = source(cell, paths)
+        paths = mod.prepare(cache, cell.config.shape, cell.rows)
+        src = mod.source(cell, paths)
         pred = predict(paths, src)
         cap = int(0.7 * psutil.virtual_memory().available)
         m = measure_call(exec_cell, setup=load_inputs, setup_args=(paths, src), repeats=3,
@@ -233,19 +255,28 @@ def report(rows: list[dict[str, Any]], title: str) -> str:
 
 
 def evaluate(
-    *, heldout: bool = False, reason: str = "", results: Path = RESULTS, out: Path
+    *,
+    heldout: bool = False,
+    reason: str = "",
+    results: Path | None = None,
+    out: Path,
+    version: int = 1,
 ) -> Path:
+    _, default_results, _, log = SUITES[version]
+    results = results or default_results
     part = "heldout" if heldout else "dev"
     if heldout:
         if not reason:
             raise SystemExit("--heldout needs --reason")
-        _log_access(f"EVALUATE held-out multicell | reason: {reason}")
+        tag = "" if version == 1 else f" v{version}"
+        _log_access(f"EVALUATE held-out multicell{tag} | reason: {reason}", log)
     path = results / part / "results.jsonl"
     rows = [json.loads(line) for line in path.open(encoding="utf-8")]
     out.mkdir(parents=True, exist_ok=True)
-    target = out / f"multicell_{part}.md"
-    title = ("Multi-statement cells: HELD-OUT part (read once)" if heldout
-             else "Multi-statement cells: DEV part (Phase 6c; not validation)")  # fmt: skip
+    target = out / (f"multicell_{part}.md" if version == 1 else f"multicell_v{version}_{part}.md")
+    phase = "Phase 6c" if version == 1 else f"v{version}, Phase 7"
+    title = (f"Multi-statement cells ({phase}): HELD-OUT part (read once)" if heldout
+             else f"Multi-statement cells ({phase}): DEV part (not validation)")  # fmt: skip
     target.write_text(report(rows, title), encoding="utf-8")
     return target
 
@@ -257,18 +288,19 @@ def main(argv: list[str] | None = None) -> int:
         s = sub.add_parser(name)
         s.add_argument("--heldout", action="store_true")
         s.add_argument("--reason", default="")
-        s.add_argument("--results", type=Path, default=RESULTS)
+        s.add_argument("--results", type=Path, default=None)
+        s.add_argument("--version", type=int, choices=sorted(SUITES), default=1)
         if name == "run":
             s.add_argument("--limit", type=int)
         else:
             s.add_argument("--out", type=Path, required=True)
     args = p.parse_args(argv)
     if args.cmd == "run":
-        print(run(heldout=args.heldout, reason=args.reason, results=args.results, limit=args.limit))
+        print(run(heldout=args.heldout, reason=args.reason, results=args.results, limit=args.limit,
+                  version=args.version))  # fmt: skip
     else:
-        print(
-            evaluate(heldout=args.heldout, reason=args.reason, results=args.results, out=args.out)
-        )
+        print(evaluate(heldout=args.heldout, reason=args.reason, results=args.results, out=args.out,
+                       version=args.version))  # fmt: skip
     return 0
 
 
