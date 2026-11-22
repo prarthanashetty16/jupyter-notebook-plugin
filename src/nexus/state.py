@@ -143,13 +143,17 @@ def frame_block_info(df: Any) -> tuple[int | None, bool | None]:
 
     Reads pandas internals (``_mgr.blocks``) defensively and never mutates the frame: any failure
     (private API change, unusual subclass) yields ``(None, None)``. ``consolidated`` is "no two
-    blocks share a dtype", which is when pandas would not merge blocks (a ``copy()`` of a
-    non-consolidated frame can peak at about twice its size). Informational; no model uses it yet.
+    consolidatable blocks share a dtype", which is when pandas would not merge blocks (a deep
+    ``copy()`` of a non-consolidated frame stacks each dtype group again). Phase 7b: like pandas'
+    ``BlockManager._consolidate_check``, blocks that cannot be consolidated (extension blocks, e.g.
+    pandas-3 ``str`` columns) are ignored; counting them marked frames with two text columns as not
+    consolidated, and the copy model then charged a consolidation that never happens
+    (docs/benchmarks/phase7a/probes/p1b_nonload_bias.out: 213.6 MiB measured vs 366 expected).
     """
     try:
         blocks = df._mgr.blocks
-        dtypes = [str(b.dtype) for b in blocks]
-        return len(dtypes), len(set(dtypes)) == len(dtypes)
+        dtypes = [str(b.dtype) for b in blocks if getattr(b, "_can_consolidate", True)]
+        return len(blocks), len(set(dtypes)) == len(dtypes)
     except Exception:
         return None, None
 

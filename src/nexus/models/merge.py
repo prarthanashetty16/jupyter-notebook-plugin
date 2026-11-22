@@ -36,6 +36,23 @@ def output_rows_range(nl: int, nr: int, how: str) -> tuple[float, float, float]:
     return (max(lo, floor), max(mid, floor), max(hi, floor, nl + nr if how == "outer" else 0))
 
 
+def _key_bytes(right: Any, keys: list[str] | None) -> float:
+    """Bytes of the right frame's ``on=`` key columns (numeric itemsize or 8 B pointer per row)."""
+    import numpy as np
+
+    total = 0.0
+    for k in keys or []:
+        dt = right.dtypes.get(k)
+        if dt is None:
+            return 0.0
+        try:
+            size = float(np.dtype(dt).itemsize)
+        except TypeError:
+            size = 8.0  # text / extension: one pointer per row
+        total += size * right.shape[0]
+    return total
+
+
 @register_model
 class MergeModel(OperationModel):
     """Peak RAM and time of a two-frame merge, as a function of the OUTPUT row count M.
@@ -108,7 +125,10 @@ class MergeModel(OperationModel):
             "moved_right": right.moved_bytes,
             "key_text": key_text,
             "key_column": keys[0] if keys and len(keys) == 1 else None,
+            # ``on=`` keys appear once in the result (from the left side): the right copies drop them
+            "right_key_bytes": _key_bytes(right, keys),
             "how": how,
+            "sort": op.kwargs.get("sort", False) is not False,
             "out_rows": output_rows_range(left.shape[0], right.shape[0], how),
             "out_rows_source": "tier0_prior",
         }
@@ -163,8 +183,12 @@ class MergeModel(OperationModel):
         left, right = ctx.obj(op.variables[0]), ctx.obj(op.variables[1])
         how = features["how"]
         jp = stats.join_profile(left[key], right[key], how, deadline=ctx.deadline)
-        elided = jp.right_keys_unique and (
-            how == "left" or (how == "inner" and jp.left_all_matched_once)
+        # sort=True orders the result by key: the left rows are reordered (taken), never elided
+        # (Phase 7b probe B: 244 MiB retained with sort=True vs 61 without)
+        elided = (
+            (not features.get("sort"))
+            and jp.right_keys_unique
+            and (how == "left" or (how == "inner" and jp.left_all_matched_once))
         )
         o, d = jp.out_rows, jp.right_distinct
         return {

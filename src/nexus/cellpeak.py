@@ -13,8 +13,14 @@ whole peak when not derived: conservative). Liveness rules, conservative where u
 
 * an assignment keeps the result of its OUTERMOST modelled operation(s) (those not nested inside
   another modelled call: the end of a chain, ``concat``'s result rather than its inputs, every element
-  of a tuple of calls) until an explicit ``del`` of a name bound to it in this cell; rebinding a name is
-  NOT a release; an assignment to a subscript / attribute keeps it too (the result now lives in an object);
+  of a tuple of calls) until an explicit ``del`` of a name bound to it in this cell; an assignment to a
+  subscript / attribute keeps it too (the result now lives in an object);
+* rebinding a name releases its previous result (after the new value exists) ONLY when no other
+  reference can exist (Phase 7b, ``_releasable``): both bindings are top-level statements of the cell
+  (not inside an ``if``) and every read of the name in the cell is as the receiver of an operation that
+  returns new memory (``RELEASE_SAFE_METHODS``), possibly through a literal column selection. Any
+  other read (an alias ``y = m``, a container, a call argument, ``m.head()``, which shares memory under
+  copy-on-write, a GroupBy object) keeps the v2 rule: no release;
 * earlier operations of the same statement (chain links, call arguments) stay alive until it ends;
 * an expression statement's results are released after it, except for the last statement of the cell
   (IPython keeps its value in the output history);
@@ -42,6 +48,47 @@ if hasattr(ast, "TryStar"):
     FALLBACK_NODES = (*FALLBACK_NODES, ast.TryStar)
 FLAG_V1 = "cell model: v1 aggregation"
 BINDING = (ast.Assign, ast.AnnAssign, ast.AugAssign)
+# methods whose result never shares the receiver's buffers (pandas 3.1, copy-on-write): reading a name
+# only through them cannot create a second reference to its object
+RELEASE_SAFE_METHODS = frozenset({"sort_values", "drop_duplicates", "astype", "copy"})
+
+
+def _top_level_names(body: Sequence[ast.stmt]) -> set[int]:
+    """ids of statements that are direct children of the cell (not inside an ``if``)."""
+    return {id(st) for st in body if not isinstance(st, ast.If)}
+
+
+def _releasable(tree: ast.Module, name: str) -> bool:
+    """True if every read of ``name`` in the cell goes into a RELEASE_SAFE_METHODS call as its receiver
+    (``name.m(...)`` or ``name[<literal>].m(...)``), so rebinding ``name`` frees its old object."""
+    parents: dict[int, ast.AST] = {}
+    for node in ast.walk(tree):
+        for child in ast.iter_child_nodes(node):
+            parents[id(child)] = node
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Name) and node.id == name and isinstance(node.ctx, ast.Load)):
+            continue
+        cur: ast.AST = node
+        par = parents.get(id(cur))
+        if (
+            isinstance(par, ast.Subscript)
+            and par.value is cur
+            and isinstance(par.slice, ast.Constant)
+        ):
+            cur, par = par, parents.get(id(par))
+        if not (
+            isinstance(par, ast.Attribute) and par.value is cur and par.attr in RELEASE_SAFE_METHODS
+        ):
+            return False
+        call = parents.get(id(par))
+        if not (isinstance(call, ast.Call) and call.func is par):
+            return False
+        if par.attr == "copy" and any(
+            k.arg == "deep" and not (isinstance(k.value, ast.Constant) and k.value.value is True)
+            for k in call.keywords
+        ):
+            return False  # copy(deep=False) shares the blocks
+    return True
 
 
 def _key(node: ast.AST) -> tuple[Any, ...]:
@@ -112,6 +159,7 @@ def cell_estimate(  # noqa: C901
             return _v1(ests), "v1", [f"{FLAG_V1} (operation not located)"]
         nodes.append(node)
     statements = _flatten(tree.body)
+    top_stmts = _top_level_names(tree.body)
     owner: list[int] = []
     for node in nodes:
         idx = next(
@@ -138,6 +186,7 @@ def cell_estimate(  # noqa: C901
     peaks = [(float(e.ram_low), float(e.ram_expected), float(e.ram_high)) for e in ests]
     retained = [0.0, 0.0, 0.0]
     bound: dict[str, list[tuple[float, float, float]]] = {}
+    top_bound: set[str] = set()  # names whose every binding so far is a top-level plain assignment
     best = [0.0, 0.0, 0.0]
     last = len(statements) - 1
     for si, st in enumerate(statements):
@@ -167,7 +216,25 @@ def cell_estimate(  # noqa: C901
             for i in range(3):
                 retained[i] += kept[i]
             for name in _bound_names(st):
+                prev = bound.get(name)
+                if (
+                    prev
+                    and isinstance(st, ast.Assign)
+                    and id(st) in top_stmts
+                    and all(isinstance(t, ast.Name) for t in st.targets)
+                    and name in top_bound
+                    and _releasable(tree, name)
+                ):
+                    for amount in bound.pop(
+                        name
+                    ):  # the old object is freed once the name is rebound
+                        for i in range(3):
+                            retained[i] = max(retained[i] - amount[i], 0.0)
                 bound.setdefault(name, []).append((kept[0], kept[1], kept[2]))
+                if id(st) in top_stmts and isinstance(st, ast.Assign):
+                    top_bound.add(name)
+                else:
+                    top_bound.discard(name)
     lo, mid, hi = sorted(best)
     top_k = max(range(len(ests)), key=lambda k: peaks[k][1])
     worst = ests[top_k]

@@ -59,16 +59,20 @@ def _read_csv(f: dict[str, Any], e: Estimate) -> Triple:
 
 
 def _merge(f: dict[str, Any], e: Estimate) -> Triple:
+    """Phase 7b (``_reindex_and_concat`` in pandas 3.1): the result has a new RangeIndex (no bytes) and
+    the ``on=`` keys only once, from the left side, so the right side contributes its NON-key columns;
+    the left columns are new only when the left indexer is not a range (``left_elided`` False). v2
+    charged 8 B x M for an index and the right key columns (probe: 30.5 MiB retained vs 91.8)."""
     nl, nr = f["n_left"], f["n_right"]
     row_l = f.get("moved_left", f["bytes_left"]) / max(nl, 1)
-    row_r = f.get("moved_right", f["bytes_right"]) / max(nr, 1)
+    right_key = float(f.get("right_key_bytes", 0.0))
+    row_r = max(f.get("moved_right", f["bytes_right"]) - right_key, 0.0) / max(nr, 1)
     lo, mid, hi = _mid(f.get("out_rows"), max(nl, nr))
     elided = bool(f.get("left_elided", False))
     certain = bool(f.get("left_elided_certain", False))
-    outer = 24.0 if f.get("how") == "outer" else 0.0
 
     def at(m: float, el: bool) -> float:
-        return (0.0 if el else m * row_l) + m * row_r + 8.0 * m + outer * m
+        return (0.0 if el else m * row_l) + m * row_r
 
     if f.get("out_rows_source") == "tier1":
         return (at(lo, elided), at(mid, elided), at(hi, elided and certain))
