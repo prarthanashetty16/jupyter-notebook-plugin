@@ -1,0 +1,42 @@
+{
+ "version": 1,
+ "salt": "phase6c-multicell-v1:",
+ "dev": [
+  "astype_groupby/mixed",
+  "astype_groupby/wide",
+  "chain/num",
+  "chain/wide",
+  "concat_loads/mixed",
+  "concat_loads/num",
+  "copy_fillna/num",
+  "copy_fillna/wide",
+  "deletes/mixed",
+  "deletes/wide",
+  "expressions/mixed",
+  "expressions/wide",
+  "load_dtype_nrows/mixed",
+  "load_dtype_nrows/num",
+  "load_then_merge/mixed",
+  "load_then_merge/num",
+  "loads2/mixed",
+  "loads2/wide",
+  "loads3_tsv/mixed",
+  "loads3_tsv/num",
+  "rebinding/num",
+  "rebinding/wide"
+ ],
+ "heldout": [
+  "astype_groupby/num",
+  "chain/mixed",
+  "concat_loads/wide",
+  "copy_fillna/mixed",
+  "deletes/num",
+  "expressions/num",
+  "load_dtype_nrows/wide",
+  "load_then_merge/wide",
+  "loads2/num",
+  "loads3_tsv/wide",
+  "rebinding/mixed"
+ ],
+ "digest": "765211c959a1efa9ac6b6767e006073dc4957785e80f178c61f6a9fab67edd8b"
+}
