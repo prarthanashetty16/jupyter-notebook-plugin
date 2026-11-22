@@ -33,6 +33,12 @@ identical to the tag `models-frozen-v1` (`benchmarks/frozen.py`); the tag commit
 report. Any model change after the freeze invalidates the held-out status of the run. Run on mains / server power: the
 calibration refuses to measure on battery.
 
+**Profile check (Phase 6d).** Held-out runs also call `benchmarks.heldout_env.require_profile()`: they refuse on battery
+power, and on a machine other than the reference laptop they require a profile measured IN THIS SESSION by
+`nexus-calibrate-machine --force` (not `--quick`, not on battery, at most 12 h before the run). The profile id and the power
+state are written into every result row (`profile_id`, `power`) and into `meta.json`. If the run is resumed more than 12 h
+after the calibration, re-run `nexus-calibrate-machine --force` first (the new id is recorded).
+
 ## Calibrate the machine FIRST (recorded)
 
 ```bash

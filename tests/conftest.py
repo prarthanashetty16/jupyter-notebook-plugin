@@ -49,3 +49,13 @@ def _frozen_stub(monkeypatch):
 
     stub = {"frozen_tag": "test-stub", "frozen_commit": "test", "head": "test"}
     monkeypatch.setattr(frozen, "require_frozen", lambda tag=frozen.FROZEN_TAG: stub)
+
+
+@pytest.fixture(autouse=True)
+def _heldout_env_stub(monkeypatch):
+    """Held-out entry points check the machine profile (benchmarks.heldout_env); tests stub it
+    (``test_heldout_env`` checks the real function and that the entry points call it)."""
+    import benchmarks.heldout_env as he
+
+    record = {"profile_id": "test-stub", "power": "mains", "profile_mode": "test"}
+    monkeypatch.setattr(he, "require_profile", lambda now=None: record)

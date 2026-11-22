@@ -74,6 +74,7 @@ class RunSummary:
     stop_reason: str = ""
     frozen: dict[str, Any] = field(default_factory=dict)
     power: str = ""
+    profile_id: str | None = None
     cap_bytes: int = 0
     profile_calibrated: bool | None = None
 
@@ -242,13 +243,16 @@ def run(  # noqa: C901
             "head": frozen._git("rev-parse", "HEAD"),
         }
     else:  # aborts (NotFrozenError) on any frozen-file difference
-        summary.frozen = frozen.require_frozen()
+        from benchmarks.heldout_env import require_profile
+
+        summary.frozen = {**frozen.require_frozen(), "heldout_environment": require_profile()}
     summary.power = power_state()
     if summary.power == "battery" and not allow_battery:
         raise SystemExit(
             "phase 8a harness: on battery power; plug in (recorded power state: battery)"
         )
     summary.profile_calibrated = machine().calibrated
+    summary.profile_id = machine().profile_id
     out.mkdir(parents=True, exist_ok=True)
     work = out / "work"
     work.mkdir(exist_ok=True)
@@ -315,6 +319,7 @@ def run(  # noqa: C901
                 "avail_start": avail,
                 "rss_start": rss_start,
                 "power": power_state(),
+                "profile_id": summary.profile_id,
             }
             if killed:
                 proc.kill()

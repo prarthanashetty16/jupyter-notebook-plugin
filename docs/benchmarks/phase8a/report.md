@@ -83,3 +83,7 @@ coverage study of the same notebooks are given as context, not as measurements.
   for this run.
 * Windows' peak counter cannot be reset: in a longer run most cells after the first large allocation would be censored.
 * One run per cell; cold file reads; the kernel is an IPython `InteractiveShell` in a spawned process, not an ipykernel.
+
+## Superseded time point (2026-11-22, Phase 6d profile audit)
+
+The single valid time point above was computed with a corrupted machine profile (`docs/benchmarks/phase6d/profile_audit.md`). Re-analysed with the same frozen v1 stack and the restored profile: expected **7.49 s** (was 8.69 s) vs 8.45 s measured; still the same 1-10 s bucket (within-one 1 / 1), error 11.3% (was 2.9%). RAM figures unchanged. The time verdict stays INCONCLUSIVE (1 point). The text above is kept as written.

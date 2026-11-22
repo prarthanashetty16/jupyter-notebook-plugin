@@ -247,7 +247,13 @@ def _tag_present() -> bool:
     return done.returncode == 0
 
 
-@pytest.mark.skipif(not _tag_present(), reason="the freeze tag is not in this checkout")
+TAG_SKIP_REASON = (
+    "freeze-guard test skipped: the tag models-frozen-v2 (and models-frozen-v1) is not in this checkout; "
+    "CI must use actions/checkout with fetch-depth: 0 and fetch-tags: true, or run `git fetch --tags`"
+)
+
+
+@pytest.mark.skipif(not _tag_present(), reason=TAG_SKIP_REASON)
 def test_manifest_guard_scope_and_refusals(monkeypatch, tmp_path):
     from benchmarks import frozen
 

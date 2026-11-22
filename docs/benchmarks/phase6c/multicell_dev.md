@@ -83,3 +83,7 @@
 | astype_groupby/mixed@2000000 | 4147.3% | 40 / 47 / 160 | 39 / 265 | statements | 0 |
 | astype_groupby/wide@1000000 | 3082.8% | 29 / 35 / 134 | 31 / 186 | statements | 0 |
 | astype_groupby/wide@2000000 | 4228.1% | 40 / 47 / 267 | 39 / 371 | statements | 0 |
+
+## Note (2026-11-22, Phase 6d profile audit)
+
+The predictions of these cells were made with a corrupted machine profile. This report evaluates RAM only, which does not depend on the profile; a prediction re-run with the restored profile reproduced every RAM figure exactly (`results_restored_profile.jsonl`). No number here changes.

@@ -51,3 +51,7 @@ Before: `benchmarks\results\phase6-dev-mains` (models-frozen-v1); after: `benchm
 - v4/groupby/two_keys_card6000|n=1000000 tier 1: 108 -> 108 MiB expected, high 150 -> 150
 - v4/drop_duplicates/null_subset_cat_date|n=3000000 tier 1: 209 -> 209 MiB expected, high 288 -> 288
 - v4/drop_duplicates/null_subset_cat_date|n=10000000 tier 1: 690 -> 691 MiB expected, high 961 -> 961
+
+## Note (2026-11-22, Phase 6d profile audit)
+
+This report was regenerated after the machine profile was restored: its time columns are recomputed from the stored features with the restored profile. The stored time values of `phase6c-dev` were made with a corrupted profile (recomputed in `predictions_time_restored_profile.csv`); a first version of this comparison computed with the corrupted profile was shown in the session only and is superseded.

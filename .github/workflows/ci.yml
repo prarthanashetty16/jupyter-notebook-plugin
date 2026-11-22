@@ -15,6 +15,9 @@ jobs:
     name: Lint
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history and tags: the freeze-guard tests compare with models-frozen-v2
+          fetch-tags: true
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -32,6 +35,9 @@ jobs:
         python: ["3.10", "3.12"]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history and tags: the freeze-guard tests compare with models-frozen-v2
+          fetch-tags: true
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
@@ -63,6 +69,9 @@ jobs:
           - {pandas: "3.1.1", numpy: "2.5.5", python: "3.12", validated: true}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history and tags: the freeze-guard tests compare with models-frozen-v2
+          fetch-tags: true
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}

@@ -1534,6 +1534,9 @@ every run, 40 files). test-v2 and val-v5 untouched.** Pre-registration `docs/ben
   `read_csv` cells): RAM 0 / 2 above high, bias 0.56; time 1 / 1 within one. **Verdicts: RAM INCONCLUSIVE, time INCONCLUSIVE;
   risk R1-R3 no claim (too few positives).** Risk: 2 WARN (false alarms at the free-RAM limit), 1 UNKNOWN (no estimate; that cell
   was the one killed). Suggestions: 0 shown.
+  *Superseded number (Phase 6d, 2026-11-22; original kept above):* the run used the corrupted machine profile (Phase 6d audit,
+  `docs/benchmarks/phase6d/profile_audit.md`). With the restored profile the time point's expected value is **7.49 s** (was
+  8.69 s; measured 8.45 s): still 1 / 1 within one and in the same bucket, error 11.3% (was 2.9%). RAM unchanged; verdicts unchanged.
 - [x] 5. Candidate gaps (proposals only, fresh split + new freeze needed): the cell combination takes the MAX of expected values
   where several retained loads SUM (2 / 2 costly cells, bias 0.56); the cell high is the SUM of Tier 0 highs (17-29 GiB for 3.8 GiB
   used); `read_csv` Tier 1 refuses `sep=` / `dtype=` (every TSV read stays at Tier 0); unmodelled operations (fillna, copy, apply,
@@ -1621,3 +1624,38 @@ A future FRESH real-notebook test (notebooks never opened; a new pre-registratio
 1. The held-out runs above, each once.
 2. Phase 7 inputs: models for set_index / value_counts / apply / explode; operations on frames created in the cell (virtual
    state); the read_csv chunk-term structure; fillna / copy on extension dtypes; risk-v2 (fresh split, after the held-out runs).
+
+## Phase 6d: housekeeping outside the freeze
+
+**Status: done. No file in the `models-frozen-v2` manifest changed (guard: 0 problems). test-v2, val-v5 and the multicell
+held-out part sealed and unrun. No new measurements except the determinism repeat (predictions only, mains).**
+
+- [x] 1. **Profile-bug audit** (`docs/benchmarks/phase6d/profile_audit.md`, `benchmarks/profile_audit.py`). Made with the
+  corrupted profile: the 6b fallback runs, the Phase 8a run, the 6c multicell dev predictions and the 6c regression re-run.
+  Made with the restored profile: the 6c `_sub` real-data check. Made before the bug: the calibration artifact, the reference
+  profile and Phase 6. Prediction-only re-runs with the restored profile reproduced RAM exactly (0 of 1,188 rows differ); stored
+  times were off by a median 1.1x-2.7x (0.5x-33x). **Only one reported number changes: the Phase 8a time point, 8.69 s -> 7.49 s**
+  (measured 8.45 s; still within one bucket; verdict unchanged). Dated superseded-notes added (originals kept) in
+  `phase8a/report.md`, `phase6b/fallback_rate.md`, `phase6c/multicell_dev.md` and `phase6c/regression_dev.md`, and in Phase 8a above.
+- [x] 2. **Held-out environment check** (`benchmarks/heldout_env.py`, `tests/test_heldout_env.py`). `benchmarks full` on a
+  protected split, `multicell.run --heldout` and `run_notebook` without `--dev` call `require_profile()` after the freeze
+  guard. It refuses on battery. On the reference laptop it requires profile id == the reference `987c455be3cc`. On any other
+  machine (identity = platform / processor / cpu_count) it requires a full (not quick) profile, measured on mains, at most 12 h
+  old (i.e. `nexus-calibrate-machine --force` in this session), and records its id. Every result row records `profile_id`
+  and `power`; the runner refreshes `power` per point. The val-v5 runbook explains the check.
+- [x] 3. **CI** (`.github/workflows/ci.yml`): every checkout uses `fetch-depth: 0` and `fetch-tags: true`, so the freeze-guard
+  tests run on a fresh clone. When neither tag is present they skip with a message saying so. The pandas-mechanisms matrix
+  gains the copy, fillna (block copy, 4 masks) and extension-text checks next to factorize / hash-table residency. Run here:
+  pandas 3.1.1 only (13 / 13 pass). **No CI run has happened yet (no remote configured), so no other version has a result.**
+- [x] 4. **Determinism, information only** (`docs/benchmarks/phase6d/determinism.md`, `benchmarks/determinism.py`). Tier 1 was run
+  10 times on each of 30 dev inputs (<= 3M rows, 5 per operation), each run in a fresh process, on mains. The Tier 0 fallback
+  differed in 0 of 30 points. RAM `expected` was identical on 29 / 30 points (one drop_duplicates point: 1.0% spread); `high`
+  never moved; time moved by <= 0.36%. The drop_duplicates sample size varies (median spread 12%), but the estimate barely
+  reacts. Statistics took <= 0.17 s. Sizes above 3M (where the 6c budget fallbacks occurred) are not covered.
+  **v3 proposal (not implemented):** seed the sampler from the cell hash and fix the sample size per operation.
+
+### Next steps
+1. Push (remote, master, both tags) and check the Actions run: lint and the test matrix green, the freeze-guard tests run (not
+   skipped), and the pandas-mechanisms results per version (only 3.1.1 is validated; the others are informational).
+2. The held-out runs listed under Phase 6c, each once (the new profile check applies).
+3. Information only: repeat the determinism check at 10M rows.

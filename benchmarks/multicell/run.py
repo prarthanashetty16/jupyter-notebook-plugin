@@ -96,6 +96,7 @@ def _log_access(line: str) -> None:
 def run(
     *, heldout: bool = False, reason: str = "", results: Path = RESULTS, limit: int | None = None
 ) -> Path:
+    from benchmarks.heldout_env import profile_record
     from nexus.measure import measure_call
     from nexus.power import power_state
 
@@ -108,7 +109,10 @@ def run(
         from benchmarks.frozen import require_frozen
 
         frozen = require_frozen()
-        _log_access(f"RUN held-out multicell | frozen {frozen} | reason: {reason}")
+        from benchmarks.heldout_env import require_profile
+
+        env = require_profile()  # profile id / power, or abort (Phase 6d)
+        _log_access(f"RUN held-out multicell | frozen {frozen} | profile {env} | reason: {reason}")
     keys = set(sp.heldout if heldout else sp.dev)
     out_dir = results / ("heldout" if heldout else "dev")
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -128,7 +132,8 @@ def run(
         row = {"id": cell.id, "config": cell.config.key, "template": cell.config.template,
                "shape": cell.config.shape, "rows": cell.rows, "status": m.status,
                "actual": m.delta_bytes, "censored": m.censored, "bound": m.bound_bytes,
-               "spread": m.ram_spread, "time_s": m.time_s, "power": power_state(), **pred}  # fmt: skip
+               "spread": m.ram_spread, "time_s": m.time_s, **profile_record(),
+               "power": power_state(), **pred}  # fmt: skip
         with out.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(row, default=str) + "\n")
         took = time.monotonic() - t0

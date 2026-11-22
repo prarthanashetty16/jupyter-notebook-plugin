@@ -52,3 +52,7 @@ RAM: median |expected - actual| / actual and mean width (high - low) / expected 
   mains run of the same code. These numbers are therefore an indication of the direction and the affected operations, not
   a rate for a specific machine.
 * **Not done:** throttling the CPU clock (would need a system power-plan change); a run on a real 2-vCPU VM.
+
+## Note (2026-11-22, Phase 6d profile audit)
+
+The two runs above used a corrupted machine profile (quick, battery; `docs/benchmarks/phase6d/profile_audit.md`). The fallback counts depend only on the Tier 1 statistics and their time budget, not on the profile, and the error table comes from Phase 6 dev data: **no number in this report changes**. The stored time estimates of these runs were recomputed with the restored profile (`predictions_time_restored_profile.csv` in each results folder).

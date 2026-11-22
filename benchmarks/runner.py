@@ -48,6 +48,7 @@ ENV_FIELDS = [
     "instrument", "python", "pandas", "numpy", "pyarrow", "pandas_str_default", "text_dtype",
     "os", "cpu", "cpu_count", "cpu_max_mhz", "total_ram", "git_commit",
     "read_csv_engine", "read_csv_text_dtype", "kernel", "os_release", "cpu_model", "swap_total",
+    "profile_id", "power",
 ]  # fmt: skip
 ACTUAL_FIELDS = [
     "point_id", "suite", "case", "op", "size", "source", "status", "error", "repeats_ok",
@@ -141,7 +142,19 @@ def env_info() -> dict[str, Any]:
         "git_commit": commit,
         "read_csv_engine": engine,
         "read_csv_text_dtype": text_dtype,
+        **_profile_fields(),
     }
+
+
+def _profile_fields() -> dict[str, Any]:
+    """Machine-profile id and power state (Phase 6d: recorded in every result row)."""
+    try:
+        from benchmarks.heldout_env import profile_record
+
+        rec = profile_record()
+        return {"profile_id": rec["profile_id"], "power": rec["power"]}
+    except Exception:
+        return {"profile_id": "", "power": "unknown"}
 
 
 def upgrade_header(path: Path, fields: list[str]) -> bool:
@@ -461,6 +474,9 @@ def run_suite(cfg: RunConfig, points: Iterable[GridPoint] | None = None) -> tupl
         from benchmarks.frozen import require_frozen
 
         frozen = require_frozen()
+        from benchmarks.heldout_env import require_profile
+
+        frozen = {**frozen, "heldout_environment": require_profile()}  # profile id / power or abort
     profile = ensure_profile() if cfg.calibrate else generic_profile()
     env = env_info()
     meta = {**env, **frozen, "suite": cfg.suite, "started": time.strftime("%Y-%m-%d %H:%M:%S")}
@@ -508,6 +524,7 @@ def run_suite(cfg: RunConfig, points: Iterable[GridPoint] | None = None) -> tupl
     i = 0
     try:
         for i, point in enumerate(grid, 1):
+            env["power"] = _profile_fields()["power"]  # per point: the charger can come and go
             prefix = f"[{i}/{len(grid)}] {point.id}"
             publish(i - 1, point.id)
             t_point = time.monotonic()

@@ -130,3 +130,54 @@ def test_object_take_cost_grows_with_the_distinct_objects():
     t_few = _median_time(lambda: few.take(i_few))
     t_many = _median_time(lambda: many.take(i_many))
     assert t_many > 2.0 * t_few, (t_few, t_many)
+
+
+# -- copy / fillna (CopyModel, FillnaModel; Phase 6c probes) --------------------------------------
+def _frame_with_nan(n: int = 100_000) -> pd.DataFrame:
+    df = pd.DataFrame({"a": np.random.rand(n), "b": np.random.rand(n), "i": np.arange(n)})
+    df.loc[3, "a"] = np.nan
+    return df
+
+
+def test_copy_copies_every_block_and_consolidates_a_fragmented_frame():
+    df = pd.DataFrame({"a": np.arange(1000.0), "i": np.arange(1000)})
+    out = df.copy()
+    assert not np.shares_memory(out["a"].to_numpy(), df["a"].to_numpy())
+    frag = pd.DataFrame({"f0": np.arange(1000.0)})
+    for k in range(1, 5):
+        frag[f"f{k}"] = np.arange(1000.0)  # one block per inserted column
+    assert frag._mgr.nblocks > 1
+    assert frag.copy()._mgr.nblocks == 1  # BlockManager.copy(deep=True) then _consolidate_inplace
+
+
+def test_fillna_copies_only_blocks_holding_a_missing_value():
+    df = _frame_with_nan()
+    out = df.fillna(0)
+    assert np.shares_memory(out["i"].to_numpy(), df["i"].to_numpy())  # int block: cannot hold NaN
+    assert not np.shares_memory(
+        out["b"].to_numpy(), df["b"].to_numpy()
+    )  # same block as "a": copied
+    clean = df.fillna({"b": 0})
+    assert np.shares_memory(clean["a"].to_numpy(), df["a"].to_numpy())  # dict: named columns only
+
+
+def test_fillna_keeps_four_bool_masks_alive_on_top_of_the_block_copy():
+    import tracemalloc
+
+    n = 1_000_000
+    df = pd.DataFrame({"a": np.random.rand(n), "b": np.random.rand(n)})
+    df.loc[3, "a"] = np.nan
+    tracemalloc.start()
+    out = df.fillna(0)
+    peak = tracemalloc.get_traced_memory()[1]
+    tracemalloc.stop()
+    data, elements = 2 * 8 * n, 2 * n
+    masks = (peak - data) / elements
+    assert 3.5 <= masks <= 4.6, masks  # mask, ~mask, ~cond, ~icond (Block.fillna -> Block.where)
+    assert len(out) == n
+
+
+def test_text_columns_are_an_extension_dtype():
+    """FillnaModel refuses extension-dtype text columns; pandas 3 makes text an extension dtype."""
+    s = pd.Series(["a", None, "c"])
+    assert not isinstance(s.dtype, np.dtype)

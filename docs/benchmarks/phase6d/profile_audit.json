@@ -1,0 +1,43 @@
+[
+ {
+  "folder": "fallback-cores2",
+  "rows": 249,
+  "profile_used": "2026-11-21 23:04:52",
+  "quick": true,
+  "power": "battery",
+  "time_ratio_median": 1.1180925721113761,
+  "time_ratio_min": 0.5500773614433243,
+  "time_ratio_max": 32.99906060853208,
+  "ram_rows_differing": 0
+ },
+ {
+  "folder": "fallback-contended",
+  "rows": 249,
+  "profile_used": "2026-11-21 23:04:52",
+  "quick": true,
+  "power": "battery",
+  "time_ratio_median": 1.1194584235457778,
+  "time_ratio_min": 0.5500773614433243,
+  "time_ratio_max": 33.521631024849256,
+  "ram_rows_differing": 0
+ },
+ {
+  "folder": "phase6c-dev",
+  "rows": 646,
+  "profile_used": "2026-11-22 13:35:59",
+  "quick": true,
+  "power": "battery",
+  "time_ratio_median": 1.590687847777698,
+  "time_ratio_min": 0.4939303783843527,
+  "time_ratio_max": 33.0943989004053,
+  "ram_rows_differing": 0
+ },
+ {
+  "folder": "multicell/dev",
+  "rows": 44,
+  "ram_rows_differing": 0,
+  "time_ratio_median": 2.7110829828465137,
+  "time_ratio_min": 0.939255017090173,
+  "time_ratio_max": 16.455895022891227
+ }
+]

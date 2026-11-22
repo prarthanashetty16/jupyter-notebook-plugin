@@ -106,7 +106,10 @@ def test_aborts_when_a_frozen_file_differs(books, tmp_path, monkeypatch):
     import benchmarks.frozen as frozen
 
     if frozen.frozen_state()["tag_commit"] is None:
-        pytest.skip("the freeze tag is not in this checkout")
+        pytest.skip(
+            "freeze-guard test skipped: models-frozen-v2 is not in this checkout (CI: actions/checkout "
+            "with fetch-depth: 0 and fetch-tags: true)"
+        )
     real = frozen.tag_hashes()
     changed = {**real, "src/nexus/models/merge.py": "0" * 64}  # as if merge.py had been modified
     monkeypatch.setattr(frozen, "tag_hashes", lambda tag=frozen.FROZEN_TAG: changed)
