@@ -142,6 +142,20 @@ def test_multicell_split_is_frozen_and_covers_every_template():
         bad.unlink(missing_ok=True)
 
 
+def test_multicell_report_formats_mib_and_ratio_columns():
+    from benchmarks.multicell.run import MIB, report
+
+    est = {"ram_low": 50 * MIB, "ram_expected": 60 * MIB, "ram_high": 90 * MIB}
+    rows = [{"id": f"t/num@{i}", "config": "t/num", "template": "t", "actual": 52 * MIB,
+             "new": est, "v1": est, "uncovered": 0, "mode": "statements"} for i in (1, 2)]  # fmt: skip
+    rows.append({**rows[0], "id": "t/num@3", "actual": None})
+    text = report(rows, "x")
+    per_template = next(line for line in text.splitlines() if line.startswith("| t |"))
+    assert per_template.split(" | ")[-2] == "1.15"  # v1_bias is a ratio, not a percentage
+    assert "| t/num@1 | 52 | 50 / 60 / 90 |" in text  # actual in MiB
+    assert "| t/num@3 | - |" in text  # no measured peak
+
+
 def test_extension_defaults_and_fallback_wording():
     from nexus.render import FALLBACK_PREFIX, fallback_notes
     from nexus.session import DEFAULT_TIER, NexusSession

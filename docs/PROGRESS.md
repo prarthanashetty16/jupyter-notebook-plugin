@@ -361,6 +361,9 @@ directory, number of test points, reason, command). Entries are appended below. 
 - 2026-11-18 10:38:26 | git `b5997d1` | val-v4 | results `benchmarks/results/val-v4` | 119 val-v4 points | reason: 4b.2 held-out check of the repaired Tier 1 | `python -m benchmarks evaluate benchmarks/results/val-v4 --val --reason 4b.2 held-out check of the repaired Tier 1`
 - 2026-11-18 | RECLASSIFICATION (not an `evaluate` access) | val-v4 -> dev | val-v4 failed its pre-registered criterion (Tier 1 above_high 5.4% per point vs 3%) and its report was read by the developer and a reviewer. Split version 5 merges its 40 cases into dev (list kept as `provenance["val-v4"]`) and has NO held-out validation group. Results copied to `benchmarks/results/dev-v5/` with `maintenance migrate-val4`. test-v2 stays sealed and unrun.
 - 2026-11-18 | CREATION (not an access) | val-v5 | split version 6 freezes `val-v5` (47 configurations, seeds >= 501, no generator value shared with dev, the former val-v3 / val-v4 or test-v2; sizes up to 30M rows, np.sort to 400M, matmul to 16000) as the held-out validation group for a Linux machine with >= 32 GB RAM. NOT run and no value read. Created in Phase 4d after the controller rules and success criteria were pre-registered (docs/benchmarks/phase4d-preregistration.md).
+- 2026-11-22 15:31:26 / 15:33:09 | Phase 6c multi-statement HELD-OUT part (11 configurations, 22 cells) | `multicell.run run --heldout` once on `models-frozen-v2` (head `1ec7167`, reference profile `987c455be3cc`, mains), then `evaluate --heldout` | reason: Phase 6c held-out check of the cell model | detail log: `docs/benchmarks/phase6c-heldout-access-log.md`.
+- 2026-11-22 15:39:13 | same results, `evaluate --heldout` again | reason: formatting fix only, no re-measurement (the `actual` and `v1_bias` columns were printed as percentages; no figure changed). Same time: the stored rows were read and the Tier 1 predictions re-run (prediction only, no measurement) for the information-only follow-up `docs/benchmarks/phase6c/heldout_followup.md`.
+- 2026-11-22 | RECLASSIFICATION (not an access) | multicell held-out part -> dev | its report was read; the 22 cells are dev data from now on (`split_v1.json` is not edited; a future held-out check of the cell model needs a new group). test-v2 and val-v5 stay sealed and unrun.
 
 ## Phase 3d: test-split integrity repair and baseline diagnosis
 
@@ -1575,7 +1578,8 @@ Pre-registration `docs/benchmarks/phase6c-preregistration.md` (commit `91581ac`,
   class changes).
 - [x] A. **Multi-statement benchmark** (`benchmarks/multicell/`, split v1 frozen: 22 dev / 11 held-out configurations; 44 / 22
   cells): dev new-model above_high **0% of cells, 0 of 22 configurations: bars MET**; bias 1.13, median error 12.6%, coverage
-  63.6% (36% below `low`), width 2.87 (v1: bias 0.99, error 17.8%, coverage 93%, width 5.84). **Held-out part NOT run.**
+  63.6% (36% below `low`), width 2.87 (v1: bias 0.99, error 17.8%, coverage 93%, width 5.84). **Held-out part run once on
+  2026-11-22: bars MET (0 of 22 cells, 0 of 11 configurations); outcome and caveats in "Phase 6c follow-up" below.**
 - [x] B. **Regression on all dev data** (`docs/benchmarks/phase6c/regression_dev.md`): RAM above_high 0% everywhere before and
   after. Regressions listed: drop_duplicates Tier 1 RAM width 0.775 -> 0.788 and time coverage 100% -> 94.7%, concat Tier 1 RAM
   width 0.847 -> 0.869, groupby (float only). Cause: run-to-run Tier 1 sample sizes and two budget fallbacks at 10M rows; those
@@ -1666,3 +1670,50 @@ held-out part sealed and unrun. No new measurements except the determinism repea
    skipped), and the pandas-mechanisms results per version (only 3.1.1 is validated; the others are informational).
 2. The held-out runs listed under Phase 6c, each once (the new profile check applies).
 3. Information only: repeat the determinism check at 10M rows.
+
+## Phase 6c follow-up: the multi-statement held-out outcome (outside the freeze)
+
+**Status: done. No model, threshold or frozen file changed (guard: 0 problems). No new held-out measurement. The 22 held-out
+cells were run once on `models-frozen-v2` (2026-11-22) and read; they are dev data from now on. test-v2 and val-v5 sealed and
+unrun.** Details: `docs/benchmarks/phase6c/heldout_followup.md`; report `docs/benchmarks/phase6c/multicell_heldout.md`.
+
+- [x] 1. **Held-out outcome, as it came out** (new cell model vs v1 aggregation, 22 cells / 11 configurations):
+
+  | | new (cellpeak) | v1 (combine) |
+  |---|---|---|
+  | above_high | **0 of 22 cells, 0 of 11 configurations: bars MET** | 0 / 0 |
+  | bias | 1.17 | 1.00 |
+  | median error | 17.2% | 6.0% |
+  | coverage | 63.6% (36.4% below `low`) | 86.4% |
+  | width | 3.04 | 6.05 |
+
+  Caveats: (a) 0 of 22 bounds the true above-high rate only at **~13%** (one-sided 95% Clopper-Pearson 12.7%; 0 of 11
+  configurations: 23.8%), so MET does not show a rate <= 3%. (b) **The median-error ranking flipped**: dev 12.6% (new) vs
+  17.8% (v1), held-out 17.2% vs 6.0%. The new model's gain is the halved width, not a lower point error. (c) Coverage is 63.6%
+  on both dev and held-out, with every miss below `low`. (d) Bias 1.17 (over-prediction). (e) Six cells have operations
+  without an estimate: merge on a frame made in the cell x2, concat of calls x2, `fillna(0)` on pandas-3 `str` columns x2.
+- [x] 2. **Report formatting fix** (`benchmarks/multicell/run.py`, outside the freeze): `actual` is printed in MiB and
+  `v1_bias` as a ratio; both were printed as percentages before. Test: `test_multicell_report_formats_mib_and_ratio_columns`.
+  The held-out report was regenerated from the STORED results (access logged: "formatting fix only, no re-measurement"); no
+  figure changed. `multicell_dev.md` has the same display bug but was not regenerated, because that would drop its
+  dated Phase 6d note. To read its `actual` (MiB) and `v1_bias` (ratio) columns, drop the % sign and divide by 100.
+- [x] 3. **Information only, from stored results + a prediction-only re-run** (22 / 22 reproduce the stored estimates exactly;
+  `docs/benchmarks/phase6c/probes/p_heldout_followup.py`):
+  (a) The six uncovered cells are **never OK**. They are HIGH_RISK / WARN at small simulated headrooms and UNKNOWN once
+  `high <= 0.85 x headroom`. No cell is UNKNOWN while its actual exceeds the headroom.
+  (b) **Retained-load terms are exact** (61.0 / 91.6 MiB per 1M rows = arithmetic truth). The load templates' bias is the
+  **read_csv Tier 1 peak term: 1.22x (num) / 1.25x (wide) per load**, the known 0.84 band. The same implied plain-load
+  peak (394.5 MiB at 1M) comes out of three templates. The read_csv term does NOT explain the non-load biases (copy_fillna 1.17,
+  chain 1.14, rebinding / astype_groupby 1.11).
+  (c) loads3_tsv: `usecols` causes **~80%** of the error (b's retained 240.7 vs 15.3 MiB true); the rest is the Tier 1 band.
+  load_dtype_nrows: **~70%** comes from the Tier 0 fallback the arguments trigger, ~23-25% from the argument content, and
+  ~7% from the Tier 1 band (that last split assumes the band also holds for a truncated read).
+  **Proposals only** (Phase 7, each a new derivation + probe + new freeze, validated on fresh data): re-derive the read_csv
+  transient term per converted column, which covers the 0.80-0.82 band and `usecols`; add the arithmetic retained term for
+  `usecols` / `dtype` / `nrows`; give `nrows` its own chunk term; name the uncovered operation in the UNKNOWN wording.
+- [x] 4. PROGRESS, lint, tests; freeze guard re-checked.
+
+### Next steps
+1. A future held-out check of the cell model needs a NEW group (multicell split v2), since this one is now dev.
+2. Phase 7 inputs above (read_csv transient term; read_csv argument terms; the non-load biases of copy / sort_values Tier 0).
+3. Unchanged from Phase 6d: push and check CI; val-v5 on the Linux VM once; determinism at 10M rows.

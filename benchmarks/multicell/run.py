@@ -171,11 +171,14 @@ def metrics(rows: list[dict[str, Any]], key: str) -> dict[str, Any]:
     }  # fmt: skip
 
 
+RATIO_COLS = ("bias", "width", "v1_bias")  # ratios (x); every other float column is a share (%)
+
+
 def _fmt(v: Any, col: str) -> str:
     if isinstance(v, float):
         if math.isnan(v):
             return "-"
-        return f"{v:.2f}" if col in ("bias", "width") else f"{v:.1%}"
+        return f"{v:.2f}" if col in RATIO_COLS else f"{v:.1%}"
     return str(v)
 
 
@@ -220,7 +223,8 @@ def report(rows: list[dict[str, Any]], title: str) -> str:
     cells = []
     for r in rows:
         n, v = r.get("new") or {}, r.get("v1") or {}
-        cells.append({"cell": r["id"], "actual": (r.get("actual") or 0) / MIB,
+        actual = f"{r['actual'] / MIB:.0f}" if r.get("actual") else "-"
+        cells.append({"cell": r["id"], "actual": actual,
                       "new low/exp/high": f"{n.get('ram_low', 0) / MIB:.0f} / {n.get('ram_expected', 0) / MIB:.0f} / {n.get('ram_high', 0) / MIB:.0f}",
                       "v1 exp/high": f"{v.get('ram_expected', 0) / MIB:.0f} / {v.get('ram_high', 0) / MIB:.0f}",
                       "mode": r.get("mode"), "uncovered": r.get("uncovered")})  # fmt: skip
