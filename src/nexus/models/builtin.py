@@ -15,6 +15,8 @@ _MODULES = (
     "matmul",
     "np_sort",
     "copy_fillna",
+    "explode_apply",
+    "set_index",
 )
 
 

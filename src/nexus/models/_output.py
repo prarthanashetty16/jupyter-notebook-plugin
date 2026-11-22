@@ -137,7 +137,8 @@ def _np_sort(f: dict[str, Any], e: Estimate) -> Triple:
 FORMULAS = {
     "read_csv": _read_csv, "merge": _merge, "groupby": _groupby, "sort_values": _sort_values,
     "drop_duplicates": _drop_duplicates, "astype": _astype, "concat": _whole, "copy": _whole,
-    "fillna": _whole, "matmul": _matmul, "np_sort": _np_sort,
+    "fillna": _whole, "matmul": _matmul, "np_sort": _np_sort, "apply_ufunc": _whole,
+    "set_index": lambda f, e: (0.0, 0.0, 0.0),  # the result shares the input's blocks
 }  # fmt: skip
 
 

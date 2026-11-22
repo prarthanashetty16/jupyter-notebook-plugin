@@ -1,0 +1,10 @@
+{"pandas": "3.1.1", "numpy": "2.5.5", "power": "mains", "bar": [0.85, 1.15]}
+{"op": "set_index", "variant": "int key, 3 other groups", "measured_mib": 0.37890625, "bound_mib": 0.0, "censored": false, "derived_mib": 0.0, "ratio": null, "pass": true, "time_s": 0.0005491999982041307, "status": "ok", "power": "mains"}
+{"op": "set_index", "variant": "float key", "measured_mib": 0.3515625, "bound_mib": 0.0, "censored": false, "derived_mib": 0.0, "ratio": null, "pass": true, "time_s": 0.000523299997439608, "status": "ok", "power": "mains"}
+{"op": "set_index", "variant": "int key drop=False", "measured_mib": 0.2109375, "bound_mib": 0.0, "censored": false, "derived_mib": 0.0, "ratio": null, "pass": true, "time_s": 0.00034890000097220764, "status": "ok", "power": "mains"}
+{"op": "value_counts", "variant": "int64 n=12M u=300", "measured_mib": 4.4609375, "bound_mib": 0.0, "censored": false, "derived_mib": 6.337631467665403, "ratio": 0.7038808619213193, "pass": true, "time_s": 0.04144879999512341, "status": "ok", "power": "mains"}
+{"op": "value_counts", "variant": "int64 n=12M u=50000", "measured_mib": 70.53515625, "bound_mib": 0.0, "censored": false, "derived_mib": 205.10089212201564, "ratio": 0.3439046779379109, "pass": false, "time_s": 0.16499320000002626, "status": "ok", "power": "mains"}
+{"op": "value_counts", "variant": "int64 n=12M u=1000000", "measured_mib": 151.0390625, "bound_mib": 0.0, "censored": false, "derived_mib": 275.2586822509623, "ratio": 0.5487167971046696, "pass": false, "time_s": 0.5724214000001666, "status": "ok", "power": "mains"}
+{"op": "value_counts", "variant": "int64 n=12M u=6000000", "measured_mib": 361.9609375, "bound_mib": 0.0, "censored": false, "derived_mib": 339.1623992919922, "ratio": 1.0672201230313272, "pass": true, "time_s": 1.115487099996244, "status": "ok", "power": "mains"}
+{"op": "value_counts", "variant": "float64 n=12M u=3M", "measured_mib": 344.85546875, "bound_mib": 0.0, "censored": false, "derived_mib": 304.94386291503906, "ratio": 1.1308818136342713, "pass": true, "time_s": 2.957029800003511, "status": "ok", "power": "mains"}
+{"adopt": {"set_index": true, "value_counts": false}}
