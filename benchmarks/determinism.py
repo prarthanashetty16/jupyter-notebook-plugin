@@ -7,6 +7,11 @@ dev points and reports, per operation, the spread of the expected and high RAM a
 and how often the Tier 0 fallback differs between repeats of the same point. Mains power required.
 
     python -m benchmarks.determinism --out docs/benchmarks/phase6d/determinism.md
+    python -m benchmarks.determinism --max-rows 10000000 --condition cores2_contended --title "..." --out <md>
+
+Phase 7b: ``--max-rows`` (points spread over the sizes, the largest included), ``--condition`` (``all`` CPUs
+or ``cores2_contended``: the process and its workers pinned to 2 CPUs with 2 busy loops on them), and the
+power state checked before every point (the run stops on battery).
 """
 
 from __future__ import annotations
@@ -24,19 +29,33 @@ REPEATS = 10
 MAX_ROWS = 3_000_000
 
 
-def pick_points() -> list:
+def pick_points(max_rows: int = MAX_ROWS, spread_sizes: bool = False) -> list:
     from benchmarks.split import DEV
     from benchmarks.suite import build_grid
 
-    grid = [p for p in build_grid("full", max_size=MAX_ROWS) if p.split == DEV and p.op in OPS]
+    grid = [p for p in build_grid("full", max_size=max_rows) if p.split == DEV and p.op in OPS]
     out, by = [], defaultdict(list)
-    for p in sorted(grid, key=lambda q: (q.op, q.id)):
+    key = (lambda q: (q.op, q.size, q.id)) if spread_sizes else (lambda q: (q.op, q.id))
+    for p in sorted(grid, key=key):
         by[p.op].append(p)
     for op in OPS:
         pts = by[op]
+        if spread_sizes and len(pts) > PER_OP:  # evenly over the sizes, the largest included
+            idx = sorted({round(i * (len(pts) - 1) / (PER_OP - 1)) for i in range(PER_OP)})
+            out += [pts[i] for i in idx]
+            continue
         step = max(1, len(pts) // PER_OP)
         out += pts[::step][:PER_OP]
     return out
+
+
+def _busy(cores: list[int]) -> None:
+    import psutil
+
+    psutil.Process().cpu_affinity(cores)
+    x = 0
+    while True:
+        x = (x * 1103515245 + 12345) % 2147483648
 
 
 def main(argv: list[str] | None = None) -> None:  # noqa: C901
@@ -46,14 +65,40 @@ def main(argv: list[str] | None = None) -> None:  # noqa: C901
     ap = argparse.ArgumentParser(prog="python -m benchmarks.determinism")
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--repeats", type=int, default=REPEATS)
+    ap.add_argument("--max-rows", type=int, default=MAX_ROWS)
+    ap.add_argument("--condition", choices=("all", "cores2_contended"), default="all")
+    ap.add_argument(
+        "--title", default="Tier 1 determinism (Phase 6d; information only, nothing changed)"
+    )
     args = ap.parse_args(argv)
     if power_state() == "battery":
         raise SystemExit("on battery power: plug in first")
+    import multiprocessing as mp
+
+    import psutil
+
+    hogs = []
+    if args.condition == "cores2_contended":
+        psutil.Process().cpu_affinity([0, 1])
+        ctx = mp.get_context("spawn")
+        hogs = [ctx.Process(target=_busy, args=([0, 1],), daemon=True) for _ in range(2)]
+        for h in hogs:
+            h.start()
+    try:
+        _run(args, power_state, env_info, default_mem_limit_bytes, _prepare, run_prediction)
+    finally:
+        for h in hogs:
+            h.terminate()
+
+
+def _run(args, power_state, env_info, default_mem_limit_bytes, _prepare, run_prediction) -> None:  # noqa: ANN001, C901
     cache = Path("benchmarks/.cache")
     env, cap = env_info(), default_mem_limit_bytes()
     rows = []
-    points = pick_points()
+    points = pick_points(args.max_rows, spread_sizes=args.max_rows != MAX_ROWS)
     for i, point in enumerate(points, 1):
+        if power_state() == "battery":
+            raise SystemExit(f"on battery power at point {i}: stopped (no partial report)")
         path = _prepare(point, cache)
         source = point.source.format(csv=path) if "{csv" in point.source else point.source
         for rep in range(args.repeats):
@@ -84,9 +129,9 @@ def main(argv: list[str] | None = None) -> None:  # noqa: C901
         per_point.append(rec)
     pp = pd.DataFrame(per_point)
     lines = [
-        "# Tier 1 determinism (Phase 6d; information only, nothing changed)",
+        f"# {args.title}",
         "",
-        f"{len(points)} stored dev points (<= {MAX_ROWS:,} rows; {PER_OP} per operation with Tier 1 statistics), "
+        f"Condition: {args.condition}. {len(points)} stored dev points (<= {args.max_rows:,} rows; {PER_OP} per operation with Tier 1 statistics), "
         f"{args.repeats} repeats each, each a fresh prediction process (the benchmark's worker), mains power "
         f"(power seen: {sorted(df['power'].unique())}). Spread = (max - min) / median over the repeats of one point; "
         "CV = std / mean. Raw rows: `determinism.csv`.",
@@ -111,12 +156,7 @@ def main(argv: list[str] | None = None) -> None:  # noqa: C901
     flips = pp[pp["fallback_differs"]]
     lines += ["", f"Points whose Tier 0 fallback differs between repeats: {len(flips)} of {len(pp)}"
               + ("".join(f"\n- {r.point}: Tier 1 in {r.tier1_runs} of {r.n} runs" for r in flips.itertuples()) if len(flips) else ""),
-              "", "## Proposal for v3 (not implemented)", "",
-              "Seed the statistics sampler from the cell hash and fix the sample size per operation (independent of the "
-              "time budget; the budget would only decide between that sample and no statistics). Repeated analyses of "
-              "the same cell on the same data would then give identical estimates; the remaining variation would be "
-              "the budget decision itself. This changes frozen files (`stats.py`, the models' Tier 1 code): a v3 freeze "
-              "and a fresh evaluation are needed."]  # fmt: skip
+              ]  # fmt: skip
     args.out.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("\n".join(lines))
 

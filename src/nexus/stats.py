@@ -160,50 +160,30 @@ PILOT_ROWS = 4096
 MIN_AFFORDABLE_ROWS = 2_000
 
 
-GATE_REASON = "statistics skipped: predicted cost above the time budget"
+def affordable_rows(rows: int, budget_s: float | None, pilot: Any) -> int:
+    """Sample size that fits ``budget_s``, from the timed ``pilot(m)`` (seconds for ``m`` rows).
 
+    Raises TimeoutError when even ``MIN_AFFORDABLE_ROWS`` would not fit: a sample that small says
+    too little, so the caller falls back to Tier 0 instead of reporting a meaningless interval.
 
-def affordable_rows(
-    rows: int, budget_s: float | None, pilot: Any, cost_per_row: float | None = None
-) -> int:
-    """Sample size that fits ``budget_s`` (at most ``rows``); TimeoutError when even
-    ``MIN_AFFORDABLE_ROWS`` would not fit (a sample that small says too little: Tier 0 instead).
-
-    Phase 7b (determinism): the per-row cost is PREDICTED from the machine profile (``cost_per_row``),
-    not timed, and ``budget_s`` is a fixed share of the stage's budget, so the same cell on the same
-    data and machine gets the same sample. The timed ``pilot(m)`` is used only when no prediction
-    exists (no caller in v3 relies on it). The hard deadline still stops a run that overruns.
+    Phase 7b: a deterministic variant (profile-predicted cost against a fixed budget share, no
+    shrinking to the live time left) was implemented and NOT adopted: on 2 contended CPUs the hard
+    deadline fired after it had admitted the statistics on 12 of 29 dev inputs (41%), far above the
+    pre-registered 10% failure bar (docs/benchmarks/phase7b/determinism_cores2.md). This v2 timed gate
+    stays; the cell-seeded sampler (``cell_seed``) is kept.
     """
     if budget_s is None:
         return rows
-    if cost_per_row is None:
-        m0 = min(rows, PILOT_ROWS)
-        cost_per_row = max(pilot(m0) / m0, 1e-9)
-    fit = int(budget_s / max(cost_per_row, 1e-12))
+    m0 = min(rows, PILOT_ROWS)
+    per_row = max(pilot(m0) / m0, 1e-9)
+    fit = int(budget_s / per_row)
     if fit < MIN_AFFORDABLE_ROWS and fit < rows:
-        raise TimeoutError(GATE_REASON)
+        raise TimeoutError("time budget too small for a useful sample")
     return min(rows, fit)
 
 
-def factorize_cost_per_row(values: Any, m: int) -> float | None:
-    """Per-row seconds of factorizing ``m`` sampled ``values`` on this machine (profile), or None."""
-    try:
-        from nexus.models._time import factorize_s
-
-        dt = str(getattr(values, "dtype", ""))
-        kind = (
-            "text"
-            if dt in ("object", "str", "string", "category") or dt.startswith("string")
-            else "numeric"
-        )
-        return factorize_s(kind, m, m) / max(m, 1)
-    except Exception:
-        return None
-
-
 def _budget(deadline: Deadline | None, share: float) -> float | None:
-    """The fixed share of the stage's budget a statistic may use (deterministic: not the live remainder)."""
-    return None if deadline is None else getattr(deadline, "gate_s", deadline.remaining()) * share
+    return None if deadline is None else deadline.remaining() * share
 
 
 def distinct_count(
@@ -228,8 +208,7 @@ def distinct_count(
         pd.factorize(take(values, sample_positions(n, m, seed + 1)), use_na_sentinel=False)
         return time.perf_counter() - t0
 
-    m = min(rows, n)
-    rows = affordable_rows(m, _budget(deadline, share), pilot, factorize_cost_per_row(values, m))
+    rows = affordable_rows(min(rows, n), _budget(deadline, share), pilot)
     pos = sample_positions(n, rows, seed)
     if deadline is not None:
         deadline.check()
@@ -348,10 +327,7 @@ def distinct_rows(
         hashed_sample(m)
         return time.perf_counter() - t0
 
-    m = min(rows, n)
-    per_row = [factorize_cost_per_row(c, m) for c in columns]
-    cost = None if any(x is None for x in per_row) else float(sum(per_row))  # type: ignore[arg-type]
-    rows = affordable_rows(m, _budget(deadline, share), pilot, cost)
+    rows = affordable_rows(min(rows, n), _budget(deadline, share), pilot)
     if deadline is not None:
         deadline.check()
     _, counts = np.unique(hashed_sample(rows), return_counts=True)

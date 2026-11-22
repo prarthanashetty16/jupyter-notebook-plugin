@@ -24,9 +24,17 @@ def test_set_index_is_zero_copy_and_refuses_unprobed_forms():
 
 def test_apply_ufunc_result_dtype_and_refusals():
     df = pd.DataFrame({"f32": np.ones(1000, dtype="float32"), "i": np.arange(1000)})
-    assert _est("a = df['f32'].apply(np.log)", {"df": df})["apply_ufunc"].estimate.ram_expected == 4000
-    assert _est("a = df['i'].apply(np.sqrt)", {"df": df})["apply_ufunc"].estimate.ram_expected == 8000
-    for src in ("a = df['i'].apply(lambda x: x)", "a = df.apply(np.sqrt)", "a = df['i'].apply(np.add)"):
+    assert (
+        _est("a = df['f32'].apply(np.log)", {"df": df})["apply_ufunc"].estimate.ram_expected == 4000
+    )
+    assert (
+        _est("a = df['i'].apply(np.sqrt)", {"df": df})["apply_ufunc"].estimate.ram_expected == 8000
+    )
+    for src in (
+        "a = df['i'].apply(lambda x: x)",
+        "a = df.apply(np.sqrt)",
+        "a = df['i'].apply(np.add)",
+    ):
         assert "apply_ufunc" not in _est(src, {"df": df}), src
 
 

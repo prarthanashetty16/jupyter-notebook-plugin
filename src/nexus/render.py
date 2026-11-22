@@ -44,7 +44,6 @@ def _describe(desc: Descriptor) -> str:
 FALLBACK_PREFIX = "reduced-accuracy estimate: statistics unavailable"
 _FALLBACK_REASONS = {
     "time budget": "time budget",
-    "predicted cost": "predicted statistics cost above the time budget",
     "frame created in this cell": "frame created in this cell: shapes propagated, no statistics",
     "no statistics": "unsupported arguments",
 }

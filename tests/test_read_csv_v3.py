@@ -44,7 +44,9 @@ def test_unknown_path_spans_both_readers():
 
 
 def test_text_files_keep_the_v2_formula_on_the_parallel_path():
-    f = _features("parallel", text_cols=2, str_chars=8.0, unique_fraction=0.1, unique_range=(0.1, 0.1, 0.1))
+    f = _features(
+        "parallel", text_cols=2, str_chars=8.0, unique_fraction=0.1, unique_range=(0.1, 0.1, 0.1)
+    )
     _, exp, _ = rc.ReadCsvModel.tier1_ram(f)
     assert exp == pytest.approx(rc.parse_peak_bytes(300 * MIB, 2e6, 8, text_cols=2, str_chars=8.0,
                                                     unique_fraction=0.1))  # fmt: skip

@@ -9,6 +9,7 @@ versions that were actually run.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import statistics
 import tempfile
@@ -215,7 +216,9 @@ def test_read_csv_reader_path_matches_pandas(tmp_path):
     if parallel_workers() is None:
         from pandas.io.parsers import readers
 
-        assert not hasattr(readers, "_read_csv_parallel")  # no parallel reader: NEXUS says "unknown"
+        assert not hasattr(
+            readers, "_read_csv_parallel"
+        )  # no parallel reader: NEXUS says "unknown"
         assert reader_path(str(tmp_path / "x.csv"), 10 * PARALLEL_MIN_BYTES, {})[0] == "unknown"
         return
     rng = np.random.default_rng(0)
@@ -230,18 +233,12 @@ def test_read_csv_reader_path_matches_pandas(tmp_path):
     calls = [{}, {"sep": ","}, {"na_values": ["NA"]}, {"dtype": "float32"}, {"dtype": {"c0": "float32"}},
              {"usecols": ["c0", "c1"]}, {"nrows": 1000}, {"header": 0}]  # fmt: skip
     for threads in (None, 1, 2):
-        ctx = pd.option_context("mode.max_threads", threads) if threads else _null()
+        ctx = (
+            pd.option_context("mode.max_threads", threads) if threads else contextlib.nullcontext()
+        )
         with ctx:
             for name, path in files.items():
                 for kw in calls:
                     want = _pandas_path(path, kw)
                     got, _ = reader_path(path, sizes[name], kw)
                     assert got == want, (threads, name, kw, got, want)
-
-
-class _null:
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False

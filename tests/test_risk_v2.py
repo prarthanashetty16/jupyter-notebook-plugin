@@ -27,7 +27,9 @@ def _item(model: str, used: bool, tier: int = 1, own: int | None = 200 * MIB) ->
 def test_own_tier1_high_only_for_read_csv_and_merge_with_statistics():
     assert warn_high_estimate(_item("read_csv", True)).ram_high == 200 * MIB
     assert warn_high_estimate(_item("merge", True)).ram_high == 200 * MIB
-    assert warn_high_estimate(_item("groupby", True)).ram_high == 2000 * MIB  # other models: policy B
+    assert (
+        warn_high_estimate(_item("groupby", True)).ram_high == 2000 * MIB
+    )  # other models: policy B
     # statistics did not run (fallback to Tier 0): Tier 0's high stays
     assert warn_high_estimate(_item("merge", False, tier=0)).ram_high == 2000 * MIB
     assert warn_high_estimate(_item("read_csv", False, tier=0, own=None)).ram_high == 2000 * MIB

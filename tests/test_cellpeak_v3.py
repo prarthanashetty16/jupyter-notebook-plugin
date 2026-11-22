@@ -15,7 +15,9 @@ PEAKS3 = [(10, 100, 100), (10, 50, 50), (10, 30, 30)]
 def _exp(src: str, peaks=PEAKS3) -> float:
     """Cell expected (MiB): the statements' sort_values get ``peaks`` in order (output = whole peak);
     any other detected operation (the alias forms) gets a zero estimate."""
-    ops = analyze_cell(src, {"pd": pd, "df": pd.DataFrame({"a": [1]}), "m": pd.DataFrame({"a": [1]})})
+    ops = analyze_cell(
+        src, {"pd": pd, "df": pd.DataFrame({"a": [1]}), "m": pd.DataFrame({"a": [1]})}
+    )
     sorts = [o for o in ops if o.name == "sort_values" and o.receiver == "df"]
     assert len(sorts) == len(peaks), [(o.name, o.receiver) for o in ops]
     it = iter(peaks)
@@ -46,7 +48,9 @@ def test_aliases_keep_the_conservative_rule():
         "g = m.groupby('a')\n",       # a GroupBy object keeps the frame
         "s = m.copy(deep=False)\n",   # a shallow copy shares the blocks
     ):  # fmt: skip
-        src = "m = df.sort_values('a')\n" + alias + "m = df.sort_values('a')\nc = df.sort_values('a')"
+        src = (
+            "m = df.sort_values('a')\n" + alias + "m = df.sort_values('a')\nc = df.sort_values('a')"
+        )
         assert _exp(src) == keep, alias
 
 

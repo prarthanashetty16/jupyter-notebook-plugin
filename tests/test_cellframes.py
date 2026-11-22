@@ -15,7 +15,9 @@ from nexus.risk import RiskClass, assess
 def csv(tmp_path):
     rng = np.random.default_rng(0)
     p = tmp_path / "x.csv"
-    pd.DataFrame({"k": rng.integers(0, 500, 50_000), "v": rng.random(50_000)}).to_csv(p, index=False)
+    pd.DataFrame({"k": rng.integers(0, 500, 50_000), "v": rng.random(50_000)}).to_csv(
+        p, index=False
+    )
     return repr(str(p))
 
 
@@ -47,7 +49,9 @@ def test_shapes_propagate_through_concat_and_sort(csv, ns):
 def test_unknown_producer_gives_no_estimate_and_unknown_names_it(ns):
     rep = Pipeline(tier=1).run("a = f(right)\nm = a.sort_values('k')", ns)
     assert not rep.estimates
-    rep = Pipeline(tier=1).run("x = right.sort_values('k')\na = f(right)\nm = a.sort_values('k')", ns)
+    rep = Pipeline(tier=1).run(
+        "x = right.sort_values('k')\na = f(right)\nm = a.sort_values('k')", ns
+    )
     assert [e.model for e in rep.estimates] == ["sort_values"]  # only the first
     r = assess(rep)
     assert r.risk in (RiskClass.UNKNOWN, RiskClass.WARN, RiskClass.HIGH_RISK)
