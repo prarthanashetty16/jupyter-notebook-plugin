@@ -675,6 +675,7 @@ class CsvProfile:
     exact: bool
     total_cols: int = 0  # columns in the file (``cols`` = the columns kept, e.g. by ``usecols``)
     value_bytes_per_row: float = 0.0  # parsed value bytes of one row of the kept columns
+    dtypes: dict[str, str] = field(default_factory=dict)  # kept column -> parsed dtype (Phase 7b)
 
 
 def _parse_chunk(

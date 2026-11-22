@@ -267,6 +267,8 @@ class ReadCsvModel(OperationModel):
             "unique_fraction": uq.value,
             "unique_range": (uq.low, uq.value, uq.high),
             "bytes_per_field": cp.bytes_per_field,
+            "value_bytes_per_row": cp.value_bytes_per_row,
+            "dtypes": cp.dtypes,  # for a frame created in the cell (nexus.cellframes)
             "tier1": {
                 "sample": r.sample,
                 "confidence": min(r.confidence, uq.confidence),

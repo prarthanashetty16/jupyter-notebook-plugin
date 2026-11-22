@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from nexus import dryrun, guard, ranges, stats, timecal
+from nexus import cellframes, dryrun, guard, ranges, stats, timecal
 from nexus.analyzer import DetectedOp, analyze_cell
 from nexus.controller import Controller
 from nexus.failsafe import Deadline
@@ -84,18 +84,28 @@ class Pipeline:
         inspection = self._inspector.inspect(names, namespace, paths=paths, deadline=deadline)
         estimates: list[OpEstimate] = []
         dry: dict[str, Any] = {}  # one dry run per cell, shared by its ops
+        cb = cellframes.cell_bindings(source, ops)
+        produced: dict[int, Any] = {}  # id(op) -> predicted result descriptor (nexus.cellframes)
         for op in ops:
             if deadline is not None:
                 deadline.check()
+            state, cell_frame = cellframes.state_for(op, cb, produced, inspection)
+            if state is None:  # touches a frame made earlier in this cell whose shape is unknown
+                continue
             for model in self.registry.find(op):
                 try:
                     if self._tier > 2:
                         raise NoEstimateError(f"tier {self._tier} not implemented")
-                    features = model.features(op, inspection)
+                    features = model.features(op, state)
                     tier0_features = features
                     tier0 = None
                     used = 0
-                    if self._tier >= 1:
+                    if cell_frame:  # statistics would read the stale kernel object: Tier 0 only
+                        features = {
+                            **features,
+                            "tier1": {"used": False, "reason": cellframes.CELL_FRAME_REASON},
+                        }
+                    elif self._tier >= 1:
                         features, used = self._tier1(model, op, features, namespace, source, t0)
                     estimate = None
                     if used >= 1:
@@ -119,7 +129,7 @@ class Pipeline:
                         estimate = tier0 = model.estimate(features, used)
                     if isinstance(estimate, Estimate):  # time: residual + conformal range
                         estimate = timecal.calibrate(model.name, estimate)
-                    if self._tier >= 2 and isinstance(estimate, Estimate):
+                    if self._tier >= 2 and isinstance(estimate, Estimate) and not cell_frame:
                         estimate, features = self._tier2(
                             op, estimate, features, source, namespace, dry, tier0, inspection
                         )
@@ -134,6 +144,7 @@ class Pipeline:
                 estimates.append(
                     OpEstimate(op=op, model=model.name, estimate=estimate, features=features)
                 )
+                cellframes.record(op, model.name, features, estimate, state, cb, produced)
         try:
             resources = self._probe.snapshot()
         except Exception:
