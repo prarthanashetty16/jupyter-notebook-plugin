@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from nexus import stats
-from nexus.analyzer import DetectedOp
+from nexus.analyzer import DetectedOp, Expr
 from nexus.models import _time as tt
 from nexus.models import _util as u
 from nexus.models.base import Estimate, NoEstimateError, OperationModel, Tier1Context
@@ -106,18 +106,48 @@ class ReadCsvModel(OperationModel):
 
     # options that change what the parser allocates; statistics assume the plain call
     _PLAIN_KWARGS = frozenset({"filepath_or_buffer", "encoding", "low_memory"})
+    # Phase 6c: arguments that only change TOKENIZING (pandas 3.1 C parser): a one-character
+    # ``sep`` / ``delimiter`` and ``header`` 0 / None. Probe at 617 MiB: default, TSV and
+    # header=None peak identically. ``dtype``, ``usecols`` and ``nrows`` change the cost in ways the
+    # probe did NOT confirm (0.68x, 0.22x, 0.37x of the derived value): they keep the refusal.
+    _TOKENIZING_KWARGS = frozenset({"sep", "delimiter", "header"})
+
+    @classmethod
+    def read_kwargs(cls, op: DetectedOp) -> dict[str, Any] | None:
+        """The understood tokenizing arguments for the sampler, or None if any argument is not."""
+        kw = op.kwargs
+        if len(op.args) > 1 or any(k not in cls._PLAIN_KWARGS | cls._TOKENIZING_KWARGS for k in kw):
+            return None
+        if "sep" in kw and "delimiter" in kw:
+            return None
+        out: dict[str, Any] = {}
+        sep = kw.get("sep", kw.get("delimiter", ","))
+        if isinstance(sep, Expr) or not isinstance(sep, str) or len(sep) != 1:
+            return None  # sniffing (None), regex or multi-character separators: the python engine
+        if sep != ",":
+            out["sep"] = sep
+        if "header" in kw:
+            if kw["header"] not in (0, None, "infer"):
+                return None
+            if kw["header"] is None:
+                out["header"] = None
+        return out
 
     def tier1_features(
         self, op: DetectedOp, features: dict[str, Any], ctx: Tier1Context
     ) -> dict[str, Any] | None:
         """Rows, columns, text columns, string length and per-chunk string uniqueness from the
-        head of the file plus three seeked chunks (at most 1.75 MiB read)."""
-        if any(k not in self._PLAIN_KWARGS for k in op.kwargs) or len(op.args) > 1:
+        head of the file plus three seeked chunks (at most 1.75 MiB read), tokenized with the
+        call's own separator / header (Phase 6c)."""
+        kw = self.read_kwargs(op)
+        if kw is None:
             return None
         paths = candidate_paths(op)
         if not paths:
             return None
-        cp = stats.csv_profile(paths[0], features["file_bytes"], deadline=ctx.deadline)
+        cp = stats.csv_profile(
+            paths[0], features["file_bytes"], deadline=ctx.deadline, read_kwargs=kw or None
+        )
         r, uq = cp.rows, cp.unique_fraction
         return {
             "n_rows": r.value,

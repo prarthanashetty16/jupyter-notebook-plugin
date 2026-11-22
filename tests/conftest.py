@@ -10,6 +10,28 @@ from nexus import timecal
 from nexus.machine import ENV_VAR, machine
 
 
+def _real_profile_path():
+    import os
+    import sys
+    from pathlib import Path
+
+    if sys.platform == "win32":
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+    else:
+        base = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+    return base / "nexus" / "machine.json"
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _user_profile_untouched():
+    """Tests must never write the user's real machine profile (Phase 6c: a test once did)."""
+    path = _real_profile_path()
+    before = path.stat().st_mtime_ns if path.exists() else None
+    yield
+    after = path.stat().st_mtime_ns if path.exists() else None
+    assert before == after, f"a test modified the user's machine profile at {path}"
+
+
 @pytest.fixture(autouse=True)
 def _isolated_machine_profile(tmp_path_factory, monkeypatch):
     monkeypatch.setenv(ENV_VAR, str(tmp_path_factory.mktemp("profile") / "machine.json"))

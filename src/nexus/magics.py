@@ -10,7 +10,7 @@ from IPython.core.magic import Magics, line_magic, magics_class
 from nexus.session import NexusSession
 
 log = logging.getLogger("nexus")
-USAGE = "usage: %nexus [status | on | off | verbose on|off | explain | suggestions | apply <n> | rule enable|disable <name>]"
+USAGE = "usage: %nexus [status | on | off | verbose on|off | explain | suggestions | apply <n> | rule enable|disable <name> | tier 0|1|2]"
 
 
 @magics_class
@@ -32,6 +32,8 @@ class NexusMagics(Magics):
             elif words in (["on"], ["off"]):
                 s.enabled = words[0] == "on"
                 print(s.status())
+            elif len(words) == 2 and words[0] == "tier" and words[1] in ("0", "1", "2"):
+                print(s.set_tier(int(words[1])))
             elif len(words) == 2 and words[0] == "verbose" and words[1] in ("on", "off"):
                 s.verbose = words[1] == "on"
                 print(s.status())

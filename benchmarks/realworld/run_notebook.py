@@ -113,8 +113,9 @@ def _estimate_dict(e: Any) -> dict[str, Any]:
 
 
 def _analyse(src: str, ns: dict[str, Any], primary: Any, secondary: Any) -> dict[str, Any]:
+    from nexus.cellpeak import cell_estimate
     from nexus.failsafe import Deadline
-    from nexus.risk import assess, combine
+    from nexus.risk import assess
     from nexus.session import DEFAULT_BUDGET_S
     from nexus.suggestions import suggest
 
@@ -126,7 +127,8 @@ def _analyse(src: str, ns: dict[str, Any], primary: Any, secondary: Any) -> dict
         rec["estimates"] = [{"model": e.model, "op": e.op.name, **_estimate_dict(e.estimate),
                              "tier1_used": bool((e.features.get("tier1") or {}).get("used", "tier1" in e.features))}
                             for e in rep.estimates]  # fmt: skip
-        cell = combine([e.estimate for e in rep.estimates])
+        cell, mode, _flags = cell_estimate(src, rep.estimates)  # the cell-level model (Phase 6c)
+        rec["cell_mode"] = mode
         rec["cell"] = _estimate_dict(cell) if cell else None
         rec["uncovered"] = len({id(o) for o in rep.ops} - {id(e.op) for e in rep.estimates})
         rec["inputs"] = _describe_inputs(rep)
@@ -139,7 +141,7 @@ def _analyse(src: str, ns: dict[str, Any], primary: Any, secondary: Any) -> dict
             sg = suggest(src, ns, rep.inspection, rep.ops)
             rec["suggestions"] = [{"rule": s.rule, "semantics": s.semantics} for s in sg]
         sec = secondary.run(src, ns, Deadline(DEFAULT_BUDGET_S))
-        c0 = combine([e.estimate for e in sec.estimates])
+        c0, _m0, _f0 = cell_estimate(src, sec.estimates)
         rec["cell_tier0"] = _estimate_dict(c0) if c0 else None
     except Exception as exc:
         rec["analysis_error"] = type(exc).__name__
@@ -147,7 +149,7 @@ def _analyse(src: str, ns: dict[str, Any], primary: Any, secondary: Any) -> dict
     return rec
 
 
-def _kernel_main(conn: Any, workdir: str) -> None:  # noqa: C901
+def _kernel_main(conn: Any, workdir: str, tier: int = 2) -> None:  # noqa: C901
     os.chdir(workdir)
     from IPython.core.interactiveshell import InteractiveShell
 
@@ -160,7 +162,7 @@ def _kernel_main(conn: Any, workdir: str) -> None:  # noqa: C901
     session = get_session(shell)
     if session is not None:
         session.enabled = False  # logging mode: the harness runs the analysis itself
-    primary, secondary = Pipeline(tier=2), Pipeline()
+    primary, secondary = Pipeline(tier=tier), Pipeline()
     conn.send(("ready", os.getpid()))
     while True:
         msg = conn.recv()
@@ -210,10 +212,10 @@ def _ram_actual(
     }
 
 
-def _start_kernel(workdir: Path) -> tuple[Any, Any, psutil.Process]:
+def _start_kernel(workdir: Path, tier: int = 2) -> tuple[Any, Any, psutil.Process]:
     ctx = mp.get_context("spawn")
     parent, child = ctx.Pipe()
-    proc = ctx.Process(target=_kernel_main, args=(child, str(workdir)), daemon=True)
+    proc = ctx.Process(target=_kernel_main, args=(child, str(workdir), tier), daemon=True)
     os.environ.setdefault("MPLBACKEND", "Agg")
     proc.start()
     if not parent.poll(120):
@@ -225,7 +227,7 @@ def _start_kernel(workdir: Path) -> tuple[Any, Any, psutil.Process]:
 
 def run(  # noqa: C901
     notebook: Path, out: Path, limits: Limits | None = None, *, allow_battery: bool = False,
-    path_map: dict[str, str] | None = None,
+    path_map: dict[str, str] | None = None, tier: int = 2, dev: bool = False,
 ) -> RunSummary:  # fmt: skip
     """Run ``notebook`` (a copy is made under ``out``); returns the run summary, writes cells.jsonl."""
     from benchmarks import frozen
@@ -234,9 +236,13 @@ def run(  # noqa: C901
 
     limits = limits or Limits()
     summary = RunSummary(notebook=notebook.stem)
-    summary.frozen = (
-        frozen.require_frozen()
-    )  # aborts (NotFrozenError) on any frozen-file difference
+    if dev:  # a DEV run (never held-out): the working tree may differ from the frozen tag
+        summary.frozen = {
+            "mode": "dev run, NOT the frozen stack",
+            "head": frozen._git("rev-parse", "HEAD"),
+        }
+    else:  # aborts (NotFrozenError) on any frozen-file difference
+        summary.frozen = frozen.require_frozen()
     summary.power = power_state()
     if summary.power == "battery" and not allow_battery:
         raise SystemExit(
@@ -254,7 +260,7 @@ def run(  # noqa: C901
     summary.cap_bytes = cap
     log = (out / "cells.jsonl").open("w", encoding="utf-8")
     t_nb = time.monotonic()
-    proc, conn, kproc = _start_kernel(work)
+    proc, conn, kproc = _start_kernel(work, tier)
     consecutive = 0
     try:
         for i, src in enumerate(cells):
@@ -367,6 +373,17 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--max-failures", type=int, default=5)
     ap.add_argument("--path-map", type=Path, help="JSON {literal path in the notebook: local path}")
     ap.add_argument("--allow-battery", action="store_true", help="tests only (recorded)")
+    ap.add_argument(
+        "--tier",
+        type=int,
+        default=2,
+        help="primary pipeline tier (Phase 8a: 2; the extension default since Phase 6c: 1)",
+    )
+    ap.add_argument(
+        "--dev",
+        action="store_true",
+        help="dev run on the working tree (skips the freeze guard; recorded; never for held-out data)",
+    )
     args = ap.parse_args(argv)
     limits = Limits(
         cap_bytes=int(args.cap_mb * MIB) if args.cap_mb else None,
@@ -375,7 +392,15 @@ def main(argv: list[str] | None = None) -> None:
         max_consecutive_failures=args.max_failures,
     )
     pm = json.loads(args.path_map.read_text()) if args.path_map else None
-    s = run(args.notebook, args.out, limits, allow_battery=args.allow_battery, path_map=pm)
+    s = run(
+        args.notebook,
+        args.out,
+        limits,
+        allow_battery=args.allow_battery,
+        path_map=pm,
+        tier=args.tier,
+        dev=args.dev,
+    )
     print(json.dumps(s.__dict__, indent=1, default=str))
 
 

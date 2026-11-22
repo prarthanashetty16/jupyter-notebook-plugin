@@ -1544,3 +1544,80 @@ every run, 40 files). test-v2 and val-v5 untouched.** Pre-registration `docs/ben
    data paths and the pre-registration are ready. A second run on the same notebooks is still evaluation only (the first run's
    results have now been read, so they are no longer held out for anything tuned afterwards).
 2. Whether the extension should default to Tier 1 (`%load_ext nexus` currently runs Tier 0).
+
+## Phase 6c: bounded derived fix round, then `models-frozen-v2`
+
+**Status: done on DEV; frozen as `models-frozen-v2`. The Amazon notebooks are dev data (opened in Phase 8a; these fixes are
+motivated by them). test-v2 and val-v5 sealed and unrun; nothing tuned on them. Risk-engine thresholds, policy B, the guard,
+the Phase 5 / 6 rules and the calibration artifact are unchanged; the Phase 5 R2 failure is NOT addressed.**
+Pre-registration `docs/benchmarks/phase6c-preregistration.md` (commit `91581ac`, before any change); results
+`docs/benchmarks/phase6c/README.md`; probes `docs/benchmarks/phase6c/probes/`.
+
+- [x] 0. Pre-registration (four items only; derivation + probe at >= 200 MiB; multi-statement benchmark with a frozen held-out
+  part; regression rule; failure statement).
+- [x] 1. **Cell-level peak model** (`nexus/cellpeak.py`, `nexus/models/_output.py`, used by `risk.assess`): max over operations of
+  retained outputs + temporaries + the operation's own peak, in statement order, for low / expected / high; `del` releases,
+  rebinding does not, expression statements are temporary; loops / functions / try / with / comprehensions fall back to the v1
+  aggregation with a flag. Derived; probe: measured = retained + current on all 7 cells (1.00).
+- [x] 2. **read_csv Tier 1** with a one-character `sep` / `delimiter` and `header` 0 / None (probe: identical cost). `dtype`,
+  `usecols` and `nrows` were derived but CONTRADICTED by the probe (0.68x, 0.22x, 0.37x) and are not adopted: Tier 0 kept, the
+  display says "statistics unavailable (unsupported arguments)". The probe also showed that the v1 model's 1.6 x file-bytes term
+  is not whole-file tokenizer memory (a Phase 7 input).
+- [x] 3. **`copy` and `fillna` models** (`nexus/models/copy_fillna.py`): copy = moved bytes (+ the dtype groups a fragmented
+  frame's copy consolidates again); fillna(scalar) = blocks holding a NaN + 4 bool masks (`Block.fillna` -> `Block.where`);
+  dict = the named columns. Run 1 of the probe contradicted the first derivations (1.75x, 1.33x); the pandas source explained
+  both and run 2 matched exactly (1.00). fillna on pandas-3 `str` / extension columns (2.45x, not derived) is refused.
+- [x] 4. **Extension defaults**: `%load_ext nexus` runs Tier 1 (`DEFAULT_TIER = 1`), `%nexus tier 0|1|2` (Tier 2 dry runs
+  opt-in), and a Tier 0 fallback is shown as "reduced-accuracy estimate: statistics unavailable (reason)" (no estimate or risk
+  class changes).
+- [x] A. **Multi-statement benchmark** (`benchmarks/multicell/`, split v1 frozen: 22 dev / 11 held-out configurations; 44 / 22
+  cells): dev new-model above_high **0% of cells, 0 of 22 configurations: bars MET**; bias 1.13, median error 12.6%, coverage
+  63.6% (36% below `low`), width 2.87 (v1: bias 0.99, error 17.8%, coverage 93%, width 5.84). **Held-out part NOT run.**
+- [x] B. **Regression on all dev data** (`docs/benchmarks/phase6c/regression_dev.md`): RAM above_high 0% everywhere before and
+  after. Regressions listed: drop_duplicates Tier 1 RAM width 0.775 -> 0.788 and time coverage 100% -> 94.7%, concat Tier 1 RAM
+  width 0.847 -> 0.869, groupby (float only). Cause: run-to-run Tier 1 sample sizes and two budget fallbacks at 10M rows; those
+  operations' files are identical to v1. **Decision: keep.**
+- [x] D. **Real notebooks on 22% subsamples (DEV, information only)** (`docs/benchmarks/phase6c/realworld_dev.md`): 74 / 30 cells
+  executed (Phase 8a: 9 / 4); 8 valid RAM points (bias 0.94, median error 22.5%, 1 above high), 9 time points (within-one
+  88.9%); 49 of 56 cells with a detected operation UNKNOWN; multi-load cells 0.73x / 0.91x (Phase 8a: 0.56x).
+- [x] 7. Freeze `models-frozen-v2`; manifest `docs/benchmarks/frozen-manifest.md` (v1 kept in `frozen-manifest-v1.md`); the guard
+  checks against v2 (`nexus/cellpeak.py` added to the patterns; the new models are under `models/*.py`).
+
+### Bug found and fixed (Phase 6b test)
+`tests/test_power.py` called `monkeypatch.undo()`, which also undid the conftest's isolation of the machine-profile path: every
+full test run since Phase 6b overwrote the user's real profile with a 1-second quick profile measured on battery. RAM figures and
+Tier 1 statistics are not affected; time estimates computed after such a run were (the Phase 6c regression time comparison until
+the profile was restored, and very likely the single valid time point of Phase 8a). Fixed: the test restores only what it
+replaced, the real profile was restored from the shipped reference (the same mains measurement, id `987c455be3cc`), and a
+session-wide fixture now fails the test run if the user's profile file changes.
+
+### What remains uncovered (no model; detection-only on the real notebooks)
+set_index (16 cells), value_counts (9), apply (9), sample (7), explode (4), duplicated (3), describe (3), join (3), map (3),
+sort_index (2); fillna on `str` / extension columns; operations on frames created earlier in the same cell (e.g. load then
+merge); `pd.concat` of calls; read_csv with `dtype` / `usecols` / `nrows`; the extension-array fillna path.
+
+### Held-out runs (NOT run); any model change after `models-frozen-v2` invalidates their held-out status
+val-v5 on the Linux VM (>= 32 GB; runbook `docs/benchmarks/val-v5-linux-runbook.md`):
+
+    git checkout models-frozen-v2 && python -m benchmarks.frozen check
+    pip install -e ".[dev,bench]" && nexus-calibrate-machine --force
+    python -m benchmarks plan --suite full --splits val-v5 --mem-limit-gb 24 --max-size 400000000
+    nohup python -m benchmarks full --splits val-v5 --tiers 0,1,2 --out benchmarks/results/val-v5 --mem-limit-gb 24 --max-size 400000000 --require-calibrated --no-report > val-v5.log 2>&1 &
+    python -m benchmarks evaluate benchmarks/results/val-v5 --val --reason "held-out check of models-frozen-v2"
+
+Phase 6c multi-statement held-out cells (22), on this machine, mains power, once:
+
+    git checkout models-frozen-v2 && python -m benchmarks.frozen check
+    python -m benchmarks.multicell.run run --heldout --reason "Phase 6c held-out check of the cell model"
+    python -m benchmarks.multicell.run evaluate --heldout --reason "Phase 6c held-out check of the cell model" --out docs/benchmarks/phase6c
+
+A future FRESH real-notebook test (notebooks never opened; a new pre-registration first; no `--dev`):
+
+    git checkout models-frozen-v2 && python -m benchmarks.frozen check
+    python -m benchmarks.realworld.inventory <folder> --out docs/benchmarks/phase8b/inventory.md --json benchmarks/results/realworld/inventory.json
+    python -m benchmarks.realworld.run_notebook <copy of a notebook> --out benchmarks/results/realworld/<name> --tier 1
+
+### Next steps
+1. The held-out runs above, each once.
+2. Phase 7 inputs: models for set_index / value_counts / apply / explode; operations on frames created in the cell (virtual
+   state); the read_csv chunk-term structure; fillna / copy on extension dtypes; risk-v2 (fresh split, after the held-out runs).

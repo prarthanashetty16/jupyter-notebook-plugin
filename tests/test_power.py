@@ -65,12 +65,14 @@ def test_cli_measures_and_records_power(monkeypatch, capsys, source, recorded, w
 
 def test_cli_refuses_only_on_detected_battery(monkeypatch, capsys):
     _fake(monkeypatch, Battery(40, 3600, False))
+    real_ensure = calibrate.ensure_profile
     called = []
     monkeypatch.setattr(calibrate, "ensure_profile", lambda **kw: called.append(kw))
     assert calibrate_cli.main(["--force"]) == 2
     assert "on battery power" in capsys.readouterr().err and not called
-    monkeypatch.undo()
-    _fake(monkeypatch, Battery(40, 3600, False))
+    # restore only what this test replaced: monkeypatch.undo() would also undo the conftest's
+    # isolation of the profile path and write to the user's real cache (a Phase 6b bug)
+    monkeypatch.setattr(calibrate, "ensure_profile", real_ensure)
     _stub_measure(monkeypatch)
     assert calibrate_cli.main(["--force", "--allow-battery"]) == 0
     assert load_profile().meta["power"] == "battery"

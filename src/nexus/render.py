@@ -41,6 +41,52 @@ def _describe(desc: Descriptor) -> str:
     return f"{desc.kind} {size}"
 
 
+FALLBACK_PREFIX = "reduced-accuracy estimate: statistics unavailable"
+_FALLBACK_REASONS = {
+    "time budget": "time budget",
+    "no statistics": "unsupported arguments",
+}
+
+
+def _has_statistics(model: str) -> bool:
+    """True when the model defines Tier 1 statistics (a Tier-0-only model never falls back)."""
+    from nexus.models.base import OperationModel
+    from nexus.registry import default_registry
+
+    m = default_registry.get(model)
+    return m is not None and type(m).tier1_features is not OperationModel.tier1_features
+
+
+def fallback_reason(item: Any) -> str | None:
+    """Why an estimate is Tier 0 although statistics were asked for; None when it is not a fallback.
+
+    A model without statistics (Tier 0 only) is not a fallback. Display only: no estimate or risk
+    class depends on it (Phase 6c, item 4).
+    """
+    t1 = (getattr(item, "features", None) or {}).get("tier1")
+    est = getattr(item, "estimate", None)
+    if est is None:
+        return None
+    if est.note and "Tier 1 rejected" in est.note:
+        return "statistics rejected by the sanity guard"
+    if isinstance(t1, dict) and t1.get("used") is False and est.tier == 0:
+        if not _has_statistics(getattr(item, "model", "")):
+            return None
+        reason = str(t1.get("reason", ""))
+        return _FALLBACK_REASONS.get(reason, reason or "statistics failed")
+    return None
+
+
+def fallback_notes(report: CellReport) -> list[str]:
+    """One prominent line per estimate that fell back to Tier 0."""
+    out = []
+    for item in report.estimates:
+        why = fallback_reason(item)
+        if why:
+            out.append(f"{FALLBACK_PREFIX} ({why}) for {item.op.name}")
+    return out
+
+
 def format_report(report: CellReport) -> str:
     """Multi-line text: detected ops, variable/file descriptors, estimates, resources."""
     if not report.ops:
@@ -69,6 +115,9 @@ def format_report(report: CellReport) -> str:
             f"confidence {e.confidence:.2f}; drivers: {'; '.join(e.drivers) or 'n/a'}"
             + (f" [{', '.join(e.flags)}]" if e.flags else "")
         )
+        why = fallback_reason(item)
+        if why:
+            lines.append(f"    ** {FALLBACK_PREFIX} ({why}) **")
     if report.resources is not None:
         r = report.resources
         limit = f", container limit {human_bytes(r.cgroup.limit)}" if r.cgroup else ""

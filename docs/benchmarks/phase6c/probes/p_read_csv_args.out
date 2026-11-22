@@ -1,0 +1,9 @@
+pandas 3.1.1
+variant              file MiB  measured MiB  derived MiB  ratio  time s
+csv default               214           617          735   0.84    0.54
+tsv sep=tab               214           617          735   0.84    0.52
+tsv header=None           214           617          735   0.84    0.51
+csv dtype float32         214           467          689   0.68    0.65
+csv dtype str (all)       214          1613         1864   0.87    5.16
+csv usecols 3 of 9        214           108          482   0.22    0.67
+csv nrows 1M              214            91          245   0.37    0.42

@@ -225,12 +225,30 @@ def test_read_csv_tier1_stops_overpredicting_float_heavy_files(tmp_path):
     assert t1.ram_high - t1.ram_low < 0.5 * (t0.ram_high - t0.ram_low)
 
 
-def test_read_csv_with_options_stays_at_tier0(tmp_path):
-    path = tmp_path / "x.csv"
-    pd.DataFrame({"a": range(5_000), "b": range(5_000)}).to_csv(path, index=False)
-    for call in (
-        f"pd.read_csv({str(path)!r}, usecols=['a'])",
-        f"pd.read_csv({str(path)!r}, sep=',')",
-    ):
-        report = Pipeline(tier=1).run(call, {"pd": pd})
-        assert report.estimates and report.estimates[0].estimate.tier == 0
+def test_read_csv_options_tier1_only_when_understood(tmp_path):
+    """Phase 6c: one-character sep / delimiter and header 0 / None get Tier 1 (the probe showed the
+    same cost as the default read); dtype, usecols, nrows and anything else stay at Tier 0."""
+    frame = pd.DataFrame({"a": range(5_000), "b": range(5_000)})
+    path, tsv = tmp_path / "x.csv", tmp_path / "x.tsv"
+    frame.to_csv(path, index=False)
+    frame.to_csv(tsv, index=False, sep=chr(9))
+    p, t, tab = repr(str(path)), repr(str(tsv)), repr(chr(9))
+    understood = (
+        f"pd.read_csv({p}, sep=',')", f"pd.read_csv({t}, sep={tab})",
+        f"pd.read_csv({t}, delimiter={tab})", f"pd.read_csv({p}, header=0)",
+    )  # fmt: skip
+    refused = (
+        f"pd.read_csv({p}, usecols=['a'])", f"pd.read_csv({p}, dtype={{'a': 'float32'}})",
+        f"pd.read_csv({p}, nrows=100)", f"pd.read_csv({p}, sep='::')",
+        f"pd.read_csv({p}, names=['x', 'y'])", f"pd.read_csv({p}, chunksize=100)",
+        f"pd.read_csv({p}, sep=sep)",
+    )  # fmt: skip
+    for call in understood:
+        report = Pipeline(tier=1).run(call, {"pd": pd, "sep": ","})
+        assert report.estimates and report.estimates[0].estimate.tier == 1, call
+    for call in refused:
+        report = Pipeline(tier=1).run(call, {"pd": pd, "sep": ","})
+        assert report.estimates and report.estimates[0].estimate.tier == 0, call
+    a = Pipeline(tier=1).run(f"pd.read_csv({p})", {"pd": pd}).estimates[0].estimate
+    b = Pipeline(tier=1).run(f"pd.read_csv({t}, sep={tab})", {"pd": pd}).estimates[0].estimate
+    assert a.ram_expected == pytest.approx(b.ram_expected, rel=0.05)  # same rows / fields

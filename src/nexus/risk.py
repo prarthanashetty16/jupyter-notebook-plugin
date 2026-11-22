@@ -128,6 +128,7 @@ def classify(  # noqa: C901
     headroom: int | None = None,
     uncovered: int = 0,
     drivers_from: list[OpEstimate] | None = None,
+    cell: Estimate | None = None,
 ) -> RiskReport:
     """Classify a cell from its operation estimates.
 
@@ -155,10 +156,11 @@ def classify(  # noqa: C901
             headroom=headroom,
             **snap,
         )
-    try:
-        cell = combine(estimates)
-    except ValueError:
-        cell = None
+    if cell is None:  # no cell-level estimate given: the v1 aggregation
+        try:
+            cell = combine(estimates)
+        except ValueError:
+            cell = None
     if cell is None:
         return RiskReport(
             risk=RiskClass.UNKNOWN,
@@ -239,9 +241,18 @@ def assess(report: CellReport) -> RiskReport | None:
     if not report.ops:
         return None
     uncovered = len({id(o) for o in report.ops} - {id(e.op) for e in report.estimates})
+    cell = None
+    if report.estimates and report.source:
+        from nexus.cellpeak import cell_estimate
+
+        try:
+            cell, _mode, _flags = cell_estimate(report.source, report.estimates)
+        except Exception:
+            cell = None  # the v1 aggregation in classify
     return classify(
         [e.estimate for e in report.estimates],
         report.resources,
         uncovered=uncovered,
         drivers_from=report.estimates or None,
+        cell=cell,
     )

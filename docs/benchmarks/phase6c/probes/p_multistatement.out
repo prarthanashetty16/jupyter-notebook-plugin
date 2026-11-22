@@ -1,0 +1,9 @@
+pandas 3.1.1; peaks in MiB above the state after loading the inputs
+cell                      measured  model(max of ops)  model(retained+current)  ratio(new)
+two loads                       360                335                      360       1.00
+three loads                     500                335                      500       1.00
+load then merge                 335                335                      335       1.00  (1 statement peak(s) unresolved)
+load, sort, del, dedup          335                335                      335       1.00  (2 statement peak(s) unresolved)
+chain (temporaries)             185                185                      185       1.00
+expression statements           138                138                      138       1.00  (2 statement peak(s) unresolved)
+copy then fillna                160                 92                      160       1.00

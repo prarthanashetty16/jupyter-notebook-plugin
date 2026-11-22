@@ -14,6 +14,7 @@ _MODULES = (
     "concat",
     "matmul",
     "np_sort",
+    "copy_fillna",
 )
 
 

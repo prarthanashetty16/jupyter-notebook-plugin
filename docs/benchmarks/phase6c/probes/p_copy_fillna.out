@@ -1,0 +1,9 @@
+pandas 3.1.1
+case                     frame        blocks  measured MiB  derived MiB  ratio
+copy                     consol nan=None     4          244          244   1.00
+copy                     frag nan=None      8          427          427   1.00
+copy_shallow             consol nan=None     4  censored (bound 63)          0
+fillna                   consol nan=None     4  censored (bound 63)          0
+fillna                   consol nan=float     4          183          183   1.00
+fillna                   consol nan=object     4           84          nan    nan
+fillna_dict              consol nan=float     4  censored (bound 63)         46

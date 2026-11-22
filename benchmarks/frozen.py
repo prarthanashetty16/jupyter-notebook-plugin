@@ -1,6 +1,7 @@
 """The frozen model stack: manifest, and the guard that held-out runs must pass.
 
-``models-frozen-v1`` is a git tag (Phase 6). A held-out run (val-v5 through ``python -m benchmarks
+The current freeze is ``FROZEN_TAG`` (``models-frozen-v2``, Phase 6c; ``models-frozen-v1`` of Phase 6 is
+kept and documented in ``docs/benchmarks/frozen-manifest-v1.md``). A held-out run (val-v5 through ``python -m benchmarks
 full --splits val-v5``, its ``evaluate --val``, ``evaluate --final`` for test-v2, the Phase 8a
 real-notebook evaluation) calls ``require_frozen()``. Since Phase 6b the check is MANIFEST-BASED:
 it compares the SHA-256 (LF line endings) of every file that defines the predictions
@@ -26,7 +27,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-FROZEN_TAG = "models-frozen-v1"
+FROZEN_TAG = "models-frozen-v2"
+PREVIOUS_TAG = "models-frozen-v1"
 ROOT = Path(__file__).resolve().parent.parent
 
 # The files that define the predictions (shell-style patterns relative to the repository root).
@@ -50,6 +52,7 @@ FROZEN_PATTERNS: tuple[tuple[str, str], ...] = (
     ("src/nexus/calibrate.py", "what the machine profile measures"),
     ("src/nexus/calibration/*.json", "calibration artifact and reference machine profile"),
     ("src/nexus/suggestions/engine.py", "suggestion filter thresholds"),
+    ("src/nexus/cellpeak.py", "cell-level peak model (Phase 6c)"),
     # added 2026-11-21 (Phase 6b), after the tag: the measurement instrument and its validation
     ("src/nexus/measure.py", "the measurement instrument (peak RAM, time) of every held-out actual"),
     ("tests/test_measure_validation.py", "the instrument's validation (known allocations within 10%)"),
@@ -145,53 +148,64 @@ def check_state(state: dict[str, Any]) -> dict[str, Any]:
 
 
 # -- manifest ----------------------------------------------------------------------------------
-def manifest_lines() -> list[str]:
+def manifest_lines() -> list[str]:  # noqa: C901
     import numpy as np
     import pandas as pd
 
     from nexus import calfit, risk, timecal
     from nexus.machine import CURVES, PROFILE_FORMAT, reference_profile
+    from nexus.session import DEFAULT_TIER
     from nexus.suggestions import engine
 
     art = json.loads((ROOT / "src/nexus/calibration/calibration-v1.json").read_text())
-    hashes = tag_hashes()
-    state = frozen_state()
-    diff = _git("diff", "--stat", FROZEN_TAG, "--", *hashes)
-    roles = {}
-    for path in hashes:
-        roles[path] = next(r for pat, r in FROZEN_PATTERNS if fnmatch.fnmatchcase(path, pat))
+    hashes = tag_hashes(FROZEN_TAG)
+    previous = tag_hashes(PREVIOUS_TAG)
+    state = frozen_state(FROZEN_TAG)
+    roles = {
+        p: next(r for pat, r in FROZEN_PATTERNS if fnmatch.fnmatchcase(p, pat)) for p in hashes
+    }
+    changed = sorted(p for p in hashes if p in previous and previous[p] != hashes[p])
+    added = sorted(p for p in hashes if p not in previous)
+    unchanged = sorted(p for p in hashes if p in previous and previous[p] == hashes[p])
+    removed = sorted(p for p in previous if p not in hashes)
     lines = [
         f"# Frozen model stack `{FROZEN_TAG}`",
         "",
-        f"Tag `{FROZEN_TAG}` = commit `{state.get('tag_commit')}` (Phase 6; unchanged). Written by "
-        "`python -m benchmarks.frozen manifest`. Held-out runs (val-v5, the Phase 8a real-notebook test, test-v2) "
-        "call `benchmarks.frozen.require_frozen()`, which compares the SHA-256 (LF line endings) of every file listed "
-        "below with the tag's own copy and **aborts if any of them differs, is missing, or a new file matches a frozen "
-        "pattern**. **Any change to a frozen file invalidates their held-out status** (a new freeze, tag and held-out "
-        "group would be needed).",
+        f"Tag `{FROZEN_TAG}` = commit `{state.get('tag_commit')}` (Phase 6c). Written by "
+        "`python -m benchmarks.frozen manifest`. Held-out runs (val-v5 on the Linux VM, the Phase 6c multi-statement "
+        "held-out cells, test-v2, a future fresh real-notebook test) call `benchmarks.frozen.require_frozen()`, which "
+        "compares the SHA-256 (LF line endings) of every frozen file below with the tag's own copy and **aborts if any "
+        "differs, is missing, or a new file matches a frozen pattern**. **Any change to a frozen file after v2 "
+        "invalidates the held-out status of those runs** (a new freeze, tag and held-out group would be needed).",
         "",
-        "## Scope narrowed after the tag (Phase 6b, 2026-11-21)",
+        f"At the time this manifest was written `python -m benchmarks.frozen check` reported "
+        f"{len(state['problems'])} problems against `{FROZEN_TAG}`.",
         "",
-        "At the tag the guard compared every tracked file outside `docs/` with the tag, so an unrelated `.gitignore` "
-        "line, a CI change or a new evaluation harness (Phase 8a) would have aborted the held-out runs or forced a new "
-        "freeze. Phase 6b narrowed the check to the files that define the predictions. The tagged commit was not "
-        "changed and **no frozen file changed**: at the time this manifest was written,",
+        "## History",
         "",
-        "```",
-        f"git diff --stat {FROZEN_TAG} -- <the {len(hashes)} frozen files below>",
-        diff or "(empty: no difference)",
-        "```",
+        f"- `{PREVIOUS_TAG}` (Phase 6, commit `{_git('rev-list', '-n', '1', PREVIOUS_TAG)[:12]}`): its manifest is kept "
+        "unchanged in `docs/benchmarks/frozen-manifest-v1.md` (incl. the Phase 6b scope narrowing to the "
+        "prediction-defining files and the addition of the measurement instrument).",
+        f"- `{FROZEN_TAG}` (Phase 6c): the cell-level peak model, `read_csv` Tier 1 with a one-character separator / "
+        "header, the `copy` and `fillna` models, Tier 1 as the extension default "
+        "(`docs/benchmarks/phase6c-preregistration.md`). v1 is not deleted; the guard checks against v2.",
         "",
-        f"and `python -m benchmarks.frozen check` reported {len(state['problems'])} problems.",
+        f"## Frozen files: {len(changed)} changed, {len(added)} added, {len(unchanged)} unchanged since `{PREVIOUS_TAG}`"
+        + (f", {len(removed)} removed" if removed else ""),
         "",
-        "## Scope extended (Phase 6b, 2026-11-21)",
+        "| file | status | role | sha256 v1 | sha256 v2 |",
+        "|---|---|---|---|---|",
+    ]
+    for group, status in ((changed, "changed"), (added, "added"), (unchanged, "unchanged")):
+        for path in group:
+            lines.append(
+                f"| `{path}` | {status} | {roles[path]} | `{previous.get(path, '-')[:16]}` | `{hashes[path][:16]}` |"
+            )
+    for path in removed:
+        lines.append(f"| `{path}` | removed | - | `{previous[path][:16]}` | - |")
+    lines += [
         "",
-        "Added to the frozen set after the tag, at the user's request, so that a held-out run also aborts when the "
-        "measurement instrument behind its actuals changed: `src/nexus/measure.py` and its validation test "
-        "`tests/test_measure_validation.py`. Both are compared with the tag's copies like every other frozen file; "
-        "at the time of the extension neither differed from the tag (`git diff models-frozen-v1 -- "
-        "src/nexus/measure.py tests/test_measure_validation.py` empty) and the original frozen files were still "
-        "unchanged (the `git diff` above).",
+        "Full v2 hashes are recomputed by the guard from the tag on every check (the table shows the first 16 hex digits).",
         "",
         "## Deliberately outside the freeze",
         "",
@@ -200,35 +214,25 @@ def manifest_lines() -> list[str]:
         "## Versions",
         "",
         f"- python {sys.version.split()[0]}, pandas {pd.__version__}, numpy {np.__version__} (the dev machine)",
-        f"- calibration artifact `{art['name']}` format {art['format']}, created {art['created']} at "
-        f"commit {art['git_commit']}, selected candidate {art['selected_candidate']}, validated pandas "
-        f"{', '.join(art['validated_pandas'])}, data {art['data']['results']} (sha256/16 "
-        f"{art['data']['sha256_16']}), {len(art['fitted_parameters'])} fitted parameters",
+        f"- calibration artifact `{art['name']}` format {art['format']} (unchanged since v1), selected candidate "
+        f"{art['selected_candidate']}, validated pandas {', '.join(art['validated_pandas'])}, "
+        f"{len(art['fitted_parameters'])} fitted parameters",
         f"- machine profile format {PROFILE_FORMAT}; curves {', '.join(sorted(CURVES))}; reference profile id "
         f"{reference_profile().profile_id} (the generic profile is it with every cost x2)",
         "",
         "## Policy and thresholds in force",
         "",
-        "- RAM: range policy B (Tier 1 low / expected, Tier 0 high; `nexus/ranges.py`), guard (`nexus/guard.py`)",
+        "- RAM: range policy B (Tier 1 low / expected, Tier 0 high; `nexus/ranges.py`), guard (`nexus/guard.py`);"
+        " cell level: `nexus/cellpeak.py` (retained outputs + current peak; v1 aggregation as the fallback)",
         f"- time: calibration artifact, nominal coverage {1 - calfit.ALPHA:.0%} per operation (>= "
         f"{calfit.MIN_CONFIGURATIONS} configurations), generic band {1 - calfit.GENERIC_ALPHA:.0%}; widen x"
         f"{timecal.UNCALIBRATED_MACHINE_WIDEN:g} uncalibrated machine, x{timecal.UNVALIDATED_PANDAS_WIDEN:g} "
         f"unvalidated pandas, x{timecal.NO_ARTIFACT_WIDEN:g} no artifact",
-        f"- risk: WARN margin {risk.WARN_MARGIN}, confidence floor {risk.CONFIDENCE_FLOOR}; time shown as buckets",
+        f"- risk: WARN margin {risk.WARN_MARGIN}, confidence floor {risk.CONFIDENCE_FLOOR} (unchanged; the Phase 5 R2 "
+        "failure is NOT addressed); time shown as buckets",
         f"- suggestions: saving >= {engine.MIN_SAVING_FRAC:.0%} and >= {engine.MIN_SAVING_BYTES >> 20} MiB, "
         "`select_columns` off by default",
-        "- Tier 2: opt-in (`Pipeline(tier=2)`), controller rules of docs/benchmarks/phase4d-preregistration.md",
-        "",
-        f"## Frozen files ({len(hashes)}; hashes of the tag's copies)",
-        "",
-        "| file | role | sha256 |",
-        "|---|---|---|",
-    ]
-    lines += [
-        f"| `{path}` | {roles[path]}"
-        + (f" (added {ADDED_AFTER_TAG[path]})" if path in ADDED_AFTER_TAG else "")
-        + f" | `{sha}` |"
-        for path, sha in hashes.items()
+        f"- extension default: Tier {DEFAULT_TIER} (Tier 2 dry runs opt-in with `%nexus tier 2`)",
     ]
     return lines
 

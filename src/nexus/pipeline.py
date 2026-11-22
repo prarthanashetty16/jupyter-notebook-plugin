@@ -35,6 +35,7 @@ class CellReport:
     estimates: list[OpEstimate] = field(default_factory=list)
     resources: ResourceSnapshot | None = None
     elapsed_s: float = 0.0
+    source: str = ""  # the analysed cell (the cell-level peak model needs its statements)
 
 
 def _stats_summary(extra: dict[str, Any]) -> dict[str, Any]:
@@ -144,6 +145,7 @@ class Pipeline:
             estimates=estimates,
             resources=resources,
             elapsed_s=time.perf_counter() - t0,
+            source=source,
         )
 
     def _tier2(

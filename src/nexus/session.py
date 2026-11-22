@@ -8,13 +8,14 @@ from typing import Any
 
 from nexus.failsafe import Deadline, run_with_timeout
 from nexus.pipeline import CellReport, Pipeline
-from nexus.render import format_report
+from nexus.render import fallback_notes, format_report
 from nexus.risk import RiskReport, assess
 from nexus.suggestions.format import describe_all
 
 log = logging.getLogger("nexus")
 
 DEFAULT_BUDGET_S = 0.25
+DEFAULT_TIER = 1  # Phase 6c: statistics on by default; Tier 2 dry runs are opt-in (%nexus tier 2)
 _GRACE_S = 0.05
 
 
@@ -36,7 +37,7 @@ class NexusSession:
         printer: Callable[[str], None] | None = None,
     ) -> None:
         self._shell = shell
-        self.pipeline = pipeline or Pipeline()
+        self.pipeline = pipeline or Pipeline(tier=DEFAULT_TIER)
         self.budget_s = budget_s
         self._printer = printer or print
         self.enabled = True
@@ -96,7 +97,10 @@ class NexusSession:
                     if risk is not None:
                         self._printer(risk.format())
                 elif risk is not None and risk.risk.is_alert:
-                    self._printer(risk.format() + "\n  (%nexus suggestions for ways to lower it)")
+                    notes = "".join("\n  " + n for n in fallback_notes(report))
+                    self._printer(
+                        risk.format() + notes + "\n  (%nexus suggestions for ways to lower it)"
+                    )
             finally:
                 self._in_hook = False
         except BaseException as exc:
@@ -104,9 +108,16 @@ class NexusSession:
                 self._active = max(0, self._active - 1)
             raise
 
+    def set_tier(self, tier: int) -> str:
+        """Tier 0 (closed form), 1 (statistics, the default) or 2 (the controller may dry-run)."""
+        self.pipeline = Pipeline(tier=tier)
+        extra = " (Tier 2 dry runs enabled: the controller may escalate)" if tier == 2 else ""
+        return f"[nexus] tier {tier}{extra}"
+
     def status(self) -> str:
         parts = [
             f"NEXUS: {'on' if self.enabled else 'off'}",
+            f"tier {getattr(self.pipeline, '_tier', '?')}",
             f"verbose {'on' if self.verbose else 'off'}",
             f"models registered: {len(self.pipeline.registry)}",
             f"time budget: {self.budget_s * 1000:.0f} ms",

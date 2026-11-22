@@ -228,3 +228,19 @@ def matmul(f: dict[str, Any]) -> float:
     work = m_ * k * p
     curve = "blas32_flops" if int(f.get("itemsize", 8)) == 4 else "blas64_flops"
     return 2.0 * work / machine().at(curve, work)
+
+
+def copy(f: dict[str, Any]) -> float:
+    """DataFrame.copy(): a cold copy of the moved bytes + an incref per object pointer (Phase 6c)."""
+    if not f.get("deep", True):
+        return 0.0
+    n = float(f["n_rows"])
+    objects = float(f.get("text_cols") or 0) * unknown(lambda d: take_objects_s(n, d), n)
+    return copy_s(float(f["moved_bytes"])) + objects
+
+
+def fillna(f: dict[str, Any], copied_bytes: float) -> float:
+    """fillna(value): an isna scan of every nullable column + the copy of the blocks filled (Phase 6c)."""
+    scanned = float(sum(f["column_bytes"].values()))
+    read = scanned / machine().at("read_bps", max(scanned, 1.0)) if scanned else 0.0
+    return read + copy_s(copied_bytes)

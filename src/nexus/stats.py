@@ -620,10 +620,27 @@ class CsvProfile:
     bytes_per_field: float
     bytes_read: int
     exact: bool
+    total_cols: int = 0  # columns in the file (``cols`` = the columns kept, e.g. by ``usecols``)
+    value_bytes_per_row: float = 0.0  # parsed value bytes of one row of the kept columns
 
 
-def _parse_chunk(raw: bytes, names: list[str] | None) -> pd.DataFrame:
-    return pd.read_csv(io.BytesIO(raw), header=0 if names is None else None, names=names)
+def _parse_chunk(
+    raw: bytes, names: list[Any] | None, kw: dict[str, Any] | None = None, *, first: bool = False
+) -> pd.DataFrame:
+    """Parse sampled bytes with the call's own tokenizing / conversion arguments (Phase 6c)."""
+    kw = kw or {}
+    header = kw.get("header", 0) if first else None
+    extra = {k: kw[k] for k in ("sep", "dtype", "usecols") if k in kw}
+    return pd.read_csv(io.BytesIO(raw), header=header, names=None if first else names, **extra)
+
+
+def _value_bytes(frame: pd.DataFrame) -> float:
+    total = 0.0
+    for c in frame.columns:
+        dt = frame[c].dtype
+        text = str(dt) in ("object", "str", "string")
+        total += 8.0 if text else float(getattr(dt, "itemsize", 8))
+    return total
 
 
 def csv_profile(  # noqa: C901
@@ -634,14 +651,19 @@ def csv_profile(  # noqa: C901
     chunks: int = 3,
     chunk_bytes: int = 256 << 10,
     deadline: Deadline | None = None,
+    read_kwargs: dict[str, Any] | None = None,
 ) -> CsvProfile:
     """Rows, columns, text columns, string length and per-chunk string uniqueness of a CSV.
 
     Reads at most ``head_bytes + chunks * chunk_bytes`` (1.75 MiB by default). A file that fits in
     the head is read completely and the profile is exact in rows. The parser's chunk length is
     ``2**floor(log2(2**20 / columns))`` rows (pandas ``buffer_lines``): string objects are shared
-    only within such a chunk, so uniqueness is estimated at that scale.
+    only within such a chunk, so uniqueness is estimated at that scale. ``read_kwargs`` (Phase 6c):
+    the call's own ``sep``, ``header`` (0 or None), ``dtype`` and ``usecols``, applied to the sampled
+    bytes so the profile describes the columns the call keeps, with the dtypes it converts to.
     """
+    kw = dict(read_kwargs or {})
+    has_header = kw.get("header", 0) == 0
     path = os.path.expanduser(path)
     with open(path, "rb") as fh:
         head = fh.read(head_bytes)
@@ -653,12 +675,20 @@ def csv_profile(  # noqa: C901
             head = head[: cut + 1]
         if deadline is not None:
             deadline.check()
-        first = _parse_chunk(head, None)
-        names = [str(c) for c in first.columns]
-        header_bytes = head.index(b"\n") + 1
+        first = _parse_chunk(head, None, kw, first=True)
+        first_line = head[: head.index(b"\n") + 1]
+        all_cols = pd.read_csv(io.BytesIO(first_line), header=None, sep=kw.get("sep", ","))
+        total_cols = int(all_cols.shape[1])
+        if "usecols" in kw or not has_header:  # the seeked chunks need the FILE's column names
+            names: list[Any] | None = (
+                [str(c) for c in all_cols.iloc[0].tolist()] if has_header else None
+            )
+        else:
+            names = [str(c) for c in first.columns]
+        header_bytes = len(first_line) if has_header else 0
         parts, sampled_lines, sampled_bytes = (
             [first],
-            head.count(b"\n") - 1,
+            head.count(b"\n") - (1 if has_header else 0),
             len(head) - header_bytes,
         )
         line_means = [sampled_bytes / max(sampled_lines, 1)]
@@ -677,14 +707,14 @@ def csv_profile(  # noqa: C901
                 lines = raw.count(b"\n")
                 if lines == 0:
                     continue
-                parts.append(_parse_chunk(raw, names))
+                parts.append(_parse_chunk(raw, names, kw))
                 line_means.append(len(raw) / lines)
                 sampled_lines += lines
                 sampled_bytes += len(raw)
                 read += len(raw)
     if sampled_lines < 20 and not whole:
         raise UnsupportedError("too few lines sampled")
-    cols = len(names)
+    cols = int(first.shape[1])  # the columns the call keeps (all of them by default)
     if whole:
         rows = exact(float(sampled_lines), sampled_lines, "whole file")
     else:
@@ -703,7 +733,7 @@ def csv_profile(  # noqa: C901
     ]
     chars = []
     uniques = []
-    chunk_rows = 2 ** int(math.floor(math.log2(max(2**20 // max(cols, 1), 2))))
+    chunk_rows = 2 ** int(math.floor(math.log2(max(2**20 // max(total_cols, 1), 2))))
     for c in text_cols:
         s = sample[c].dropna()
         if s.empty:
@@ -724,5 +754,6 @@ def csv_profile(  # noqa: C901
         unique_fraction = exact(0.0, chunk_rows, "no text")
     return CsvProfile(
         rows, cols, len(text_cols), float(np.mean(chars)) if chars else 0.0, unique_fraction,
-        (sampled_bytes / max(sampled_lines, 1)) / max(cols, 1), read, whole,
+        (sampled_bytes / max(sampled_lines, 1)) / max(total_cols, 1), read, whole,
+        total_cols, _value_bytes(first),
     )  # fmt: skip
