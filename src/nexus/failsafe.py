@@ -17,8 +17,12 @@ T = TypeVar("T")
 class Deadline:
     """Cooperative time budget; long-running stages poll it and give up when expired."""
 
-    def __init__(self, budget_s: float) -> None:
+    def __init__(self, budget_s: float, gate_s: float | None = None) -> None:
         self._end = time.perf_counter() + budget_s
+        self.budget_s = budget_s
+        # Phase 7b: what the DETERMINISTIC statistics gate compares predicted costs with (the stage's
+        # full budget, not the live remainder, so the same cell gets the same decision)
+        self.gate_s = budget_s if gate_s is None else gate_s
 
     def remaining(self) -> float:
         return max(0.0, self._end - time.perf_counter())

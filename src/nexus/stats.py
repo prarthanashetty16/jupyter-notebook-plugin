@@ -20,6 +20,9 @@ Intervals are analytic:
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
+import hashlib
 import io
 import math
 import os
@@ -76,15 +79,35 @@ def _confidence(low: float, high: float, weak: bool = False) -> float:
 
 
 # -- sampling -------------------------------------------------------------------------------------
+# Phase 7b (determinism): the sampler's random stream is seeded from the CELL SOURCE as well as the call's
+# own seed, so the same cell on the same data draws the same rows, and different cells draw independently.
+_CELL_SALT: contextvars.ContextVar[int] = contextvars.ContextVar("nexus_cell_salt", default=0)
+
+
+def cell_salt_of(source: str) -> int:
+    return int(hashlib.sha256(source.encode("utf-8", "replace")).hexdigest()[:12], 16)
+
+
+@contextlib.contextmanager
+def cell_seed(source: str):  # noqa: ANN201
+    """Seed every sample drawn inside the block from ``source`` (the cell being analysed)."""
+    token = _CELL_SALT.set(cell_salt_of(source))
+    try:
+        yield
+    finally:
+        _CELL_SALT.reset(token)
+
+
 def sample_positions(n: int, m: int, seed: int = 0) -> np.ndarray:
     """Sorted positions of ``m`` distinct rows out of ``n`` (all rows if ``m >= n``).
 
     Stratified: one uniformly random row inside each of ``m`` equal strata. O(m), no sort, and the
-    random offset inside a stratum keeps periodic or clustered data from aliasing with the step.
+    random offset inside a stratum keeps periodic or clustered data from aliasing with the step. The
+    stream is seeded by ``(seed, cell salt)`` (``cell_seed``).
     """
     if m >= n:
         return np.arange(n)
-    rng = np.random.default_rng(seed)
+    rng = np.random.default_rng([seed, _CELL_SALT.get()])
     if n < 2 * m:  # tiny strata: plain sampling without replacement is as cheap
         return np.sort(rng.choice(n, size=m, replace=False))
     idx = np.arange(m, dtype=np.int64)
@@ -137,24 +160,50 @@ PILOT_ROWS = 4096
 MIN_AFFORDABLE_ROWS = 2_000
 
 
-def affordable_rows(rows: int, budget_s: float | None, pilot: Any) -> int:
-    """Sample size that fits ``budget_s``, from the timed ``pilot(m)`` (seconds for ``m`` rows).
+GATE_REASON = "statistics skipped: predicted cost above the time budget"
 
-    Raises TimeoutError when even ``MIN_AFFORDABLE_ROWS`` would not fit: a sample that small says
-    too little, so the caller falls back to Tier 0 instead of reporting a meaningless interval.
+
+def affordable_rows(
+    rows: int, budget_s: float | None, pilot: Any, cost_per_row: float | None = None
+) -> int:
+    """Sample size that fits ``budget_s`` (at most ``rows``); TimeoutError when even
+    ``MIN_AFFORDABLE_ROWS`` would not fit (a sample that small says too little: Tier 0 instead).
+
+    Phase 7b (determinism): the per-row cost is PREDICTED from the machine profile (``cost_per_row``),
+    not timed, and ``budget_s`` is a fixed share of the stage's budget, so the same cell on the same
+    data and machine gets the same sample. The timed ``pilot(m)`` is used only when no prediction
+    exists (no caller in v3 relies on it). The hard deadline still stops a run that overruns.
     """
     if budget_s is None:
         return rows
-    m0 = min(rows, PILOT_ROWS)
-    per_row = max(pilot(m0) / m0, 1e-9)
-    fit = int(budget_s / per_row)
+    if cost_per_row is None:
+        m0 = min(rows, PILOT_ROWS)
+        cost_per_row = max(pilot(m0) / m0, 1e-9)
+    fit = int(budget_s / max(cost_per_row, 1e-12))
     if fit < MIN_AFFORDABLE_ROWS and fit < rows:
-        raise TimeoutError("time budget too small for a useful sample")
+        raise TimeoutError(GATE_REASON)
     return min(rows, fit)
 
 
+def factorize_cost_per_row(values: Any, m: int) -> float | None:
+    """Per-row seconds of factorizing ``m`` sampled ``values`` on this machine (profile), or None."""
+    try:
+        from nexus.models._time import factorize_s
+
+        dt = str(getattr(values, "dtype", ""))
+        kind = (
+            "text"
+            if dt in ("object", "str", "string", "category") or dt.startswith("string")
+            else "numeric"
+        )
+        return factorize_s(kind, m, m) / max(m, 1)
+    except Exception:
+        return None
+
+
 def _budget(deadline: Deadline | None, share: float) -> float | None:
-    return None if deadline is None else deadline.remaining() * share
+    """The fixed share of the stage's budget a statistic may use (deterministic: not the live remainder)."""
+    return None if deadline is None else getattr(deadline, "gate_s", deadline.remaining()) * share
 
 
 def distinct_count(
@@ -179,7 +228,8 @@ def distinct_count(
         pd.factorize(take(values, sample_positions(n, m, seed + 1)), use_na_sentinel=False)
         return time.perf_counter() - t0
 
-    rows = affordable_rows(min(rows, n), _budget(deadline, share), pilot)
+    m = min(rows, n)
+    rows = affordable_rows(m, _budget(deadline, share), pilot, factorize_cost_per_row(values, m))
     pos = sample_positions(n, rows, seed)
     if deadline is not None:
         deadline.check()
@@ -298,7 +348,10 @@ def distinct_rows(
         hashed_sample(m)
         return time.perf_counter() - t0
 
-    rows = affordable_rows(min(rows, n), _budget(deadline, share), pilot)
+    m = min(rows, n)
+    per_row = [factorize_cost_per_row(c, m) for c in columns]
+    cost = None if any(x is None for x in per_row) else float(sum(per_row))  # type: ignore[arg-type]
+    rows = affordable_rows(m, _budget(deadline, share), pilot, cost)
     if deadline is not None:
         deadline.check()
     _, counts = np.unique(hashed_sample(rows), return_counts=True)
@@ -755,5 +808,5 @@ def csv_profile(  # noqa: C901
     return CsvProfile(
         rows, cols, len(text_cols), float(np.mean(chars)) if chars else 0.0, unique_fraction,
         (sampled_bytes / max(sampled_lines, 1)) / max(total_cols, 1), read, whole,
-        total_cols, _value_bytes(first),
+        total_cols, _value_bytes(first), {str(c): str(first[c].dtype) for c in first.columns},
     )  # fmt: skip

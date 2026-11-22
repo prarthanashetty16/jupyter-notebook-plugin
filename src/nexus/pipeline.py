@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from nexus import dryrun, guard, ranges, timecal
+from nexus import dryrun, guard, ranges, stats, timecal
 from nexus.analyzer import DetectedOp, analyze_cell
 from nexus.controller import Controller
 from nexus.failsafe import Deadline
@@ -228,13 +228,15 @@ class Pipeline:
         try:
             if left <= 0:
                 raise TimeoutError("tier 1 budget used up by earlier stages")
-            ctx = Tier1Context(namespace, source, Deadline(left))
-            extra = model.tier1_features(op, features, ctx)
+            ctx = Tier1Context(namespace, source, Deadline(left, gate_s=self._tier1_budget_s))
+            with stats.cell_seed(source):
+                extra = model.tier1_features(op, features, ctx)
         except NoEstimateError as why:
             log.debug("nexus: tier 1 unavailable for %s: %s", model.name, why)
             return {**features, "tier1": {"used": False, "reason": str(why)}}, 0
-        except TimeoutError:
-            return {**features, "tier1": {"used": False, "reason": "time budget"}}, 0
+        except TimeoutError as why:
+            reason = "predicted cost" if str(why) == stats.GATE_REASON else "time budget"
+            return {**features, "tier1": {"used": False, "reason": reason}}, 0
         except Exception as exc:
             log.debug("nexus: tier 1 failed for %s", model.name, exc_info=True)
             return {**features, "tier1": {"used": False, "reason": type(exc).__name__}}, 0
