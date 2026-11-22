@@ -1,0 +1,2 @@
+{"condition": "cores2_contended", "power": "mains", "runs": 25, "crashes": [], "distinct_estimates": [[1, 163000000]]}
+{"condition": "all", "power": "mains", "runs": 25, "crashes": [], "distinct_estimates": [[1, 163000000]]}

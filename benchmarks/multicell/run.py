@@ -23,7 +23,6 @@ import argparse
 import gc
 import json
 import math
-import multiprocessing as mp
 import sys
 import time
 from pathlib import Path
@@ -71,7 +70,7 @@ def _est(e: Any) -> dict[str, Any] | None:
     }
 
 
-def _predict_child(q: Any, paths: dict[str, str], src: str) -> None:
+def _predict_child(paths: dict[str, str], src: str) -> dict[str, Any]:
     from nexus.cellpeak import cell_estimate
     from nexus.pipeline import Pipeline
     from nexus.risk import combine
@@ -80,22 +79,23 @@ def _predict_child(q: Any, paths: dict[str, str], src: str) -> None:
     rep = Pipeline(tier=1).run(src, ns)
     new, mode, flags = cell_estimate(src, rep.estimates)
     v1 = combine([e.estimate for e in rep.estimates])
-    q.put({
+    return {
         "ops": [o.name for o in rep.ops],
         "estimates": [{"model": e.model, "tier": e.estimate.tier} for e in rep.estimates],
         "uncovered": len({id(o) for o in rep.ops} - {id(e.op) for e in rep.estimates}),
         "new": _est(new), "v1": _est(v1), "mode": mode, "flags": flags,
-    })  # fmt: skip
+    }  # fmt: skip
 
 
 def predict(paths: dict[str, str], src: str) -> dict[str, Any]:
-    ctx = mp.get_context("spawn")
-    q = ctx.Queue()
-    p = ctx.Process(target=_predict_child, args=(q, paths, src))
-    p.start()
-    out = q.get(timeout=600)
-    p.join()
-    return out
+    """The prediction in a fresh process. A native crash or a hang is a HARNESS EVENT: returned as
+    ``{"harness": {...}}`` with no estimate, so the cell is never scored (``metrics`` needs ``new``)."""
+    from benchmarks.childproc import ChildFailureError, run_child
+
+    try:
+        return run_child(_predict_child, paths, src, timeout_s=600)
+    except ChildFailureError as fail:
+        return {"harness": fail.record(), "new": None, "v1": None}
 
 
 # -- running -----------------------------------------------------------------------------------------
@@ -149,6 +149,13 @@ def run(
         paths = mod.prepare(cache, cell.config.shape, cell.rows)
         src = mod.source(cell, paths)
         pred = predict(paths, src)
+        if "harness" in pred:  # not measured either: a harness event, listed by the report
+            with out.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps({"id": cell.id, "config": cell.config.key, "template": cell.config.template,
+                                     "status": pred["harness"]["status"], "harness": pred["harness"],
+                                     "power": power_state()}) + chr(10))  # fmt: skip
+            print(f"[{i}/{len(cells)}] {cell.id}: {pred['harness']['status']}", flush=True)
+            continue
         cap = int(0.7 * psutil.virtual_memory().available)
         m = measure_call(exec_cell, setup=load_inputs, setup_args=(paths, src), repeats=3,
                          max_rss_bytes=cap)  # fmt: skip
@@ -213,6 +220,13 @@ def _table(rows: list[dict[str, Any]]) -> list[str]:
 def report(rows: list[dict[str, Any]], title: str) -> str:
     lines = [f"# {title}", ""]
     measured = [r for r in rows if r.get("actual")]
+    events = [r for r in rows if r.get("harness")]
+    rows = [r for r in rows if not r.get("harness")]
+    if events:
+        lines += [
+            f"**Harness events (not scored):** {[(r['id'], r['status']) for r in events]}",
+            "",
+        ]
     lines.append(f"{len(rows)} cells run; {len(measured)} with a measured peak (others censored / killed: "
                  f"{[r['id'] for r in rows if not r.get('actual')]}).")  # fmt: skip
     lines += ["", "## All cells", ""]
