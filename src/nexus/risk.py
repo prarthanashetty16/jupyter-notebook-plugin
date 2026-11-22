@@ -15,6 +15,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any
 
 from nexus.models.base import Estimate
 from nexus.pipeline import CellReport, OpEstimate
@@ -23,6 +24,13 @@ from nexus.state import ResourceSnapshot
 from nexus.timebuckets import bucket_index, bucket_label
 
 WARN_MARGIN = 0.85  # WARN when high > margin * headroom (reserve for drift, fragmentation, the OS)
+# Risk v2 (Phase 7b, candidate C3, selected on dev by the rule committed before computing:
+# docs/benchmarks/phase7a/risk_v2_selection_rule.md): for these models, when their Tier 1 statistics ran,
+# WARN uses the model's OWN Tier 1 upper bound instead of the policy-B high (Tier 0's), whose 2..24 B/field
+# (read_csv) and unknown key uniqueness (merge) made most of their alarms false (R2 per operation). A
+# fallback to Tier 0 keeps Tier 0's high. HIGH_RISK (expected > headroom) and the displayed range are
+# unchanged.
+OWN_TIER1_HIGH_FOR_WARN = frozenset({"read_csv", "merge"})
 CONFIDENCE_FLOOR = 0.30  # below it an otherwise-OK cell is UNKNOWN (Tier 2's floor; no-op is 0)
 LONG_RUN_BUCKET = bucket_index(60.0)  # first bucket of "1-10 min"
 
@@ -121,6 +129,33 @@ def _bucket(e: Estimate) -> tuple[str, bool]:
     return bucket_label(e.time_expected), idx >= LONG_RUN_BUCKET
 
 
+def warn_high_estimate(item: OpEstimate) -> Estimate:
+    """The operation's estimate with the ``high`` that WARN uses (risk v2, ``OWN_TIER1_HIGH_FOR_WARN``)."""
+    from dataclasses import replace
+
+    f = item.features or {}
+    own = f.get("tier1_own_ram_high")
+    used = bool((f.get("tier1") or {}).get("used")) and item.estimate.tier >= 1
+    if item.model in OWN_TIER1_HIGH_FOR_WARN and used and own is not None:
+        e = item.estimate
+        return replace(e, ram_high=max(int(own), e.ram_expected))
+    return item.estimate
+
+
+def describe_uncovered(ops: list[Any]) -> str:
+    """``df.fillna(0)``, ``a.merge(right, on='k')``: the uncovered operations as written (shortened)."""
+    import ast
+
+    out = []
+    for op in ops:
+        try:
+            text = ast.unparse(op.node)
+        except Exception:
+            text = getattr(op, "name", "?")
+        out.append(f"`{text if len(text) <= 60 else text[:57] + '...'}`")
+    return ", ".join(out)
+
+
 def classify(  # noqa: C901
     estimates: list[Estimate],
     resources: ResourceSnapshot | None = None,
@@ -129,12 +164,15 @@ def classify(  # noqa: C901
     uncovered: int = 0,
     drivers_from: list[OpEstimate] | None = None,
     cell: Estimate | None = None,
+    warn_high: int | None = None,
+    uncovered_ops: str | None = None,
 ) -> RiskReport:
     """Classify a cell from its operation estimates.
 
     ``headroom`` overrides the snapshot's effective available RAM (the evaluation simulates
     ``limit - baseline`` with it). ``uncovered`` is the number of detected operations without
-    an estimate: when the class would be OK they make it UNKNOWN.
+    an estimate: when the class would be OK they make it UNKNOWN (``uncovered_ops`` names them).
+    ``warn_high`` is the upper bound WARN uses (risk v2); None: the cell's ``high``.
     """
     snap = {}
     if resources is not None:
@@ -210,17 +248,22 @@ def classify(  # noqa: C901
             f"available{cg}{swapnote}{why}",
             **common,
         )
-    if cell.ram_high > WARN_MARGIN * headroom:
+    upper = cell.ram_high if warn_high is None else max(int(warn_high), cell.ram_expected)
+    if upper > WARN_MARGIN * headroom:
         return RiskReport(
             risk=RiskClass.WARN,
-            reason=f"upper estimate {human_bytes(cell.ram_high)} is above {WARN_MARGIN:.0%} of the "
+            reason=f"upper estimate {human_bytes(upper)} is above {WARN_MARGIN:.0%} of the "
             f"{human_bytes(headroom)} available{why}",
             **common,
         )
     if uncovered:
         return RiskReport(
             risk=RiskClass.UNKNOWN,
-            reason=f"{uncovered} operation(s) of this cell have no estimate; the rest fits",
+            reason=(
+                f"no estimate for {uncovered_ops}; the rest of the cell fits"
+                if uncovered_ops
+                else f"{uncovered} operation(s) of this cell have no estimate; the rest fits"
+            ),
             **common,
         )
     if cell.confidence < CONFIDENCE_FLOOR:
@@ -240,19 +283,26 @@ def assess(report: CellReport) -> RiskReport | None:
     """Risk of a ``CellReport``; None when the cell has no known operation (nothing to say)."""
     if not report.ops:
         return None
-    uncovered = len({id(o) for o in report.ops} - {id(e.op) for e in report.estimates})
-    cell = None
+    covered = {id(e.op) for e in report.estimates}
+    missing = [o for o in report.ops if id(o) not in covered]
+    cell = warn = None
     if report.estimates and report.source:
+        from dataclasses import replace
+
         from nexus.cellpeak import cell_estimate
 
         try:
             cell, _mode, _flags = cell_estimate(report.source, report.estimates)
+            warn_items = [replace(e, estimate=warn_high_estimate(e)) for e in report.estimates]
+            warn, _m, _f = cell_estimate(report.source, warn_items)
         except Exception:
-            cell = None  # the v1 aggregation in classify
+            cell = warn = None  # the v1 aggregation in classify
     return classify(
         [e.estimate for e in report.estimates],
         report.resources,
-        uncovered=uncovered,
+        uncovered=len(missing),
         drivers_from=report.estimates or None,
         cell=cell,
+        warn_high=None if warn is None else warn.ram_high,
+        uncovered_ops=describe_uncovered(missing) if missing else None,
     )

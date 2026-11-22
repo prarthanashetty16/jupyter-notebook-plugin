@@ -58,6 +58,26 @@ def _estimate(row: pd.Series) -> Estimate | None:
         return None
 
 
+def _warn_high(row: pd.Series, e: Estimate | None) -> int | None:
+    """Risk v2 (``nexus.risk.OWN_TIER1_HIGH_FOR_WARN``): the stored own Tier 1 high of read_csv / merge
+    when their statistics ran; None (the stored high) otherwise, and for rows stored before v3."""
+    import json
+
+    from nexus.risk import OWN_TIER1_HIGH_FOR_WARN
+
+    if e is None or row.get("model") not in OWN_TIER1_HIGH_FOR_WARN:
+        return None
+    f = row.get("features")
+    try:
+        d = json.loads(f) if isinstance(f, str) else (f if isinstance(f, dict) else {})
+    except ValueError:
+        return None
+    own = d.get("tier1_own_ram_high")
+    if own is None or not (d.get("tier1") or {}).get("used") or e.tier < 1:
+        return None
+    return int(own)
+
+
 def valid_points(df: pd.DataFrame, tier: int = 1) -> pd.DataFrame:
     d = df[(df["tier"] == tier) & (df["pred_status"] == "ok")]
     killed = d["status"] == "memory_limit"
@@ -86,7 +106,7 @@ def classify_all(
         for (_, r), pos, fp in zip(v.iterrows(), positive, footprint, strict=True):
             e = est[r["point_id"]]
             head = int(limit - (r["inspected_bytes"] if pd.notna(r["inspected_bytes"]) else 0))
-            rep = classify([e] if e else [], headroom=head)
+            rep = classify([e] if e else [], headroom=head, warn_high=_warn_high(r, e))
             rows.append(
                 {
                     "limit_mb": limit_mb, "point_id": r["point_id"], "op": r["op"], "size": r["size"],

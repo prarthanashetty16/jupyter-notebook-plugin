@@ -30,7 +30,7 @@ OWN = Path("benchmarks/results/tier1-v3")
 
 
 def _used(f: object) -> bool:
-    d = json.loads(f) if isinstance(f, str) else (f or {})
+    d = json.loads(f) if isinstance(f, str) else (f if isinstance(f, dict) else {})
     return bool((d.get("tier1") or {}).get("used"))
 
 

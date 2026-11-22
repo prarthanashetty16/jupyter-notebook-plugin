@@ -118,6 +118,8 @@ class Pipeline:
                         except Exception as exc:
                             problem = f"estimate failed ({type(exc).__name__})"
                         if problem is None:
+                            # risk v2 (C3) WARNs on this for read_csv / merge; the display keeps policy B
+                            features = {**features, "tier1_own_ram_high": int(estimate.ram_high)}
                             estimate = ranges.apply(model.name, estimate, tier0)
                         elif tier0 is not None:  # keep Tier 0 and say why
                             estimate = replace(tier0, note=f"Tier 1 rejected: {problem}")
