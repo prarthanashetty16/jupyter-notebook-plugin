@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import multiprocessing
+import sys
 import time
 from pathlib import Path
 
@@ -273,7 +274,30 @@ def test_run_dryrun_never_raises_and_cleans_up(frames, tmp_path):
     pd.testing.assert_frame_equal(left, before)
 
 
+# Where the measurement instrument is supported (Phase 7d: Windows and Linux, which have a clean peak counter).
+# On macOS the peak cannot be reset (``ru_maxrss`` over the child's lifetime, minus an RSS that also counts freed but
+# unreclaimed pages) and the CI runners are small shared VMs: the dry run's single-shot samples of this cell
+# (1.8-12 MiB, 2-18 ms) are disturbed run to run, and the same commit passed and failed there.
+MEASUREMENT_SUPPORTED = sys.platform == "win32" or sys.platform.startswith("linux")
+
+
+def _outcome_follows_the_gate(q) -> None:  # noqa: ANN001
+    """An accepted fit has a consistent range within CV_MAX; a refused one says why, and a 'no law' refusal
+    really has its best forward-CV error above CV_MAX."""
+    if q.ok:
+        assert q.low <= q.expected <= q.high and q.laws[q.best]["cv"] <= CV_MAX
+    else:
+        assert q.reason
+        if q.reason.startswith("no law predicts"):
+            assert q.laws[q.best]["cv"] > CV_MAX
+
+
 def test_an_end_to_end_dry_run_fits_and_extrapolates_a_sort(tmp_path):
+    """Integration on REAL measurements: the dry run runs, classifies, measures four nested levels, leaves the
+    user's frame untouched, and its RAM / time outcomes follow the CV gate. Where the instrument is supported
+    it must also produce an accepted fit (the measured series sit far inside CV_MAX there: best CV 0.007-0.088
+    on the dev machine). The gate's own accept / refuse behaviour on series of this shape is pinned
+    deterministically in ``test_a_dry_run_shaped_series_is_accepted_clean_and_refused_disturbed``."""
     rng = np.random.default_rng(2)
     n = 3_000_000
     df = pd.DataFrame({"f": rng.random(n), "g": rng.random(n), "h": rng.integers(0, 100, n)})
@@ -282,12 +306,36 @@ def test_an_end_to_end_dry_run_fits_and_extrapolates_a_sort(tmp_path):
         "df.sort_values('f')", {"df": df, "pd": pd, "np": np}, tmp_root=str(tmp_path)
     )
     assert res.kind == "sort_values" and len(res.levels) == 4 and res.overhead_s < 40
+    assert all(level["status"] == "ok" for level in res.levels)
+    sizes = [level["n_eff"] for level in res.levels]
+    assert sizes == sorted(sizes) and len(set(sizes)) == 4  # nested, growing samples
     assert res.ram is not None and res.time is not None
-    ok = [q for q in (res.ram, res.time) if q.ok]
-    assert ok, (res.ram.reason, res.time.reason)
-    for q in ok:
-        assert q.low <= q.expected <= q.high and q.laws[q.best]["cv"] <= CV_MAX
+    for q in (res.ram, res.time):
+        _outcome_follows_the_gate(q)
+    if MEASUREMENT_SUPPORTED:
+        ok = [q for q in (res.ram, res.time) if q.ok]
+        assert ok, (res.ram.reason, res.time.reason)
     pd.testing.assert_frame_equal(df, before)
+
+
+# the four sample sizes this sort's dry run measures, and its RAM series measured on the dev machine (Windows)
+DRYRUN_SIZES = [37_692.0, 75_049.0, 150_014.0, 300_000.0]
+DRYRUN_RAM_MIB = [1.9, 3.2, 6.4, 12.4]
+
+
+def test_a_dry_run_shaped_series_is_accepted_clean_and_refused_disturbed():
+    """The CV gate, deterministic, on the shape of the end-to-end dry run: the measured series is accepted,
+    and the same series with ONE level disturbed by x1.6 (a few MiB, the size of the macOS CI disturbance,
+    which gave best CV 0.25-0.95 there) is refused with its best CV error above CV_MAX (unchanged)."""
+    mib = 2**20
+    clean = fit_scaling(DRYRUN_SIZES, [v * mib for v in DRYRUN_RAM_MIB], 3_000_000)
+    assert clean.ok and clean.laws[clean.best]["cv"] <= CV_MAX
+    assert clean.low <= clean.expected <= clean.high
+    disturbed = [v * mib for v in DRYRUN_RAM_MIB]
+    disturbed[2] *= 1.6
+    bad = fit_scaling(DRYRUN_SIZES, disturbed, 3_000_000)
+    assert not bad.ok and bad.reason.startswith("no law predicts")
+    assert min(d["cv"] for d in bad.laws.values()) > CV_MAX
 
 
 # -- the pipeline hook --------------------------------------------------------------------------------------
