@@ -183,3 +183,52 @@ For example, 0 of 30 cells is consistent with a true rate up to 9.5%.
 **Not done (decision 6, second part): the v2 multi-statement held-out group was NOT enlarged.** `split_v2.json` was
 frozen in Phase 7a, before any model change. A larger group created now would be designed after the v3 dev results were
 seen. If you want it anyway, it needs a new split version (new salt, new configurations), committed before the tag.
+
+### Known limitations of v3 (as of Phase 7c, before the tag)
+
+* **Determinism is NOT achieved on contended machines.** The deterministic statistics gate failed its pre-registered rule:
+  the hard deadline fired after admission on 12 of 29 2-core inputs (41%; the bar is 10%). It was **reverted** to v2's adaptive,
+  timed gate; only the cell-seeded sampler stays. On the final code (dev, battery-throttled timing), 2 contended CPUs flip 12 of
+  28 inputs between Tier 1 and Tier 0, and 16 CPUs flip 0 of 28. Two inputs still vary within the same tier: drop_duplicates on
+  10M rows of strings (844-1049 MiB, ~22%) and groupby on 10M rows (0.05%).
+* **Item (2) dev criterion FAILED.** 2 of the 66 v1 multi-statement cells are above the v3 high (copy_fillna/mixed: 88 vs 65 MiB
+  and 176 vs 130 MiB), because a `fillna` on text columns has no estimate. That is 3.03% of cells and 1 of 33 configurations.
+  The risk engine reports both UNKNOWN, or HIGH_RISK where the actual exceeds the headroom, and never OK
+  (`docs/benchmarks/phase7c/uncovered_risk.md`). Frozen with the criterion reported as FAILED (owner's decision).
+* **Uncovered operations stay uncovered:**
+  * value_counts (second attempt failed), explode (Series and DataFrame), apply with Python functions;
+  * set_index with text / several keys / append, fillna on text columns, parse_dates, text columns on the parallel
+    read_csv path (v2 term);
+  * operations on merge / groupby / drop_duplicates results created in the same cell;
+  * no column statistics are carried between statements.
+
+  A cell with any of these is UNKNOWN unless the covered part already warns. Its displayed range covers only the
+  estimated operations.
+* **The read_csv path depends on the CPUs.** The estimate follows pandas' own reader choice: parallel when the file is >= 5 MiB
+  and pandas uses more than one worker (min(cpu_count, 6, affinity / cgroup quota on Linux); Windows and macOS ignore
+  affinity), serial otherwise. The same call can therefore get a different estimate on a different machine. A pandas without
+  the parallel reader gets a range over both paths.
+* **One laptop and synthetic data.** Every probe and dev number comes from one Windows 11 laptop (16 logical CPUs, 16 GiB) and,
+  apart from the two Amazon notebooks (dev, 22% subsamples), from synthetic frames. Linux is covered only by the planned val-v5
+  VM run.
+* **pandas 3.1.1 / numpy 2.5.5 only.** The derivations read pandas 3.1.1 source; other versions are informational in CI (the
+  pandas-mechanisms matrix), and no result is claimed for them.
+* **The R2 result is a dev selection.** Risk v2 (C3) was chosen on dev by a rule written beforehand. Its dev figures (R2 pooled
+  17.1%, merge 9.4%, read_csv 39.0%) are not a validation: the claim stands only if val-v5 confirms it, and a failure there
+  is reported as a repeat FAILED.
+* **Timing figures of the battery runs** (the final dev re-prediction rows, multi-statement evaluation and determinism check)
+  are battery-throttled and not usable for calibration or any timing claim.
+
+### Added in Phase 7c: the enlarged multi-statement group v3 (amendment 1), run ONCE on the v3 tag, on mains
+
+    git checkout models-frozen-v3 && python -m benchmarks.frozen check
+    python -m benchmarks.multicell.run run --version 3 --heldout --reason "Phase 7 held-out check of models-frozen-v3 (group v3)"
+    python -m benchmarks.multicell.run evaluate --version 3 --heldout --reason "Phase 7 held-out check of models-frozen-v3 (group v3)" --out docs/benchmarks/phase7c
+
+Criteria (pre-registered in amendment 1):
+* RAM above_high <= 3% of the 64 cells and <= 3% of the 32 configurations, each reported as "consistent with <= x%" (one-sided
+  95% upper bound; for 0 events 4.6% and 8.9%);
+* the uncovered-operation rule: no cell with an uncovered operation is OK at a simulated headroom its actual exceeds. The
+  report prints MET / FAILED.
+
+Group v2 (15 configurations / 30 cells) is run once as well (commands above). The two groups are reported separately and pooled.

@@ -1808,3 +1808,55 @@ and held-out commands: `docs/benchmarks/phase7b/README.md`. The later dev-only s
 4. `nexus-calibrate-machine` keeps its own Phase 6 `--allow-battery` (in a frozen file, unchanged); remove it in a later freeze?
 5. The Phase 8b coverage measure: run-time "has an estimate" or a static check including the arguments (name matching
    overstates).
+
+## Phase 7c: pre-tag work (no tag; no frozen-set change)
+
+**Status: done; `models-frozen-v3` NOT tagged; the 9 frozen files differing from v2 are exactly the Phase 7b changes (guard
+below). val-v5, test-v2 and the multicell v2 / v3 held-out parts sealed and unread.**
+
+- [x] 1. Information only (DEV, prediction only; `docs/benchmarks/phase7c/uncovered_risk.md`): 8 v1 cells contain an
+  uncovered operation (6 concat-of-loads, 2 copy_fillna/mixed). None is ever OK at any simulated headroom (64 MiB-8 GiB), no
+  overrun is missed, and every UNKNOWN names the uncovered operation. The two cells above high are HIGH_RISK where their actual
+  exceeds the headroom and UNKNOWN elsewhere.
+- [x] 2. Enlarged held-out group: multicell **split v3** (pre-registration amendment 1, `0db37ed`, committed before the split
+  file). 16 templates x 6 shapes, two configurations held out per template: **32 configurations / 64 cells**. New sizes
+  1.25M / 2.5M, seeds 21-23, new shapes `narrow` / `textwide`. Digest-frozen, never run. Criteria: above_high <= 3% per
+  cell and per configuration with the 95% upper bound (0 / 64 -> 4.6%, 0 / 32 -> 8.9%), and the uncovered-operation rule.
+- [x] 3. `evaluate --val` replays R1-R3 (`risk_eval.section`); on stored dev data it reproduces the Phase 7b figures.
+- [x] 4. `docs/benchmarks/phase8b-preregistration.md` (DRAFT): run-time coverage as the primary measure, static name
+  matching as an overstating secondary one, and the fields the owner fills in (sources, selection rule, licences, sizes).
+
+### Known limitations of v3 (as of Phase 7c, before the tag)
+
+* **Determinism is NOT achieved on contended machines.** The deterministic statistics gate failed its pre-registered rule:
+  the hard deadline fired after admission on 12 of 29 2-core inputs (41%; the bar is 10%). It was **reverted** to v2's adaptive,
+  timed gate; only the cell-seeded sampler stays. On the final code (dev, battery-throttled timing), 2 contended CPUs flip 12 of
+  28 inputs between Tier 1 and Tier 0, and 16 CPUs flip 0 of 28. Two inputs still vary within the same tier: drop_duplicates on
+  10M rows of strings (844-1049 MiB, ~22%) and groupby on 10M rows (0.05%).
+* **Item (2) dev criterion FAILED.** 2 of the 66 v1 multi-statement cells are above the v3 high (copy_fillna/mixed: 88 vs 65 MiB
+  and 176 vs 130 MiB), because a `fillna` on text columns has no estimate. That is 3.03% of cells and 1 of 33 configurations.
+  The risk engine reports both UNKNOWN, or HIGH_RISK where the actual exceeds the headroom, and never OK
+  (`docs/benchmarks/phase7c/uncovered_risk.md`). Frozen with the criterion reported as FAILED (owner's decision).
+* **Uncovered operations stay uncovered:**
+  * value_counts (second attempt failed), explode (Series and DataFrame), apply with Python functions;
+  * set_index with text / several keys / append, fillna on text columns, parse_dates, text columns on the parallel
+    read_csv path (v2 term);
+  * operations on merge / groupby / drop_duplicates results created in the same cell;
+  * no column statistics are carried between statements.
+
+  A cell with any of these is UNKNOWN unless the covered part already warns. Its displayed range covers only the
+  estimated operations.
+* **The read_csv path depends on the CPUs.** The estimate follows pandas' own reader choice: parallel when the file is >= 5 MiB
+  and pandas uses more than one worker (min(cpu_count, 6, affinity / cgroup quota on Linux); Windows and macOS ignore
+  affinity), serial otherwise. The same call can therefore get a different estimate on a different machine. A pandas without
+  the parallel reader gets a range over both paths.
+* **One laptop and synthetic data.** Every probe and dev number comes from one Windows 11 laptop (16 logical CPUs, 16 GiB) and,
+  apart from the two Amazon notebooks (dev, 22% subsamples), from synthetic frames. Linux is covered only by the planned val-v5
+  VM run.
+* **pandas 3.1.1 / numpy 2.5.5 only.** The derivations read pandas 3.1.1 source; other versions are informational in CI (the
+  pandas-mechanisms matrix), and no result is claimed for them.
+* **The R2 result is a dev selection.** Risk v2 (C3) was chosen on dev by a rule written beforehand. Its dev figures (R2 pooled
+  17.1%, merge 9.4%, read_csv 39.0%) are not a validation: the claim stands only if val-v5 confirms it, and a failure there
+  is reported as a repeat FAILED.
+* **Timing figures of the battery runs** (the final dev re-prediction rows, multi-statement evaluation and determinism check)
+  are battery-throttled and not usable for calibration or any timing claim.
