@@ -1,4 +1,7 @@
-"""Generator knobs added for test-v2, and the guarantee that older configs did not change."""
+"""Generator knobs added for test-v2, and the guarantee that older configs did not change.
+
+Phase 7d: the fingerprints hash floats at float32 precision (CI on Linux: numpy's lognormal / pow differ in the last
+bit from Windows); the pins were recomputed with the generator unchanged (the data did not change, the hash did)."""
 
 from __future__ import annotations
 
@@ -25,9 +28,17 @@ def fingerprint(df: pd.DataFrame) -> str:
             or str(col.dtype) == "str"
         ):
             h.update("|".join(map(str, col.astype(object).tolist())).encode())
+        elif col.dtype.kind == "f":
+            # float32 precision: numpy's lognormal / pow call the platform C library, whose exp / log / pow differ
+            # in the last bit between Windows (MSVC) and Linux (glibc); the generated data are otherwise identical
+            h.update(np.ascontiguousarray(col.to_numpy().astype("float32")).tobytes())
         else:
             h.update(np.ascontiguousarray(col.to_numpy()).tobytes())
     return h.hexdigest()[:16]
+
+
+def column_fingerprints(df: pd.DataFrame) -> dict[str, str]:
+    return {c: fingerprint(df[[c]]) for c in df.columns}
 
 
 # -- defaults reproduce the earlier datasets exactly ----------------------------------------------
@@ -36,25 +47,28 @@ def fingerprint(df: pd.DataFrame) -> str:
     [
         (
             DatasetConfig(n_rows=3000, null_rate=0.1, dup_rate=0.3, cardinality=0.05),
-            "eb974b63daa00a53",
+            "a1954cf31e19715b",
         ),
         (
             DatasetConfig(n_rows=2000, distribution="real_like", null_rate=0.05, str_len=20),
-            "bbdd50272164648b",
+            "64a2de251c40ef52",
         ),
         (
             DatasetConfig(n_rows=1500, n_object=0, n_category=0, n_datetime=0, n_int=3, n_float=3),
-            "f15f62a7bc418283",
+            "1e415f1506bb49df",
         ),
     ],
 )
 def test_existing_configs_are_bit_identical(cfg, expected):
-    assert fingerprint(make_frame(cfg)) == expected
+    df = make_frame(cfg)
+    assert fingerprint(df) == expected, column_fingerprints(
+        df
+    )  # per column: which one differs on this platform
 
 
 def test_existing_join_is_bit_identical():
     left, right = make_join_pair(DatasetConfig(n_rows=2000), 900, overlap=0.4, fanout=2.0)
-    assert (fingerprint(left), fingerprint(right)) == ("9a73d80c011775ce", "be95a14cf61e0ca5")
+    assert (fingerprint(left), fingerprint(right)) == ("6058dd057b05b4e5", "58cd2653f4f127e5")
 
 
 def test_default_repr_is_unchanged_but_new_knobs_change_the_cache_key():
