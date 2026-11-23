@@ -3,3 +3,4 @@
 - 2026-11-22 15:39:13 | EVALUATE held-out multicell | reason: formatting fix only, no re-measurement
 - 2026-11-22 15:39:13 | READ stored held-out multicell rows + prediction-only Tier 1 re-run on the held-out inputs (no measurement; 22/22 reproduce the stored estimates) | reason: information only (risk class of uncovered cells, read_csv term check, argument error shares); these cells are dev data since the held-out evaluation
 - 2026-11-23 02:06:27 | READ stored former held-out multicell rows (dev since 2026-11-22) | reason: Phase 7b dev evaluation of the v3 working tree (prediction only, no measurement)
+- 2026-11-23 09:19:46 | READ stored former held-out multicell rows (dev since 2026-11-22) | reason: Phase 7b dev evaluation of the v3 working tree (prediction only, no measurement)
