@@ -193,3 +193,33 @@ A metric with fewer than **30** valid points (configurations: fewer than 10) is 
   failure); the coverage criterion; the determinism dev criterion; a criterion of Phase 8b.
 * INCONCLUSIVE results are reported as such and never counted as passes.
 * Every outcome is reported as it comes out, with the 95% bounds.
+
+---
+
+## Amendment 1 (2026-11-23, Phase 7c): an enlarged multi-statement held-out group (v3) and the uncovered-operation rule
+
+Written before `models-frozen-v3` is tagged and before `benchmarks/multicell/split_v3.json` exists. No held-out value of
+any group has been seen. This amendment adds a held-out set and a rule. It relaxes nothing.
+
+* **Group v3** (`benchmarks/multicell/cases_v3.py`, split `split_v3.json`, salt `phase7c-multicell-v3:`):
+  * 16 templates x 6 shapes = 96 configurations. Per template, the TWO configurations with the largest salted hash are held
+    out: **32 configurations, 64 cells** (sizes 1.25M / 2.5M). The other 64 configurations are dev.
+  * New seeds (21-23) and two new shapes (`narrow`, `textwide`).
+  * The templates cover fillna on text columns, frames created earlier in the cell, set_index, apply(np.<ufunc>),
+    del / rebinding (with an alias), chains, read_csv arguments and an uncovered value_counts.
+  * It is designed from the scope and the rules above, not from measured values. Leak protection as v2: digest-checked
+    split, held-out console id / status / time only, results in `benchmarks/results/multicell_v3/heldout/`, every access
+    logged in `docs/benchmarks/phase7-heldout-access-log.md`, freeze guard and the held-out environment check (mains only,
+    no `--allow-battery`). Run ONCE on `models-frozen-v3`.
+  * Group v2 (15 configurations, 30 cells, pre-registered in 7a) stays sealed and is run once as well; each group is
+    reported separately and pooled.
+* **Criteria on group v3 (and v2):**
+  * RAM above_high <= 3% of cells AND <= 3% of configurations. Each is quoted with its one-sided 95% Clopper-Pearson upper
+    bound and reported as "consistent with a true rate <= x%". For 0 events: 64 cells -> 4.6%, 32 configurations -> 8.9%;
+    v2 and v3 pooled, 94 cells -> 3.1%, 47 configurations -> 6.2%.
+  * **Uncovered-operation rule:** in every cell with an operation that has no estimate, at every simulated headroom
+    (64 MiB .. 8 GiB) where the measured peak exceeds the headroom, the v3 risk class must NOT be OK. UNKNOWN, WARN and
+    HIGH_RISK are acceptable. One violation FAILS the rule.
+* **Failure:** the above_high bars are part of section 4's "failure of the whole v3" (as for v2). The uncovered-operation
+  rule is an item criterion (item 4); its failure withdraws the claim that uncovered operations are handled
+  conservatively.
