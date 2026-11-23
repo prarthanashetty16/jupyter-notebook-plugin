@@ -11,7 +11,8 @@ and how often the Tier 0 fallback differs between repeats of the same point. Mai
 
 Phase 7b: ``--max-rows`` (points spread over the sizes, the largest included), ``--condition`` (``all`` CPUs
 or ``cores2_contended``: the process and its workers pinned to 2 CPUs with 2 busy loops on them), and the
-power state checked before every point (the run stops on battery).
+power state checked before every point (the run stops on battery unless ``--allow-battery``, dev only:
+rows then record ``battery (user-accepted)`` and the report carries ``powerguard.BATTERY_NOTE``).
 """
 
 from __future__ import annotations
@@ -68,11 +69,15 @@ def main(argv: list[str] | None = None) -> None:  # noqa: C901
     ap.add_argument("--max-rows", type=int, default=MAX_ROWS)
     ap.add_argument("--condition", choices=("all", "cores2_contended"), default="all")
     ap.add_argument(
+        "--allow-battery", action="store_true", help="dev only: run on battery (recorded)"
+    )
+    ap.add_argument(
         "--title", default="Tier 1 determinism (Phase 6d; information only, nothing changed)"
     )
     args = ap.parse_args(argv)
-    if power_state() == "battery":
-        raise SystemExit("on battery power: plug in first")
+    from benchmarks.powerguard import power_record
+
+    args.power_rec = power_record(args.allow_battery, "dev")
     import multiprocessing as mp
 
     import psutil
@@ -92,12 +97,14 @@ def main(argv: list[str] | None = None) -> None:  # noqa: C901
 
 
 def _run(args, power_state, env_info, default_mem_limit_bytes, _prepare, run_prediction) -> None:  # noqa: ANN001, C901
+    from benchmarks.powerguard import BATTERY_NOTE, recorded
+
     cache = Path("benchmarks/.cache")
     env, cap = env_info(), default_mem_limit_bytes()
     rows = []
     points = pick_points(args.max_rows, spread_sizes=args.max_rows != MAX_ROWS)
     for i, point in enumerate(points, 1):
-        if power_state() == "battery":
+        if power_state() == "battery" and not args.allow_battery:
             raise SystemExit(f"on battery power at point {i}: stopped (no partial report)")
         path = _prepare(point, cache)
         source = point.source.format(csv=path) if "{csv" in point.source else point.source
@@ -112,7 +119,7 @@ def _run(args, power_state, env_info, default_mem_limit_bytes, _prepare, run_pre
                          "ram_expected": r.get("ram_expected"), "ram_high": r.get("ram_high"),
                          "time_expected": r.get("time_expected"),
                          "tier1_used": bool(t1.get("used", bool(t1))), "reason": t1.get("reason"),
-                         "sample": t1.get("sample"), "stats_s": t1.get("stats_s"), "power": power_state()})  # fmt: skip
+                         "sample": t1.get("sample"), "stats_s": t1.get("stats_s"), "power": recorded(power_state())})  # fmt: skip
         print(f"[{i}/{len(points)}] {point.id}", flush=True)
     df = pd.DataFrame(rows)
     args.out.parent.mkdir(parents=True, exist_ok=True)
@@ -131,6 +138,16 @@ def _run(args, power_state, env_info, default_mem_limit_bytes, _prepare, run_pre
     lines = [
         f"# {args.title}",
         "",
+        *(
+            [
+                BATTERY_NOTE,
+                "",
+                f"Power at the start: `{json.dumps(args.power_rec, default=str)}`",
+                "",
+            ]
+            if args.power_rec.get("power") != "mains"
+            else []
+        ),
         f"Condition: {args.condition}. {len(points)} stored dev points (<= {args.max_rows:,} rows; {PER_OP} per operation with Tier 1 statistics), "
         f"{args.repeats} repeats each, each a fresh prediction process (the benchmark's worker), mains power "
         f"(power seen: {sorted(df['power'].unique())}). Spread = (max - min) / median over the repeats of one point; "

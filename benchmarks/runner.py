@@ -150,9 +150,10 @@ def _profile_fields() -> dict[str, Any]:
     """Machine-profile id and power state (Phase 6d: recorded in every result row)."""
     try:
         from benchmarks.heldout_env import profile_record
+        from benchmarks.powerguard import recorded
 
         rec = profile_record()
-        return {"profile_id": rec["profile_id"], "power": rec["power"]}
+        return {"profile_id": rec["profile_id"], "power": recorded(rec["power"])}
     except Exception:
         return {"profile_id": "", "power": "unknown"}
 

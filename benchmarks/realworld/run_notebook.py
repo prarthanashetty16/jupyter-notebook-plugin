@@ -20,7 +20,9 @@ RAM lower bound. Shell / package cells are never executed. Failing cells: error 
 
 Records (JSONL, ``<out>/cells.jsonl``): cell index and hash, operation names, input shapes / dtype
 counts, numbers. Never cell code, outputs or data values. Refuses to run unless the freeze guard
-passes and the machine is on mains power (``--allow-battery`` only for tests; recorded).
+passes and the machine is on mains power. ``--allow-battery`` is accepted only with ``--dev`` (a dev run;
+``benchmarks.powerguard``): rows record ``battery (user-accepted)``, the summary holds the raw readings, and
+the timing figures are battery-throttled (not usable for calibration or timing claims).
 
     python -m benchmarks.realworld.run_notebook <notebook.ipynb> --out benchmarks/results/realworld/<name>
 """
@@ -74,6 +76,7 @@ class RunSummary:
     stop_reason: str = ""
     frozen: dict[str, Any] = field(default_factory=dict)
     power: str = ""
+    battery: dict[str, Any] = field(default_factory=dict)  # raw readings of a user-accepted battery dev run
     profile_id: str | None = None
     cap_bytes: int = 0
     profile_calibrated: bool | None = None
@@ -246,11 +249,18 @@ def run(  # noqa: C901
         from benchmarks.heldout_env import require_profile
 
         summary.frozen = {**frozen.require_frozen(), "heldout_environment": require_profile(out)}
-    summary.power = power_state()
-    if summary.power == "battery" and not allow_battery:
+    from benchmarks.powerguard import BATTERY_NOTE, power_record, recorded
+
+    if allow_battery and not dev:
+        raise SystemExit("--allow-battery is refused for held-out runs (only with --dev)")
+    if power_state() == "battery" and not allow_battery:
         raise SystemExit(
             "phase 8a harness: on battery power; plug in (recorded power state: battery)"
         )
+    rec = power_record(allow_battery, "dev") if allow_battery else {"power": power_state()}
+    summary.power = rec["power"]
+    if rec["power"] != "mains":
+        summary.battery = {**rec, "note": BATTERY_NOTE}
     summary.profile_calibrated = machine().calibrated
     summary.profile_id = machine().profile_id
     out.mkdir(parents=True, exist_ok=True)
@@ -318,7 +328,7 @@ def run(  # noqa: C901
                 **rec,
                 "avail_start": avail,
                 "rss_start": rss_start,
-                "power": power_state(),
+                "power": recorded(power_state()),
                 "profile_id": summary.profile_id,
             }
             if killed:
@@ -377,7 +387,9 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--budget-s", type=float, default=3600.0)
     ap.add_argument("--max-failures", type=int, default=5)
     ap.add_argument("--path-map", type=Path, help="JSON {literal path in the notebook: local path}")
-    ap.add_argument("--allow-battery", action="store_true", help="tests only (recorded)")
+    ap.add_argument(
+        "--allow-battery", action="store_true", help="dev runs only (with --dev; recorded)"
+    )
     ap.add_argument(
         "--tier",
         type=int,

@@ -28,7 +28,7 @@ def books(tmp_path_factory):
 
 
 def _run(books, name, tmp_path, **limits):
-    s = rn.run(books[name], tmp_path / name, rn.Limits(**limits), allow_battery=True)
+    s = rn.run(books[name], tmp_path / name, rn.Limits(**limits), allow_battery=True, dev=True)
     rows = [json.loads(line) for line in (tmp_path / name / "cells.jsonl").open(encoding="utf-8")]
     return s, {r["index"]: r for r in rows}, (tmp_path / name / "cells.jsonl").read_text("utf-8")
 
@@ -80,8 +80,17 @@ def test_consecutive_failures_stop(books, tmp_path):
     assert max(rows) == 5  # cells 1..5 failed, nothing after
 
 
-def test_nexus_records_on_known_operations(books, tmp_path):
-    s, rows, text = _run(books, "syn_ops", tmp_path)
+def test_nexus_records_on_known_operations(books, tmp_path, monkeypatch):
+    import nexus.power
+
+    # the non-dev path (frozen tag recorded) refuses --allow-battery: run it as on mains power
+    monkeypatch.setattr(nexus.power, "power_state", lambda: "mains")
+    s = rn.run(books["syn_ops"], tmp_path / "syn_ops", rn.Limits())
+    rows = {
+        json.loads(x)["index"]: json.loads(x)
+        for x in (tmp_path / "syn_ops" / "cells.jsonl").open(encoding="utf-8")
+    }
+    text = (tmp_path / "syn_ops" / "cells.jsonl").read_text("utf-8")
     assert s.outcome == "completed"
     by_op = {tuple(r.get("ops") or []): r for r in rows.values()}
     for op in ("groupby", "merge", "astype", "sort_values", "drop_duplicates", "pandas.read_csv"):

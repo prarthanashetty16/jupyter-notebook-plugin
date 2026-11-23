@@ -200,7 +200,13 @@ def metrics(rows: list[dict[str, Any]], key: str) -> dict[str, Any]:
     }  # fmt: skip
 
 
-RATIO_COLS = ("bias", "width", "v1_bias")  # ratios (x); every other float column is a share (%)
+RATIO_COLS = (
+    "bias",
+    "width",
+    "v1_bias",
+    "v2_bias",
+    "v3_bias",
+)  # ratios (x); every other float column is a share (%)
 
 
 def _fmt(v: Any, col: str) -> str:
