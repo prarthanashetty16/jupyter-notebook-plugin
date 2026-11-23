@@ -71,6 +71,11 @@ def test_reader_path_rules(monkeypatch):
 def test_worker_count_is_pandas_own(monkeypatch):
     from pandas.io.parsers import readers
 
+    if not hasattr(readers, "_default_n_workers"):
+        pytest.skip(
+            "this pandas has no parallel CSV reader (pandas < 3.1): the reader path is 'unknown'"
+        )
+
     with pd.option_context("mode.max_threads", 3):
         assert rc.parallel_workers() == readers._default_n_workers() == 3
 

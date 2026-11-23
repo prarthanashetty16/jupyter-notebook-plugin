@@ -120,7 +120,10 @@ def env_info() -> dict[str, Any]:
         ).stdout.strip()
     except Exception:
         commit = ""
-    freq = psutil.cpu_freq()
+    try:  # psutil has no cpu_freq on some platforms (CI, macOS): recorded as unknown
+        freq = psutil.cpu_freq() if hasattr(psutil, "cpu_freq") else None
+    except Exception:
+        freq = None
     engine, text_dtype = read_csv_defaults()
     return {
         "instrument": INSTRUMENT,
