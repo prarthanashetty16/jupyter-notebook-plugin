@@ -15,14 +15,22 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
-from benchmarks.multicell import cases, cases_v2
+from benchmarks.multicell import cases, cases_v2, cases_v3
 
 SALT = "phase6c-multicell-v1:"
 SPLIT_FILE = Path(__file__).with_name("split_v1.json")
 # v2 (Phase 7 pre-registration): the fresh held-out group for freeze v3; same rule, own salt and file
 SALT_V2 = "phase7-multicell-v2:"
 SPLIT_FILE_V2 = Path(__file__).with_name("split_v2.json")
-_VERSIONS = {1: (SALT, SPLIT_FILE, cases), 2: (SALT_V2, SPLIT_FILE_V2, cases_v2)}
+# v3 (Phase 7c, amendment 1 of the Phase 7 pre-registration): the ENLARGED group, TWO held out per template
+SALT_V3 = "phase7c-multicell-v3:"
+SPLIT_FILE_V3 = Path(__file__).with_name("split_v3.json")
+_VERSIONS = {
+    1: (SALT, SPLIT_FILE, cases),
+    2: (SALT_V2, SPLIT_FILE_V2, cases_v2),
+    3: (SALT_V3, SPLIT_FILE_V3, cases_v3),
+}
+HELD_PER_TEMPLATE = {1: 1, 2: 1, 3: 2}
 
 
 def all_configs(version: int = 1) -> list:
@@ -47,10 +55,11 @@ def assign(version: int = 1) -> tuple[list[str], list[str]]:
     for c in all_configs(version):
         by[c.template].append(c.key)
     dev, held = [], []
+    k_held = HELD_PER_TEMPLATE[version]
     for template in sorted(by):
         keys = sorted(by[template], key=lambda k: _h(k, salt))
-        dev += keys[:-1]
-        held.append(keys[-1])
+        dev += keys[:-k_held]
+        held += keys[-k_held:]
     return sorted(dev), sorted(held)
 
 

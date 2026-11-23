@@ -43,3 +43,31 @@ def test_multicell_v1_split_unchanged_by_versioning():
 
     sp = split.load()
     assert (sp.version, len(sp.dev), len(sp.heldout)) == (1, 22, 11)
+
+
+def test_multicell_split_v3_holds_out_two_configurations_per_template():
+    from benchmarks.multicell import cases, cases_v2, cases_v3, split
+
+    sp = split.load(version=3)
+    assert len(sp.heldout) == 2 * len(cases_v3.TEMPLATES) >= 24
+    assert 2 * len(sp.heldout) >= 60  # cells (two sizes)
+    per = {}
+    for k in sp.heldout:
+        per[k.split("/")[0]] = per.get(k.split("/")[0], 0) + 1
+    assert set(per.values()) == {2}
+    assert not set(cases_v3.SIZES) & (set(cases.SIZES) | set(cases_v2.SIZES))
+    assert not set(cases_v3.SEEDS) & (set(cases_v2.SEEDS) | {1, 2, 3})
+    with pytest.raises(ValueError):
+        split.load(split.SPLIT_FILE_V2, version=3)
+    for v in (1, 2):  # earlier versions unchanged
+        assert split.load(version=v).version == v
+
+
+def test_multicell_v3_runner_paths_are_protected():
+    from benchmarks.multicell.run import SUITES
+
+    _, results, _, log = SUITES[3]
+    assert (
+        str(results).replace("\\", "/").endswith("multicell_v3")
+        and log.name == "phase7-heldout-access-log.md"
+    )

@@ -31,7 +31,7 @@ from typing import Any
 import pandas as pd
 import psutil
 
-from benchmarks.multicell import cases, cases_v2
+from benchmarks.multicell import cases, cases_v2, cases_v3
 from benchmarks.multicell import split as split_mod
 
 RESULTS = Path("benchmarks/results/multicell")
@@ -42,7 +42,11 @@ SUITES = {
     1: (cases, RESULTS, CACHE, HELDOUT_LOG),
     2: (cases_v2, Path("benchmarks/results/multicell_v2"), Path("benchmarks/.cache/multicell_v2"),
         Path("docs/benchmarks/phase7-heldout-access-log.md")),
+    3: (cases_v3, Path("benchmarks/results/multicell_v3"), Path("benchmarks/.cache/multicell_v3"),
+        Path("docs/benchmarks/phase7-heldout-access-log.md")),
 }  # fmt: skip
+# simulated headrooms (MiB) at which the prediction child records the risk class (the uncovered-operation rule)
+HEADROOMS_MIB = (64, 128, 256, 512, 1024, 2048, 4096, 8192)
 MIB = 2**20
 ABOVE_HIGH_CELL, ABOVE_HIGH_CONFIG = 0.03, 0.05
 
@@ -79,12 +83,36 @@ def _predict_child(paths: dict[str, str], src: str) -> dict[str, Any]:
     rep = Pipeline(tier=1).run(src, ns)
     new, mode, flags = cell_estimate(src, rep.estimates)
     v1 = combine([e.estimate for e in rep.estimates])
+    classes = _classes(rep, src, new)
     return {
         "ops": [o.name for o in rep.ops],
         "estimates": [{"model": e.model, "tier": e.estimate.tier} for e in rep.estimates],
         "uncovered": len({id(o) for o in rep.ops} - {id(e.op) for e in rep.estimates}),
-        "new": _est(new), "v1": _est(v1), "mode": mode, "flags": flags,
+        "new": _est(new), "v1": _est(v1), "mode": mode, "flags": flags, "classes": classes,
     }  # fmt: skip
+
+
+def _classes(rep: Any, src: str, cell: Any) -> dict[str, str] | None:
+    """Risk class per simulated headroom (MiB), the same call ``risk.assess`` makes; None without estimates."""
+    from dataclasses import replace
+
+    from nexus.cellpeak import cell_estimate
+    from nexus.risk import classify, describe_uncovered, warn_high_estimate
+
+    if not rep.estimates or cell is None:
+        return None
+    covered = {id(e.op) for e in rep.estimates}
+    missing = [o for o in rep.ops if id(o) not in covered]
+    warn, _, _ = cell_estimate(
+        src, [replace(e, estimate=warn_high_estimate(e)) for e in rep.estimates]
+    )
+    out = {}
+    for h in HEADROOMS_MIB:
+        r = classify([e.estimate for e in rep.estimates], None, headroom=h * MIB, uncovered=len(missing),
+                     drivers_from=rep.estimates or None, cell=cell, warn_high=warn.ram_high,
+                     uncovered_ops=describe_uncovered(missing) if missing else None)  # fmt: skip
+        out[str(h)] = r.risk.value
+    return out
 
 
 def predict(paths: dict[str, str], src: str) -> dict[str, Any]:
@@ -261,6 +289,17 @@ def report(rows: list[dict[str, Any]], title: str) -> str:
         per.append({"template": t, **metrics(g, "new"), "v1_bias": metrics(g, "v1").get("bias", float("nan")),
                     "uncovered_ops": sum(r.get("uncovered", 0) for r in g)})  # fmt: skip
     lines += _table(per)
+    lines += ["", "## Uncovered-operation rule (amendment 1): a cell with an uncovered operation must never be OK", "",
+              "at a simulated headroom its ACTUAL exceeds (UNKNOWN, WARN and HIGH_RISK are acceptable).", ""]  # fmt: skip
+    unc = [r for r in rows if r.get("uncovered") and r.get("classes") and r.get("actual")]
+    viol = [
+        (r["id"], h)
+        for r in unc
+        for h, c in r["classes"].items()
+        if c == "OK" and r["actual"] > int(h) * MIB
+    ]
+    lines.append(f"Cells with an uncovered operation: {len(unc)}; violations (OK while actual > headroom): "
+                 f"{len(viol)} -> {'MET' if not viol else 'FAILED'}" + (f": {viol}" if viol else ""))  # fmt: skip
     lines += ["", "## Every cell (MiB)", ""]
     cells = []
     for r in rows:

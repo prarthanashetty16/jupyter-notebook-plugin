@@ -187,7 +187,7 @@ def test_only_the_multicell_runner_touches_its_held_out_results():
 
     root = Path(__file__).resolve().parent.parent
     protected = re.compile(
-        r"phase6c-heldout-access-log|phase7-heldout-access-log|multicell(_v2)?/heldout|HELDOUT_LOG"
+        r"phase6c-heldout-access-log|phase7-heldout-access-log|multicell(_v[23])?/heldout|HELDOUT_LOG"
     )
     offenders = []
     for path in list((root / "src").rglob("*.py")) + list((root / "benchmarks").rglob("*.py")):
