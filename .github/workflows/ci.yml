@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # full history and tags: the freeze-guard tests compare with models-frozen-v2
+          fetch-depth: 0  # full history and tags: the freeze-guard tests compare with the current frozen tag
           fetch-tags: true
       - uses: actions/setup-python@v5
         with:
@@ -42,7 +42,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # full history and tags: the freeze-guard tests compare with models-frozen-v2
+          fetch-depth: 0  # full history and tags: the freeze-guard tests compare with the current frozen tag
           fetch-tags: true
       - uses: actions/setup-python@v5
         with:
@@ -77,7 +77,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # full history and tags: the freeze-guard tests compare with models-frozen-v2
+          fetch-depth: 0  # full history and tags: the freeze-guard tests compare with the current frozen tag
           fetch-tags: true
       - uses: actions/setup-python@v5
         with:

@@ -247,10 +247,16 @@ def _tag_present() -> bool:
     return done.returncode == 0
 
 
-TAG_SKIP_REASON = (
-    "freeze-guard test skipped: the tag models-frozen-v2 (and models-frozen-v1) is not in this checkout; "
-    "CI must use actions/checkout with fetch-depth: 0 and fetch-tags: true, or run `git fetch --tags`"
-)
+def _tag_skip_reason() -> str:
+    from benchmarks import frozen
+
+    return (
+        f"freeze-guard test skipped: the tag {frozen.FROZEN_TAG} (and {frozen.PREVIOUS_TAG}) is not in this "
+        "checkout; CI must use actions/checkout with fetch-depth: 0 and fetch-tags: true, or run `git fetch --tags`"
+    )
+
+
+TAG_SKIP_REASON = _tag_skip_reason()
 
 
 @pytest.mark.skipif(not _tag_present(), reason=TAG_SKIP_REASON)
@@ -263,6 +269,14 @@ def test_manifest_guard_scope_and_refusals(monkeypatch, tmp_path):
         and "src/nexus/calibration/calibration-v1.json" in files
     )
     assert "src/nexus/measure.py" in files and "tests/test_measure_validation.py" in files
+    # v3 (Phase 7d): the new prediction-defining files are frozen too
+    for f in (
+        "src/nexus/cellframes.py",
+        "src/nexus/models/set_index.py",
+        "src/nexus/models/explode_apply.py",
+    ):
+        assert f in files, f
+    assert frozen.FROZEN_TAG == "models-frozen-v3" and frozen.PREVIOUS_TAG == "models-frozen-v2"
     others = [f for f in files if f != "tests/test_measure_validation.py"]
     assert not any(
         f.startswith(("docs/", "tests/", "benchmarks/")) or f == ".gitignore" for f in others

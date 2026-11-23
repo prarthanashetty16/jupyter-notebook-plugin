@@ -232,3 +232,12 @@ Criteria (pre-registered in amendment 1):
   report prints MET / FAILED.
 
 Group v2 (15 configurations / 30 cells) is run once as well (commands above). The two groups are reported separately and pooled.
+
+## Supported environment (Phase 7d, from the first CI runs)
+
+The models and the measurement instrument are validated on **pandas 3.1.1 (Python >= 3.11) on Windows and Linux**:
+* **Python 3.10** resolves pandas 2.x, on which the copy-on-write mechanisms the models and the instrument's validation
+  assume do not hold. It is unsupported, and CI runs it report-only.
+* **macOS**: the instrument cannot isolate an operation's peak (a copy was censored in CI). Measurement there is
+  unsupported; its validation step is report-only, while the rest of the suite is required on macOS.
+* The pandas 2.x mechanism jobs are informational.

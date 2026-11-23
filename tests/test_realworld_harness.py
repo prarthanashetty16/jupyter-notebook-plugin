@@ -116,7 +116,7 @@ def test_aborts_when_a_frozen_file_differs(books, tmp_path, monkeypatch):
 
     if frozen.frozen_state()["tag_commit"] is None:
         pytest.skip(
-            "freeze-guard test skipped: models-frozen-v2 is not in this checkout (CI: actions/checkout "
+            f"freeze-guard test skipped: {frozen.FROZEN_TAG} is not in this checkout (CI: actions/checkout "
             "with fetch-depth: 0 and fetch-tags: true)"
         )
     real = frozen.tag_hashes()

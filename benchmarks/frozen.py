@@ -1,7 +1,8 @@
 """The frozen model stack: manifest, and the guard that held-out runs must pass.
 
-The current freeze is ``FROZEN_TAG`` (``models-frozen-v2``, Phase 6c; ``models-frozen-v1`` of Phase 6 is
-kept and documented in ``docs/benchmarks/frozen-manifest-v1.md``). A held-out run (val-v5 through ``python -m benchmarks
+The current freeze is ``FROZEN_TAG`` (``models-frozen-v3``, Phase 7d; the tag name lives ONLY here: the guard and
+every held-out entry point use this constant). ``models-frozen-v2`` (Phase 6c) and ``models-frozen-v1`` (Phase 6) are
+kept and documented in ``docs/benchmarks/frozen-manifest-v2.md`` / ``-v1.md``. A held-out run (val-v5 through ``python -m benchmarks
 full --splits val-v5``, its ``evaluate --val``, ``evaluate --final`` for test-v2, the Phase 8a
 real-notebook evaluation) calls ``require_frozen()``. Since Phase 6b the check is MANIFEST-BASED:
 it compares the SHA-256 (LF line endings) of every file that defines the predictions
@@ -27,8 +28,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-FROZEN_TAG = "models-frozen-v2"
-PREVIOUS_TAG = "models-frozen-v1"
+FROZEN_TAG = "models-frozen-v3"
+PREVIOUS_TAG = "models-frozen-v2"
 ROOT = Path(__file__).resolve().parent.parent
 
 # The files that define the predictions (shell-style patterns relative to the repository root).
@@ -53,6 +54,7 @@ FROZEN_PATTERNS: tuple[tuple[str, str], ...] = (
     ("src/nexus/calibration/*.json", "calibration artifact and reference machine profile"),
     ("src/nexus/suggestions/engine.py", "suggestion filter thresholds"),
     ("src/nexus/cellpeak.py", "cell-level peak model (Phase 6c)"),
+    ("src/nexus/cellframes.py", "frames created earlier in the cell: shape propagation / shadowing (Phase 7b)"),
     # added 2026-11-21 (Phase 6b), after the tag: the measurement instrument and its validation
     ("src/nexus/measure.py", "the measurement instrument (peak RAM, time) of every held-out actual"),
     ("tests/test_measure_validation.py", "the instrument's validation (known allocations within 10%)"),
@@ -66,8 +68,10 @@ OUTSIDE = (
     "benchmarks/ (harness, evaluation scripts, split.json, which has its own digest checks)",
     "tests/ except tests/test_measure_validation.py, .github/ (CI), .gitignore, pyproject.toml",
     "src/nexus/calfit.py (refits an artifact; the shipped artifact itself is frozen)",
-    "UX modules: extension.py, session.py, magics.py, render.py, suggestions/ rules and formatting",
-    "the Phase 8a real-notebook harness (not written yet)",
+    "UX modules: extension.py, session.py, magics.py, render.py (fallback wording), suggestions/ rules and formatting",
+    "the real-notebook harness (benchmarks/realworld/), the multicell runner and splits (benchmarks/multicell/)",
+    "benchmarks/childproc.py, benchmarks/powerguard.py (--allow-battery: dev-only, refused for held-out runs), "
+    "benchmarks/repredict.py, benchmarks/risk_eval.py (the R1-R3 replay of evaluate --val)",
 )
 
 
@@ -96,7 +100,9 @@ def _matches(path: str) -> bool:
     return any(fnmatch.fnmatchcase(path, pat) for pat, _ in FROZEN_PATTERNS)
 
 
-def frozen_files(tag: str = FROZEN_TAG) -> list[str]:
+def frozen_files(
+    tag: str = FROZEN_TAG,
+) -> list[str]:  # ``tag``: any git ref (a tag, or HEAD before tagging)
     """The frozen files as they exist in the tag's tree."""
     tree = _git("ls-tree", "-r", "--name-only", tag).splitlines()
     return sorted(p for p in tree if _matches(p))
@@ -148,7 +154,39 @@ def check_state(state: dict[str, Any]) -> dict[str, Any]:
 
 
 # -- manifest ----------------------------------------------------------------------------------
-def manifest_lines() -> list[str]:  # noqa: C901
+HISTORY = (
+    ("models-frozen-v1", "Phase 6", "time calibration, ranges, the measurement instrument (manifest: "
+     "`docs/benchmarks/frozen-manifest-v1.md`)"),
+    ("models-frozen-v2", "Phase 6c", "cell-level peak model, read_csv Tier 1 with sep / header, copy and fillna models, "
+     "Tier 1 as the extension default (manifest: `docs/benchmarks/frozen-manifest-v2.md`)"),
+    ("models-frozen-v3", "Phase 7d", "read_csv reader paths and arguments, merge output term, consolidation check, "
+     "conservative rebinding release, frames created in the cell, apply(np.<ufunc>), set_index, cell-seeded sampler, "
+     "risk v2 (C3) and named UNKNOWN (`docs/benchmarks/phase7b/README.md`)"),
+)  # fmt: skip
+LIMITATIONS = (
+    "**Determinism NOT achieved on contended machines**: the deterministic statistics gate failed its pre-registered rule "
+    "(the deadline fired after admission on 12 of 29 2-core inputs, 41% > 10%) and was **reverted** to v2's adaptive gate; "
+    "final code: 12 of 28 inputs flip Tier 1 / Tier 0 on 2 contended CPUs, 0 of 28 on 16 CPUs; same-tier spreads remain "
+    "(drop_duplicates strings 10M ~22%, groupby 10M 0.05%).",
+    "**Item (2) dev criterion FAILED**: 2 of 66 v1 multi-statement cells above the v3 high (copy_fillna/mixed, 88 vs 65 and "
+    "176 vs 130 MiB; an uncovered fillna on text columns); risk UNKNOWN or HIGH_RISK, never OK.",
+    "**Uncovered**: value_counts, explode, apply with Python functions, set_index with text / several keys / append, "
+    "fillna on text columns, parse_dates, text columns on the parallel read_csv path (v2 term), operations on merge / "
+    "groupby / drop_duplicates results made in the cell; no column statistics carried between statements.",
+    "**CPU-dependent read_csv path**: parallel (file >= 5 MiB and pandas' worker count > 1; affinity / cgroup on Linux "
+    "only) or serial; the same call can get another estimate on another machine.",
+    "**One laptop, synthetic data**: every probe and dev figure comes from one Windows 11 laptop and synthetic frames "
+    "(plus two dev notebooks); Linux only through the planned val-v5 VM run.",
+    "**Supported environment**: pandas >= 3.1 (Python >= 3.11) on Windows and Linux. Models and the instrument's "
+    "validation assume pandas 3 copy-on-write (Python 3.10 resolves pandas 2.x: unsupported, report-only in CI); on "
+    "macOS the instrument cannot isolate an operation's peak (report-only in CI). Derived from pandas 3.1.1 only.",
+    "**R2 is a dev selection**: risk v2 (C3) was selected on dev by a rule written beforehand (dev R2 pooled 17.1%, merge "
+    "9.4%, read_csv 39.0%); it is a claim only if val-v5 confirms it.",
+)  # fmt: skip
+
+
+def manifest_lines(ref: str = FROZEN_TAG) -> list[str]:  # noqa: C901
+    """The manifest of ``FROZEN_TAG``; frozen-file hashes read from ``ref`` (HEAD before the tag exists)."""
     import numpy as np
     import pandas as pd
 
@@ -158,9 +196,8 @@ def manifest_lines() -> list[str]:  # noqa: C901
     from nexus.suggestions import engine
 
     art = json.loads((ROOT / "src/nexus/calibration/calibration-v1.json").read_text())
-    hashes = tag_hashes(FROZEN_TAG)
+    hashes = tag_hashes(ref)
     previous = tag_hashes(PREVIOUS_TAG)
-    state = frozen_state(FROZEN_TAG)
     roles = {
         p: next(r for pat, r in FROZEN_PATTERNS if fnmatch.fnmatchcase(p, pat)) for p in hashes
     }
@@ -171,31 +208,23 @@ def manifest_lines() -> list[str]:  # noqa: C901
     lines = [
         f"# Frozen model stack `{FROZEN_TAG}`",
         "",
-        f"Tag `{FROZEN_TAG}` = commit `{state.get('tag_commit')}` (Phase 6c). Written by "
-        "`python -m benchmarks.frozen manifest`. Held-out runs (val-v5 on the Linux VM, the Phase 6c multi-statement "
-        "held-out cells, test-v2, a future fresh real-notebook test) call `benchmarks.frozen.require_frozen()`, which "
-        "compares the SHA-256 (LF line endings) of every frozen file below with the tag's own copy and **aborts if any "
-        "differs, is missing, or a new file matches a frozen pattern**. **Any change to a frozen file after v2 "
-        "invalidates the held-out status of those runs** (a new freeze, tag and held-out group would be needed).",
-        "",
-        f"At the time this manifest was written `python -m benchmarks.frozen check` reported "
-        f"{len(state['problems'])} problems against `{FROZEN_TAG}`.",
+        f"Written by `python -m benchmarks.frozen manifest` from `{ref}` (commit `{_git('rev-parse', ref)[:12]}`); the "
+        f"annotated tag `{FROZEN_TAG}` is created on the commit that adds this file, whose frozen files are byte-identical "
+        "to these. Held-out runs (multicell v2 / v3, val-v5, test-v2, Phase 8b) call `benchmarks.frozen.require_frozen()`, "
+        "which compares the SHA-256 (LF line endings) of every frozen file with the tag's own copy and **aborts if any "
+        f"differs, is missing, or a new file matches a frozen pattern**. **Any change to a frozen file after `{FROZEN_TAG}` "
+        "invalidates the held-out status of those runs** (a new freeze, tag and held-out groups would be needed).",
         "",
         "## History",
         "",
-        f"- `{PREVIOUS_TAG}` (Phase 6, commit `{_git('rev-list', '-n', '1', PREVIOUS_TAG)[:12]}`): its manifest is kept "
-        "unchanged in `docs/benchmarks/frozen-manifest-v1.md` (incl. the Phase 6b scope narrowing to the "
-        "prediction-defining files and the addition of the measurement instrument).",
-        f"- `{FROZEN_TAG}` (Phase 6c): the cell-level peak model, `read_csv` Tier 1 with a one-character separator / "
-        "header, the `copy` and `fillna` models, Tier 1 as the extension default "
-        "(`docs/benchmarks/phase6c-preregistration.md`). v1 is not deleted; the guard checks against v2.",
+        *[f"- `{t}` ({ph}): {what}" for t, ph, what in HISTORY],
         "",
         f"## Frozen files: {len(changed)} changed, {len(added)} added, {len(unchanged)} unchanged since `{PREVIOUS_TAG}`"
         + (f", {len(removed)} removed" if removed else ""),
         "",
-        "| file | status | role | sha256 v1 | sha256 v2 |",
+        f"| file | status | role | sha256 {PREVIOUS_TAG} | sha256 {FROZEN_TAG} |",
         "|---|---|---|---|---|",
-    ]
+    ]  # fmt: skip
     for group, status in ((changed, "changed"), (added, "added"), (unchanged, "unchanged")):
         for path in group:
             lines.append(
@@ -205,11 +234,15 @@ def manifest_lines() -> list[str]:  # noqa: C901
         lines.append(f"| `{path}` | removed | - | `{previous[path][:16]}` | - |")
     lines += [
         "",
-        "Full v2 hashes are recomputed by the guard from the tag on every check (the table shows the first 16 hex digits).",
+        "The table shows the first 16 hex digits; the guard recomputes full hashes from the tag on every check.",
         "",
         "## Deliberately outside the freeze",
         "",
         *[f"- {o}" for o in OUTSIDE],
+        "",
+        f"## Known limitations of `{FROZEN_TAG}`",
+        "",
+        *[f"- {x}" for x in LIMITATIONS],
         "",
         "## Versions",
         "",
@@ -222,18 +255,18 @@ def manifest_lines() -> list[str]:  # noqa: C901
         "",
         "## Policy and thresholds in force",
         "",
-        "- RAM: range policy B (Tier 1 low / expected, Tier 0 high; `nexus/ranges.py`), guard (`nexus/guard.py`);"
-        " cell level: `nexus/cellpeak.py` (retained outputs + current peak; v1 aggregation as the fallback)",
+        "- RAM: range policy B (Tier 1 low / expected, Tier 0 high; `nexus/ranges.py`, unchanged), guard (`nexus/guard.py`,"
+        " unchanged); cell level: `nexus/cellpeak.py` (retained outputs + current peak, conservative rebinding release)",
         f"- time: calibration artifact, nominal coverage {1 - calfit.ALPHA:.0%} per operation (>= "
         f"{calfit.MIN_CONFIGURATIONS} configurations), generic band {1 - calfit.GENERIC_ALPHA:.0%}; widen x"
         f"{timecal.UNCALIBRATED_MACHINE_WIDEN:g} uncalibrated machine, x{timecal.UNVALIDATED_PANDAS_WIDEN:g} "
         f"unvalidated pandas, x{timecal.NO_ARTIFACT_WIDEN:g} no artifact",
-        f"- risk: WARN margin {risk.WARN_MARGIN}, confidence floor {risk.CONFIDENCE_FLOOR} (unchanged; the Phase 5 R2 "
-        "failure is NOT addressed); time shown as buckets",
+        f"- risk: WARN margin {risk.WARN_MARGIN}, confidence floor {risk.CONFIDENCE_FLOOR} (unchanged); risk v2: WARN on the "
+        f"own Tier 1 high for {', '.join(sorted(risk.OWN_TIER1_HIGH_FOR_WARN))} when statistics ran; time shown as buckets",
         f"- suggestions: saving >= {engine.MIN_SAVING_FRAC:.0%} and >= {engine.MIN_SAVING_BYTES >> 20} MiB, "
         "`select_columns` off by default",
         f"- extension default: Tier {DEFAULT_TIER} (Tier 2 dry runs opt-in with `%nexus tier 2`)",
-    ]
+    ]  # fmt: skip
     return lines
 
 
@@ -243,12 +276,15 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("check")
     m = sub.add_parser("manifest")
     m.add_argument("--out", type=Path, required=True)
+    m.add_argument(
+        "--ref", default=FROZEN_TAG, help="git ref of the frozen files (HEAD before the tag exists)"
+    )
     args = p.parse_args(argv)
     if args.cmd == "check":
         state = frozen_state()
         print(json.dumps(state, indent=1))
         sys.exit(1 if state["problems"] else 0)
-    args.out.write_text("\n".join(manifest_lines()) + "\n", encoding="utf-8")
+    args.out.write_text("\n".join(manifest_lines(args.ref)) + "\n", encoding="utf-8")
     print(f"wrote {args.out}")
 
 
