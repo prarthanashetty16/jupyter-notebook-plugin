@@ -1772,3 +1772,39 @@ Details: `docs/benchmarks/phase7a/README.md`; probes and raw outputs `docs/bench
 Phase 7b on dev: the change list in `docs/benchmarks/phase7a/README.md`, each derived, probed and regression-checked. Then
 freeze `models-frozen-v3`, and run each held-out set once (multicell v2 here, val-v5 on the VM, Phase 8b after its own
 pre-registration).
+
+## Phase 7b: v3 scope implemented and evaluated on DEV (freeze prepared, NOT tagged)
+
+**Status: implemented and evaluated on dev; `models-frozen-v3` NOT tagged (owner reads the dev results first). test-v2,
+val-v5 and the v2 multi-statement held-out part sealed and unread.** Details, commits, probes, dev tables, freeze steps
+and held-out commands: `docs/benchmarks/phase7b/README.md`. The later dev-only steps ran on battery by the owner's decision
+(`--allow-battery`, recorded); their timing figures are battery-throttled and not usable for calibration or timing claims.
+
+- [x] Harness: child timeout + faulthandler, a crash is a harness event (`benchmarks/childproc.py`); the Phase 7a native
+  crash did not reproduce (0 / 50).
+- [x] (1) read_csv reader-path model (parallel `F + 2V` 1.002-1.005, dtype dict 1.008, serial range 0.98-1.03, unknown
+  path: range), Tier 1 for usecols / nrows / numeric dtype / na_values; the path equals pandas' on 48 / 48 cases (CI
+  mechanism test). Dev: read_csv Tier 1 bias 1.22 -> 1.09, median error 22% -> 13%.
+- [x] (2) non-load bias: merge output term (0.999-1.003), consolidation check (copy 1.000), conservative rebinding release
+  (1.002; aliasing tests). Multi-statement dev cells: bias 1.15 -> 1.00, median error 14.6% -> 1.1%, coverage 64% -> 89%.
+  **Dev criterion "above_high still 0 cells": FAILED** (2 of 66: copy_fillna/mixed, an uncovered text fillna no longer
+  masked by v2's copy over-prediction). Owner's decision: freeze with it reported as FAILED.
+- [x] (3) **Determinism: NOT achieved.** The deterministic gate failed its pre-registered rule (deadline fired after
+  admission on 41% of 2-core inputs > 10%) and was reverted; the cell-seeded sampler stays. Final code: 16 CPUs 0 / 28
+  points flip; 2 contended CPUs 12 / 28 flip; two same-tier spreads remain (findings).
+- [x] (4) Risk v2 (C3) + named UNKNOWN. Dev: R1 100% (1119/1119), R2 pooled 25.0% -> 17.1%, merge 58.8% -> 9.4%, read_csv
+  78.0% -> 39.0% (**R2 passes on dev**), R3 98.7%, R4 0 UNKNOWN pairs.
+- [x] (5) Frames created in the cell (shapes / dtypes, Tier 0, UNKNOWN when the shape is unknown); `apply(np.<ufunc>)`
+  (1.000-1.001); `set_index` second attempt passed (zero-copy). **Not adopted:** Series.explode (1.27-1.61), value_counts
+  second attempt (0.34, 0.55). Static coverage on the Amazon notebooks 31.7% -> 45.9% (an upper bound that overstates v3:
+  name matching counts every `apply` / `set_index`).
+- [x] Dev-only `--allow-battery` (`benchmarks/powerguard.py`), refused for held-out runs and calibration.
+- [ ] Freeze `models-frozen-v3` (guard switch, manifest, fresh-clone check, tag): after the owner has read the dev results.
+
+### Needs a decision
+1. Tag v3 (after reading `docs/benchmarks/phase7b/README.md`).
+2. Enlarge the v2 multi-statement held-out group (a new split version before the tag), or keep 15 configurations.
+3. `evaluate --val` must replay R1-R3 before the val-v5 run (tooling outside the freeze).
+4. `nexus-calibrate-machine` keeps its own Phase 6 `--allow-battery` (in a frozen file, unchanged); remove it in a later freeze?
+5. The Phase 8b coverage measure: run-time "has an estimate" or a static check including the arguments (name matching
+   overstates).

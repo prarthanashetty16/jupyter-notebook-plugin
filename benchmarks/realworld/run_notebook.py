@@ -76,7 +76,9 @@ class RunSummary:
     stop_reason: str = ""
     frozen: dict[str, Any] = field(default_factory=dict)
     power: str = ""
-    battery: dict[str, Any] = field(default_factory=dict)  # raw readings of a user-accepted battery dev run
+    battery: dict[str, Any] = field(
+        default_factory=dict
+    )  # raw readings of a user-accepted battery dev run
     profile_id: str | None = None
     cap_bytes: int = 0
     profile_calibrated: bool | None = None
