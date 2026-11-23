@@ -361,6 +361,8 @@ directory, number of test points, reason, command). Entries are appended below. 
 - 2026-11-18 10:38:26 | git `b5997d1` | val-v4 | results `benchmarks/results/val-v4` | 119 val-v4 points | reason: 4b.2 held-out check of the repaired Tier 1 | `python -m benchmarks evaluate benchmarks/results/val-v4 --val --reason 4b.2 held-out check of the repaired Tier 1`
 - 2026-11-18 | RECLASSIFICATION (not an `evaluate` access) | val-v4 -> dev | val-v4 failed its pre-registered criterion (Tier 1 above_high 5.4% per point vs 3%) and its report was read by the developer and a reviewer. Split version 5 merges its 40 cases into dev (list kept as `provenance["val-v4"]`) and has NO held-out validation group. Results copied to `benchmarks/results/dev-v5/` with `maintenance migrate-val4`. test-v2 stays sealed and unrun.
 - 2026-11-18 | CREATION (not an access) | val-v5 | split version 6 freezes `val-v5` (47 configurations, seeds >= 501, no generator value shared with dev, the former val-v3 / val-v4 or test-v2; sizes up to 30M rows, np.sort to 400M, matmul to 16000) as the held-out validation group for a Linux machine with >= 32 GB RAM. NOT run and no value read. Created in Phase 4d after the controller rules and success criteria were pre-registered (docs/benchmarks/phase4d-preregistration.md).
+- 2026-11-23 12:57 / 13:22 | multicell held-out groups v2 (15 configurations, 30 cells) and v3 (32 configurations, 64 cells) | `multicell.run run/evaluate --version 2|3 --heldout` once each on `models-frozen-v3` (6e18e33), Windows laptop, mains | reasons: Phase 7 held-out check of models-frozen-v3 (group v2 / group v3) | detail log: `docs/benchmarks/phase7-heldout-access-log.md`.
+- 2026-11-23 | RECLASSIFICATION (not an access) | multicell groups v2 and v3 -> dev | both reports were read; both groups are CONSUMED and are dev data for v4 (`split_v2.json` / `split_v3.json` are not edited; a v4 held-out check needs a new group). val-v5 and test-v2 stay sealed and unrun.
 - 2026-11-22 15:31:26 / 15:33:09 | Phase 6c multi-statement HELD-OUT part (11 configurations, 22 cells) | `multicell.run run --heldout` once on `models-frozen-v2` (head `1ec7167`, reference profile `987c455be3cc`, mains), then `evaluate --heldout` | reason: Phase 6c held-out check of the cell model | detail log: `docs/benchmarks/phase6c-heldout-access-log.md`.
 - 2026-11-22 15:39:13 | same results, `evaluate --heldout` again | reason: formatting fix only, no re-measurement (the `actual` and `v1_bias` columns were printed as percentages; no figure changed). Same time: the stored rows were read and the Tier 1 predictions re-run (prediction only, no measurement) for the information-only follow-up `docs/benchmarks/phase6c/heldout_followup.md`.
 - 2026-11-22 | RECLASSIFICATION (not an access) | multicell held-out part -> dev | its report was read; the 22 cells are dev data from now on (`split_v1.json` is not edited; a future held-out check of the cell model needs a new group). test-v2 and val-v5 stay sealed and unrun.
@@ -1925,3 +1927,45 @@ val-v5, test-v2 and the multicell v2 / v3 held-out groups are sealed and unread.
    field in `run_notebook` first (outside the freeze).
 
 Push: `git push origin main models-frozen-v3` (the local branch is `main`).
+
+## v3 Windows held-out verdict: FAILED
+
+**`models-frozen-v3` FAILED its Windows held-out check** (Phase 7 pre-registration section 4: RAM above_high > 3% per
+cell and per configuration on a multi-statement held-out group). Both groups were run and evaluated once on the v3 tag
+(`6e18e33`; freeze guard 0 problems) on the Windows laptop on mains, on 2026-11-23. Reports:
+`docs/benchmarks/phase7e/multicell_v2_heldout.md` and `multicell_v3_heldout.md`; access log
+`docs/benchmarks/phase7-heldout-access-log.md`. Nothing was re-run or changed after reading them. **No model code
+changes in response: v3 is not repaired on these data.**
+
+| group | cells run (measured) | configurations | median error | p90 error | coverage | above high: cells | above high: configurations | verdict |
+|---|---|---|---|---|---|---|---|---|
+| v2 (Phase 7a design) | 30 (28) | 14 | 15.5% | 92.9% | 71.4% | **21.4%** (6 / 28; 95% upper bound 38.0%) | **3 / 14** (21.4%; upper bound 46.6%) | **FAILED** |
+| v3 (enlarged, amendment 1) | 64 (61) | 31 | 7.6% | 69.4% | 72.1% | **14.8%** (9 / 61; 95% upper bound 24.3%) | **5 / 31** (16.1%; upper bound 31.0%) | **FAILED** |
+
+* The bar is <= 3% of cells and <= 3% of configurations. The reports print the runner's older 5% configuration bar;
+  both groups fail under either bar. Bias 1.00 in both groups: the expected values are centred, but the upper bound is
+  exceeded far too often.
+* **Uncovered-operation safety rule (amendment 1): MET in both groups.** 12 (v2) and 8 (v3) cells contain an uncovered
+  operation; none was OK at a simulated headroom its actual exceeded.
+* **Where the misses are (dev information for v4; no change made):**
+  * **v3 above high:**
+    * `text_fillna_cols` (4 / 4, uncovered `fillna` on text columns; bias 0.65);
+    * `copy_then_fillna` (4 / 4, a copy followed by a `fillna` that is uncovered on text frames; bias 0.75);
+    * `set_index_ops` (1 of 3 measured; the zero-copy model predicts 0 MiB).
+  * **v3 over-predicted** (below low, not a safety failure):
+    * `chain_v3` (bias 1.73: the chain's temporaries are counted as alive);
+    * `rebinding_alias` (1.25: the alias keeps the conservative no-release rule, which over-counts here).
+  * **v2 above high:**
+    * `apply_forms` (2 / 2, an uncovered `apply` with a Python function; bias 0.07);
+    * `explode_groupby` (2 / 2, uncovered `explode`; 0.22);
+    * `set_index_copy` (2 / 2; 0.00).
+
+    Its `text_fillna` cells were censored or killed (not scored).
+  * **Common thread:** a cell whose range covers only its ESTIMATED operations exceeds its high when an uncovered
+    operation dominates the peak (the risk class is then UNKNOWN, never OK; the displayed range is not a bound). Add to
+    that the `set_index` zero-copy model on these frames.
+* **Consumed:** multicell groups v2 and v3 are reclassified as **dev data for v4** (Test-split access log). A v4
+  held-out check needs new groups.
+* **Still sealed and unrun:** val-v5 (Linux VM) and test-v2. The Phase 7 verdict for val-v5 is computed by
+  `evaluate --val` (commit `12e37c0`). A v3 failure on Windows is already final for v3; val-v5 remains informative for
+  Linux and for the risk criteria R1-R3.
