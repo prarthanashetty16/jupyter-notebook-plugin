@@ -463,6 +463,8 @@ def test_validation_report_requires_a_reason_and_logs_every_use(results, tmp_pat
     text = report.read_text(encoding="utf-8")
     assert "## Val-v5 split" in text and VAL_CASE in text and TEST_CASE not in text
     assert "Risk engine on val-v5 (pre-registered R1-R3)" in text  # Phase 7c: the R1-R3 replay
+    assert "LEGACY: Phase 4d controller criteria S1-S5" in text  # Phase 7d: S1-S5 labelled legacy
+    assert "Phase 7 acceptance verdict" in text  # the authoritative Phase 7 section
     log = progress.read_text(encoding="utf-8")
     assert log.count("- 20") == 1 and "| val-v5 |" in log and "first look" in log
 

@@ -779,14 +779,23 @@ def write_validation_report(
                 "## Tier 0 vs Tier 1 on dev\n\n**Omitted:** no development results here.\n"
             )
         tier1_compare.write(val, results_dir / "tier1_val", "Tier 0 vs Tier 1 on val-v5", "val-v5")
-        from benchmarks import controller_eval  # the pre-registered success criteria S1-S5
+        from benchmarks import controller_eval  # the Phase 4d success criteria S1-S5 (LEGACY)
 
+        lines.append(
+            "\n## LEGACY: Phase 4d controller criteria S1-S5 (not the Phase 7 acceptance criteria)\n\n"
+            "Kept for continuity with the Phase 4d pre-registration (its S1 allows 5% of configurations "
+            "above high). The authoritative verdict for `models-frozen-v3` is the Phase 7 section at the "
+            "end.\n"
+        )
         lines.append(controller_eval.validation_section(val))
-        from benchmarks import (
-            risk_eval,
-        )  # the pre-registered R1-R3 (Phase 7 pre-registration, section 2)
+        from benchmarks import risk_eval  # R1-R3 (Phase 7 pre-registration, section 2)
 
         lines.append(risk_eval.section(val, "Risk engine on val-v5 (pre-registered R1-R3)"))
+        from benchmarks import phase7_verdict  # the Phase 7 acceptance verdict (authoritative)
+
+        comp = controller_eval.completion(set(val["point_id"]))
+        planned = sum(n for _, n in comp.values()) or None
+        lines.append(phase7_verdict.section(val, planned=planned))
     lines.append("\n## Measurement caveats\n")
     lines.append(CAVEATS)
     report = results_dir / "validation_report.md"

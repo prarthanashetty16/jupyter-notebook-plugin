@@ -1,9 +1,11 @@
 # Running val-v5 on a Linux VM (>= 32 GB RAM) — commands only, NOT run
 
 `val-v5` is the held-out validation group (split version 6, frozen with a digest, 47 configurations, 141 grid points,
-~175 GiB of cached inputs). The controller's pre-registered rules and success criteria are in
-`docs/benchmarks/phase4d-preregistration.md`; they must not change between now and the run. Read the report ONCE
-(`evaluate --val` logs the access in `docs/PROGRESS.md`); afterwards val-v5 is dev data.
+~175 GiB of cached inputs). It is the held-out Linux check of **`models-frozen-v3`** (Mode B of the Phase 7
+pre-registration). **The acceptance criteria are those of `docs/benchmarks/phase7-preregistration.md`, sections 2 and 4**
+(see "Acceptance criteria" below); the Phase 4d controller criteria S1-S5 (`docs/benchmarks/phase4d-preregistration.md`)
+are LEGACY: the report still prints them, but they are not the v3 acceptance verdict. Nothing may change between now
+and the run. Read the report ONCE (`evaluate --val` logs the access in `docs/PROGRESS.md`); afterwards val-v5 is dev data.
 
 ## Machine
 
@@ -18,7 +20,9 @@ matmul dimensions to 16000; the per-case size lists in the suite bound the rest)
 ```bash
 sudo apt-get update && sudo apt-get install -y git python3-venv python3-dev build-essential
 git clone <your NEXUS repository URL> nexus && cd nexus
-git checkout models-frozen-v3                                      # the frozen model stack (Phase 7d); record: git rev-parse HEAD
+git checkout main                                                  # main at/after the commit adding benchmarks/phase7_verdict.py;
+                                                                   # its 46 frozen files are byte-identical to models-frozen-v3
+git rev-parse HEAD; git rev-parse models-frozen-v3^{}                # record both (the tag is 6e18e33)
 python -m benchmarks.frozen check                                   # must print no problems (exit 0)
 python3 -m venv .venv && source .venv/bin/activate
 pip install --upgrade pip
@@ -27,6 +31,8 @@ python -c "import pandas, numpy, psutil; print(pandas.__version__, numpy.__versi
 sudo swapoff -a; free -g; df -h .                                   # swap off, RAM and disk as expected
 python -m pytest tests -q                                           # ~1 min; NOT while the benchmark runs
 ```
+
+**Which checkout (Phase 7d).** Run from `main`, not from the bare tag: the Phase 7 acceptance verdict (`benchmarks/phase7_verdict.py`), the R1-R3 replay and the CI fixes were added after the tag, outside the freeze. The freeze guard below proves the model is v3: it compares the 46 frozen files with `models-frozen-v3` and must report 0 problems.
 
 **Freeze guard (Phase 6; v3 since Phase 7d).** `full --splits val-v5` and `evaluate --val` abort unless the tracked files outside `docs/` are
 identical to the tag `models-frozen-v3` (`benchmarks/frozen.py`); the tag commit is recorded in `meta.json` and in the
@@ -60,7 +66,8 @@ The runner records the profile in `benchmarks/results/val-v5/meta.json` (`machin
 ```bash
 CAP=24                                                              # GiB; 24 on 32 GB, 48 on 64 GB
 python -m benchmarks plan --suite full --splits val-v5 --mem-limit-gb $CAP --max-size 400000000
-#   expected at 24 GiB: 141 points, 140 would run, 1 skipped (the 28 GiB merge at 30M rows)
+#   historical estimate (computed with the v1 models, Phase 4d): at 24 GiB, 141 points, 140 would run, 1 skipped
+#   (the 28 GiB merge at 30M rows). NOT a pass criterion: the v3 planner may differ; record the counts it prints.
 
 nohup python -m benchmarks full --splits val-v5 --tiers 0,1,2 --out benchmarks/results/val-v5 \
       --mem-limit-gb $CAP --max-size 400000000 --require-calibrated --no-report > val-v5.log 2>&1 &
@@ -72,10 +79,10 @@ only on the stored estimates, the free RAM recorded at each point's start and th
 predicts first and skips points whose baseline + `high` cannot fit the cap.
 
 ```bash
-python -m benchmarks evaluate benchmarks/results/val-v5 --val \
-      --reason "4d held-out check of the controller (success criteria S1-S5)"
+python -m benchmarks evaluate benchmarks/results/val-v5 --val --reason "held-out check of models-frozen-v3"
 # -> benchmarks/results/val-v5/validation_report.md : Tier 0 / Tier 1 report, the Tier 0 vs Tier 1 comparison,
-#    and the "Controller" section with the pass / fail / inconclusive verdict for S1-S5
+#    the LEGACY Phase 4d "Controller" section (S1-S5), the risk-engine replay (R1-R3) and, at the end, the
+#    authoritative "Phase 7 acceptance verdict" section (benchmarks/phase7_verdict.py)
 ```
 
 ## One-hour pilot BEFORE the full run (recommended)
@@ -114,9 +121,37 @@ sampled and give "no sample"). **Cost class: tens of dollars** at on-demand pric
 (the run resumes). A cheaper partial run, `--max-size 10000000`, takes about a third of the time but does NOT reach the
 multi-GiB regime that the criteria are about (S3 would be inconclusive).
 
-## What the report will say, and what to do with it
+## Acceptance criteria (Phase 7 pre-registration, sections 2 and 4: authoritative)
 
-Success is judged against S1-S5 as pre-registered (RAM above_high <= 3% per point and <= 5% per configuration; time
+The report's last section, "Phase 7 acceptance verdict", computes these from the val-v5 results; each bar is quoted with
+its 95% bound:
+
+| criterion | bar | bound quoted |
+|---|---|---|
+| RAM above_high per POINT (Tier 1, policy B as displayed) | <= 3% | one-sided 95% Clopper-Pearson upper bound |
+| RAM above_high per CONFIGURATION (a case with any point above high) | <= 3% | the same |
+| time within one bucket (order-of-magnitude buckets) | >= 95% | Wilson 95% lower bound |
+| R1 recall (risk replay) | >= 98% pooled and at every limit with >= 20 positives | - |
+| R2 false alarms (risk replay) | pooled <= 30% and per operation <= 50%; a failure is reported as a REPEAT failure | - |
+| R3 HIGH_RISK precision (risk replay) | >= 75% (no claim with < 20 HIGH_RISK points) | - |
+
+* Fewer than 30 valid points (configurations: fewer than 10) make a criterion **INCONCLUSIVE**, never a pass.
+* **Whole-v3 failure** ("`models-frozen-v3` FAILED its held-out check"): RAM per point or per configuration, time, or
+  R1 FAILED. **Item failure** (the claim is withdrawn): R2 or R3.
+* The pre-registration does NOT specify a tier for the time criterion. The verdict row uses Tier 1 as a PROVISIONAL
+  INTERPRETATION (the extension default and the tier the RAM criterion names), not a pre-registered requirement. Tier 0
+  time is reported in its own row with the same statistics and no verdict, and the report says whether the two tiers
+  agree on the 95% bar.
+* The **uncovered-operation rule** (amendment 1) does NOT apply to val-v5: its points are single operations. It
+  belongs to the multi-statement groups.
+* An incomplete run (fewer points with results than planned) is labelled INCOMPLETE in the verdict, which then covers
+  only the measured points.
+* Use the reason string `held-out check of models-frozen-v3`.
+
+## LEGACY: the Phase 4d criteria S1-S5 (still printed, NOT the v3 acceptance verdict)
+
+
+Phase 4d judged the controller against S1-S5 (RAM above_high <= 3% per point and <= 5% per configuration; time
 bucket within one >= 95%; overhead <= 50% / 100% of the real run time for trigger-(b) escalations; no harm; safety). With
 fewer than 20 points escalated by trigger (a) or (b) the overhead and escalated-time claims are INCONCLUSIVE, not passed.
 A failed criterion is reported as failed; do not re-tune on val-v5 and re-claim: it becomes dev data and a new group is

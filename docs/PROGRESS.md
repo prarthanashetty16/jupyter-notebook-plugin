@@ -1905,6 +1905,15 @@ val-v5, test-v2 and the multicell v2 / v3 held-out groups are sealed and unread.
 
    (`evaluate --val` includes the pre-registered R1-R3 replay.)
 
+   **Correction (Phase 7d, before any val-v5 run):** run val-v5 from `main` (at or after the commit that adds
+   `benchmarks/phase7_verdict.py`), not from the bare tag. The guard must report 0 problems, i.e. the 46 frozen files
+   are byte-identical to `models-frozen-v3`. The authoritative verdict is the report's last section, "Phase 7 acceptance
+   verdict" (Phase 7 pre-registration, sections 2 and 4: RAM above_high <= 3% per point AND per configuration, time
+   within-one >= 95%, R1-R3; < 30 points INCONCLUSIVE). The S1-S5 section is the LEGACY Phase 4d verdict (5% of
+   configurations) and is not the v3 acceptance verdict. The uncovered-operation rule does not apply to val-v5 single
+   operations. The runbook's plan counts are historical estimates, not pass criteria. Runbook:
+   `docs/benchmarks/val-v5-linux-runbook.md`.
+
 3. Phase 8b, only after `docs/benchmarks/phase8b-preregistration.md` is filled in and committed (no notebook opened before):
 
        git checkout models-frozen-v3 && python -m benchmarks.frozen check
