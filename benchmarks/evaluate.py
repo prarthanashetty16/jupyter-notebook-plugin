@@ -782,6 +782,11 @@ def write_validation_report(
         from benchmarks import controller_eval  # the pre-registered success criteria S1-S5
 
         lines.append(controller_eval.validation_section(val))
+        from benchmarks import (
+            risk_eval,
+        )  # the pre-registered R1-R3 (Phase 7 pre-registration, section 2)
+
+        lines.append(risk_eval.section(val, "Risk engine on val-v5 (pre-registered R1-R3)"))
     lines.append("\n## Measurement caveats\n")
     lines.append(CAVEATS)
     report = results_dir / "validation_report.md"

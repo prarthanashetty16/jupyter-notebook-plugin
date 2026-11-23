@@ -44,3 +44,15 @@ def test_replay_counts_misses_and_never_counts_unknown_as_alert():
     assert by["c"].risk == "UNKNOWN" and not by["c"].alert and not by["c"].positive
     res = re_.evaluate(df)
     assert set(res["missed"]["point_id"]) == {"b"}
+
+
+def test_section_reports_r1_r2_per_operation_and_r3():
+    mb = 2**20
+    rows = [
+        _row(f"p{i}", "merge" if i % 2 else "groupby", (100 + i) * mb, 50 + 10 * i)
+        for i in range(40)
+    ]
+    text = re_.section(pd.DataFrame(rows), "Risk engine on val-v5 (pre-registered R1-R3)")
+    assert text.startswith("## Risk engine on val-v5")
+    for needle in ("R1 recall", "R2 false alarms", "R3 HIGH_RISK precision", "### Per operation"):
+        assert needle in text, needle

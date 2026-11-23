@@ -233,6 +233,25 @@ def report(res: dict[str, object], source: str, policy_note: str = "") -> str:
     return "\n".join(lines) + "\n"
 
 
+def section(df: pd.DataFrame, title: str) -> str:
+    """The pre-registered R1-R3 replay of ``df`` (stored predictions + actuals) as a report section: recall
+    (pooled and per limit), false alarms pooled and PER OPERATION, HIGH_RISK precision, missed overruns.
+    Used by ``evaluate --val`` (val-v5, Phase 7 pre-registration section 2), so the held-out values are
+    printed only by that logged call. Risk v2 (C3) is applied from the stored features (``_warn_high``)."""
+    if classify_all(df).empty:
+        nl = chr(10)
+        return f"## {title}{nl}{nl}No valid Tier 1 point with a stored estimate: R1-R3 NOT EVALUATED.{nl}"
+    res = evaluate(df)
+    body = report(
+        res,
+        "the stored predictions and actuals of this results directory",
+        "Ranges as stored by the frozen stack (policy B; risk v2 C3 from the stored features). ",
+    )
+    body = body.replace("# Risk engine on DEVELOPMENT data (Phase 5)", f"## {title}", 1)
+    body = body.replace("**Dev data, not validation.** ", "", 1)
+    return body.replace("\n## ", "\n### ")
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("results", type=Path)
