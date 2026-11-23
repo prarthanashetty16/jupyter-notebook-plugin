@@ -7,7 +7,7 @@
 
 ## Machine
 
-Ubuntu 22.04+ / Debian 12 (any Linux with Python 3.10-3.12), **>= 32 GB RAM** (64 GB comfortable), 8+ vCPUs,
+Ubuntu 22.04+ / Debian 12 (Python 3.11 or 3.12: pandas 3.1.1 needs Python >= 3.11; Python 3.10 resolves pandas 2.x, which is unsupported; > 1 vCPU: the v3 read_csv model follows pandas' parallel reader), **>= 32 GB RAM** (64 GB comfortable), 8+ vCPUs,
 **>= 300 GB free disk** for the input cache (`benchmarks/.cache`; the inputs alone are ~175 GiB), swap OFF, nothing
 else running. Memory cap to use: **24 GiB** on a 32 GB machine (the harness kills a child above it; 48 on 64 GB).
 Max size to use: **400000000** (`--max-size` filters every point: np.sort goes to 400M elements, row cases to 30M rows,
@@ -18,7 +18,7 @@ matmul dimensions to 16000; the per-case size lists in the suite bound the rest)
 ```bash
 sudo apt-get update && sudo apt-get install -y git python3-venv python3-dev build-essential
 git clone <your NEXUS repository URL> nexus && cd nexus
-git checkout models-frozen-v1                                      # the frozen model stack (Phase 6); record: git rev-parse HEAD
+git checkout models-frozen-v3                                      # the frozen model stack (Phase 7d); record: git rev-parse HEAD
 python -m benchmarks.frozen check                                   # must print no problems (exit 0)
 python3 -m venv .venv && source .venv/bin/activate
 pip install --upgrade pip
@@ -28,8 +28,8 @@ sudo swapoff -a; free -g; df -h .                                   # swap off, 
 python -m pytest tests -q                                           # ~1 min; NOT while the benchmark runs
 ```
 
-**Freeze guard (Phase 6).** `full --splits val-v5` and `evaluate --val` abort unless the tracked files outside `docs/` are
-identical to the tag `models-frozen-v1` (`benchmarks/frozen.py`); the tag commit is recorded in `meta.json` and in the
+**Freeze guard (Phase 6; v3 since Phase 7d).** `full --splits val-v5` and `evaluate --val` abort unless the tracked files outside `docs/` are
+identical to the tag `models-frozen-v3` (`benchmarks/frozen.py`); the tag commit is recorded in `meta.json` and in the
 report. Any model change after the freeze invalidates the held-out status of the run. Run on mains / server power: the
 calibration refuses to measure on battery.
 

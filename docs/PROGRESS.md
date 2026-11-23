@@ -1860,3 +1860,59 @@ below). val-v5, test-v2 and the multicell v2 / v3 held-out parts sealed and unre
   is reported as a repeat FAILED.
 * **Timing figures of the battery runs** (the final dev re-prediction rows, multi-statement evaluation and determinism check)
   are battery-throttled and not usable for calibration or any timing claim.
+
+## Phase 7d: freeze `models-frozen-v3`
+
+**Status: frozen.** The annotated tag `models-frozen-v3` is on the commit that adds `docs/benchmarks/frozen-manifest.md`.
+No model, threshold or calibration artifact changed in Phase 7d. The frozen set against v2 is 9 changed and 3 added files
+(`models/explode_apply.py` with the ufunc-apply model only, `models/set_index.py`, `cellframes.py`); 46 files are frozen.
+val-v5, test-v2 and the multicell v2 / v3 held-out groups are sealed and unread.
+
+- [x] CI, first run (`200157f`), with the guard tests skipped because the tags were pushed after the branch:
+  * Python 3.10 resolves pandas 2.3.3: the models and the instrument's validation do not hold. Now report-only.
+  * macOS censored a copy in the instrument validation. That step is now report-only on macOS.
+  * Ubuntu 3.12: the generator digest differs (numpy's lognormal / pow differ in the last bit between MSVC and glibc;
+    fingerprints now hash floats at float32), and the page-fault floor assumed 4 KiB pages (now the largest page size).
+  * pandas 2.x mechanism jobs: informational.
+- [x] CI, second run (`0d959a2`, tags present): Windows 3.12 and Ubuntu 3.12 had only the expected freeze-guard failure.
+  macOS 3.12 had psutil without `cpu_freq`, fixed in `d219563` (outside the freeze). It is checked again by the next CI run.
+- [x] Guard switched to v3 (`FROZEN_TAG` in `benchmarks/frozen.py` only); `cellframes.py` frozen; manifest v3 written,
+  v2 moved to `frozen-manifest-v2.md` (v1 kept); runbook on v3 / Python >= 3.11.
+- [x] **Supported environment:** pandas >= 3.1 (Python >= 3.11) on Windows and Linux. macOS measurement and pandas 2.x
+  are unsupported.
+
+### Held-out runs, each ONCE on `models-frozen-v3` (any model change after v3 invalidates their held-out status)
+
+1. Multi-statement group v2, then v3, on this laptop, on mains:
+
+       git checkout models-frozen-v3 && python -m benchmarks.frozen check
+       python -m benchmarks.multicell.run run --version 2 --heldout --reason "Phase 7 held-out check of models-frozen-v3 (group v2)"
+       python -m benchmarks.multicell.run evaluate --version 2 --heldout --reason "Phase 7 held-out check of models-frozen-v3 (group v2)" --out docs/benchmarks/phase7e
+       python -m benchmarks.multicell.run run --version 3 --heldout --reason "Phase 7 held-out check of models-frozen-v3 (group v3)"
+       python -m benchmarks.multicell.run evaluate --version 3 --heldout --reason "Phase 7 held-out check of models-frozen-v3 (group v3)" --out docs/benchmarks/phase7e
+
+2. val-v5 on the Linux VM (`docs/benchmarks/val-v5-linux-runbook.md`; Python 3.11/3.12, >= 32 GB, > 1 vCPU). Calibrate
+   ONCE, then the pilot and the full run into the SAME folder, with no recalibration in between:
+
+       git clone <repo> nexus && cd nexus && git checkout models-frozen-v3 && python -m benchmarks.frozen check
+       python3 -m venv .venv && source .venv/bin/activate && pip install -e ".[dev,bench]"
+       nexus-calibrate-machine --force && cp ~/.cache/nexus/machine.json ~/machine.val-v5.json
+       python -m benchmarks plan --suite full --splits val-v5 --mem-limit-gb 24 --max-size 400000000
+       python -m benchmarks full --splits val-v5 --tiers 0,1,2 --out benchmarks/results/val-v5 --mem-limit-gb 24 --max-size 400000000 --require-calibrated --no-report --pilot 12
+       cat benchmarks/results/val-v5/pilot.json
+       nohup python -m benchmarks full --splits val-v5 --tiers 0,1,2 --out benchmarks/results/val-v5 --mem-limit-gb 24 --max-size 400000000 --require-calibrated --no-report > val-v5.log 2>&1 &
+       python -m benchmarks evaluate benchmarks/results/val-v5 --val --reason "held-out check of models-frozen-v3"
+
+   (`evaluate --val` includes the pre-registered R1-R3 replay.)
+
+3. Phase 8b, only after `docs/benchmarks/phase8b-preregistration.md` is filled in and committed (no notebook opened before):
+
+       git checkout models-frozen-v3 && python -m benchmarks.frozen check
+       python -m benchmarks.realworld.coverage <folder> --out docs/benchmarks/phase8b/coverage
+       python -m benchmarks.realworld.run_notebook <copy> --out benchmarks/results/realworld/phase8b/<name> --tier 1
+       python -m benchmarks.realworld.evaluate_real benchmarks/results/realworld/phase8b/* --out docs/benchmarks/phase8b/report.md
+
+   The v2 comparison run for the run-time coverage share follows the 8b pre-registration. It needs the per-cell `covered`
+   field in `run_notebook` first (outside the freeze).
+
+Push: `git push origin main models-frozen-v3` (the local branch is `main`).
