@@ -18,6 +18,7 @@ _MODULES = (
     "explode_apply",
     "set_index",
     "dropna",
+    "reset_index",
 )
 
 

@@ -110,6 +110,13 @@ def test_dropna_estimate(pipeline):
     assert estimate.estimate.ram_expected <= estimate.estimate.ram_high
 
 
+def test_reset_index_estimate(pipeline):
+    df = frame(10_000)
+    dropped = estimates(pipeline, "df.reset_index(drop=True)", {"df": df})["reset_index"]
+    retained = estimates(pipeline, "df.reset_index()", {"df": df})["reset_index"]
+    assert dropped.estimate.ram_expected < retained.estimate.ram_expected
+
+
 @pytest.mark.parametrize(
     ("source", "ns"),
     [

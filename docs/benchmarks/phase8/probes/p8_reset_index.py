@@ -48,3 +48,7 @@ def main() -> None:
             m = measure_call(run, setup=setup, setup_args=(path, kwargs), repeats=3)
             print(json.dumps({"variant": label, "measured_mib": None if m.delta_bytes is None else m.delta_bytes / MIB,
                               "bound_mib": m.bound_bytes / MIB}))
+
+
+if __name__ == "__main__":
+    main()
