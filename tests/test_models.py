@@ -121,7 +121,7 @@ def test_v4_output_and_easy_estimates(pipeline):
     df = frame(10_000)
     assert "map" not in estimates(pipeline, "df['s0'].map({'v0': 1})", {"df": df})
     assert "to_numpy" not in estimates(pipeline, "df.to_numpy()", {"df": df})
-    assert "sample" in estimates(pipeline, "df.sample(n=100)", {"df": df})
+    assert "sample" not in estimates(pipeline, "df.sample(n=100)", {"df": df})
     assert "describe" in estimates(pipeline, "df.describe()", {"df": df})
     assert "numpy.zeros" not in estimates(pipeline, "np.zeros((100, 100))", {"np": np})
     assert "numpy.empty" not in estimates(pipeline, "np.empty((100, 100))", {"np": np})

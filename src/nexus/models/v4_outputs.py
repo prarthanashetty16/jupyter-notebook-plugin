@@ -8,11 +8,9 @@ from nexus.analyzer import DetectedOp
 from nexus.models import _time as tt
 from nexus.models import _util as u
 from nexus.models.base import Estimate, NoEstimateError, OperationModel
-from nexus.registry import register_model
 from nexus.state import Inspection
 
 
-@register_model
 class SampleModel(OperationModel):
     """Peak RAM of a row take: selected bytes, or the full frame for sampling with replacement."""
 

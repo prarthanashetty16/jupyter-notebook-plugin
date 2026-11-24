@@ -2082,4 +2082,7 @@ Pre-registration `docs/benchmarks/phase8-preregistration.md` with amendments 1-2
   Three fresh copy variants measured/derived at 1.00009 (float64), 1.00012 (float32 conversion), and 1.00019
   (int32 conversion), all within ±15%. Literal/unknown iterables and `copy=False` stay no-estimate. Static ceiling
   remains **48.0% (36/75)** because the notebook census's one `numpy.array` call is not a known-array copy form.
-- [ ] Easy wins `sample` and `describe`: awaiting the committed probes required by amendment 4.
+- [x] Easy win `sample`: **NOT ADOPTED, no estimate in v4.** Fresh 15M-row variants measured/derived at 3.006
+  (10% without replacement), 2.065 (50% without replacement), and 2.064 (all rows with replacement). Random index
+  selection adds workspace not represented by selected data bytes. Updated static ceiling: **46.7% (35/75)**.
+- [ ] Easy win `describe`: awaiting the committed probe required by amendment 4.
