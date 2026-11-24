@@ -16,8 +16,14 @@ Derived from pandas 3.1 (copy-on-write) and checked by isolated probes at >= 200
   block that can hold one (the reason to call ``fillna``). Tier 1 reads ``stats.null_profile`` (float and
   datetime columns scanned completely; others from a sample): ``low`` / ``expected`` = blocks with a
   certain null, ``high`` adds the undecided ones.
+* pandas-3 ``str`` columns (python storage; v4 item (1a), probes ``docs/benchmarks/phase8/probes/p8_text_fillna*``):
+  each is its own 1-D block, filled through ``Block.where``. A column holding a missing value is copied (its object
+  POINTER array, 8 B/row; the strings are shared) and transiently needs 4 B/row of masks with a string value
+  (12 B/row in all, probe 1.000-1.001). A non-string value fails the setitem and coerces the block to object, which
+  transiently needs 13 B/row beyond the kept copy (21 B/row in all; second derivation, probe 1.023-1.048).
 * Refused (no estimate): ``inplace=True``, ``method`` / ``limit`` / ``axis`` / ``downcast``, a value that
-  is not a literal scalar or a literal dict, a receiver that is not a known DataFrame / Series.
+  is not a literal scalar or a literal dict, a receiver that is not a known DataFrame / Series, other extension
+  dtypes (category, nullable ints, ``string``), and ``str`` when its default storage is not python (pyarrow).
 """
 
 from __future__ import annotations
@@ -39,6 +45,17 @@ POINTER_BYTES = 8
 # Block.fillna (not inplace) -> Block.where: isna mask, ~mask (cond), ~cond (icond in
 # validate_putmask) and ~icond (expressions.where) are alive together: 4 bool bytes per element
 MASK_ARRAYS = 4
+STR_DTYPE = "str"
+# str column, beyond its kept 8 B/row copy: masks (string value) / coercion to object (non-string value)
+STR_TRANSIENT_STR_VALUE = 4
+STR_TRANSIENT_OTHER_VALUE = 13
+
+
+def _python_str_storage() -> bool:
+    """The probes measured the python-storage ``str`` array; a pyarrow-backed one takes another path."""
+    import pandas as pd
+
+    return getattr(pd.api.types.pandas_dtype("str"), "storage", None) == "python"
 
 
 def _itemsize(dtype: str) -> float | None:
@@ -201,16 +218,21 @@ class FillnaModel(OperationModel):
             targets = list(cols)
             per_column = sel is not None and len(sel) == 1
         nullable = [c for c in targets if u.can_hold_null(dtypes[c])]
-        if any(_itemsize(dtypes[c]) is None or u.is_text(dtypes[c]) and dtypes[c] != "object"
+        text = [c for c in nullable if dtypes[c] == STR_DTYPE]
+        if text and not _python_str_storage():
+            raise NoEstimateError("fillna on a pyarrow-backed str column is not modelled")
+        if any(_itemsize(dtypes[c]) is None or u.is_text(dtypes[c]) and dtypes[c] not in ("object", STR_DTYPE)
                for c in nullable):  # fmt: skip
-            # extension arrays (pandas 3 ``str``, category, nullable ints) fill through
-            # ExtensionArray.fillna: a probe measured 2.45x the column bytes, not derived: refuse
+            # other extension arrays (category, nullable ints, ``string``): not derived, refuse
             raise NoEstimateError("fillna on an extension-dtype column is not modelled")
         return {
             "n_rows": desc.shape[0],
             "column_bytes": {c: cols[c] for c in nullable},
             "column_dtypes": {c: dtypes[c] for c in nullable},
             "per_column": per_column,
+            "str_value": {
+                c: isinstance(value[c] if isinstance(value, dict) else value, str) for c in text
+            },
             "null_columns": None,  # Tier 1: (certain, possible)
         }
 
@@ -237,16 +259,28 @@ class FillnaModel(OperationModel):
         cb, dt, n = features["column_bytes"], features["column_dtypes"], features["n_rows"]
         if not columns:
             return 0.0
+        str_value = features.get("str_value", {})
         if features["per_column"]:
             groups = [[c] for c in columns]
-        else:  # one block per dtype in a consolidated frame: the whole block is copied
+        else:  # one block per dtype in a consolidated frame; a str column is a 1-D block of its own
             by_dtype: dict[str, list[str]] = {}
             for c in cb:
-                by_dtype.setdefault(dt[c], []).append(c)
+                by_dtype.setdefault(c if dt[c] == STR_DTYPE else dt[c], []).append(c)
             groups = [g for g in by_dtype.values() if set(g) & columns]
         data = sum(cb[c] for g in groups for c in g)
-        mask = MASK_ARRAYS * max(n * len(g) for g in groups)
-        return data + mask
+
+        def transient(g: list[str]) -> float:
+            if dt[g[0]] == STR_DTYPE:
+                per_row = (
+                    STR_TRANSIENT_STR_VALUE
+                    if str_value.get(g[0], False)
+                    else STR_TRANSIENT_OTHER_VALUE
+                )
+                return float(per_row * n)
+            return float(MASK_ARRAYS * n * len(g))
+
+        # the blocks are filled one after another and their copies kept: every copy + the largest transient
+        return data + max(transient(g) for g in groups)
 
     def estimate(self, features: dict[str, Any], tier: int) -> Estimate:
         u.require_tier(tier)

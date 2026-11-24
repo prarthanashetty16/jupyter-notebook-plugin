@@ -179,7 +179,7 @@ def test_fillna_keeps_four_bool_masks_alive_on_top_of_the_block_copy():
 
 
 def test_text_columns_are_an_extension_dtype():
-    """FillnaModel refuses extension-dtype text columns; pandas 3 makes text an extension dtype."""
+    """pandas 3 makes text an extension dtype; FillnaModel models only its python-storage ``str`` path."""
     s = pd.Series(["a", None, "c"])
     assert not isinstance(s.dtype, np.dtype)
 

@@ -5,3 +5,7 @@
 - 2026-11-24 14:44:46 | READ consumed held-out multicell rows (dev data), LOGGED RETROACTIVELY | the v4 item C calibration preview (`benchmarks.upper_calibration`, tree f2e19cc+992d4e1cc143) read the stored v1 / v2 / v3 held-out results (all consumed, dev) earlier today before this logging was wired in; prediction only, no measurement |
 - 2026-11-24 14:57:18 | READ consumed held-out multicell v2 rows (dev data) | reason: v4 item C: upper-bound calibration residuals (dev)
 - 2026-11-24 14:58:45 | READ consumed held-out multicell v3 rows (dev data) | reason: v4 item C: upper-bound calibration residuals (dev)
+- 2026-11-24 15:06:12 | READ consumed held-out multicell v2 rows (dev data) | reason: v4 item C: upper-bound calibration residuals (dev)
+- 2026-11-24 15:07:46 | READ consumed held-out multicell v3 rows (dev data) | reason: v4 item C: upper-bound calibration residuals (dev)
+- 2026-11-24 15:10:55 | READ consumed held-out multicell v2 rows (dev data) | reason: v4 item dev evaluation (prediction only)
+- 2026-11-24 15:10:55 | READ consumed held-out multicell v3 rows (dev data) | reason: v4 item dev evaluation (prediction only)

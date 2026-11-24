@@ -1,0 +1,8 @@
+pandas 3.1.1, numpy 2.5.5; bar +-15%
+| variant | kind | rows | measured MiB | derived MiB | ratio | within bar |
+|---|---|---|---|---|---|---|
+| B int 0, 1 col, NA 30%, len 16 | attempt 2 | 11000000 | 231 | 220 | 1.048 | yes |
+| B float -1.5, 1 col, NA 2%, len 32 | attempt 2 | 12000000 | 252 | 240 | 1.048 | yes |
+| B int 0, 2 cols, NA 50%, len 16 | attempt 2 | 7000000 | 200 | 194 | 1.035 | yes |
+| B int 0, 4 cols, NA 5%, len 32 | attempt 2 | 6000000 | 263 | 257 | 1.023 | yes |
+| A dict {'s0': 'x'}, 1 col (measurement fix) | fix | 20000000 | 229 | 229 | 1.001 | yes |
