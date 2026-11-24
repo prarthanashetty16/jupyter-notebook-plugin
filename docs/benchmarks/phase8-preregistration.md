@@ -416,3 +416,12 @@ run. No existing result is used to change a term before its probe.
 Each item gets one committed probe script and output, fresh variants, OS peak measurement from disk-loaded inputs,
 median of three repeats, and the existing ±15% adoption bar. An item outside the bar or not measurably supported is
 reverted to no-estimate with a named reason in its own commit; no fourth attempt or post-result retuning is allowed.
+
+## Amendment 5 (2026-11-24): measurable `numpy.array` form
+
+The `numpy.array` form in amendment 4 (large literal iterable) cannot meet the required measurement floor as a literal
+cell argument. Before any `numpy.array` probe, its tested form is narrowed to a known ndarray input with `copy=True`
+(the default) and no dtype conversion or an explicit numeric dtype conversion. The first derivation is one output
+buffer, `n * target_itemsize`; `copy=False`, object inputs, and unknown iterables remain no-estimate. This tests the
+copy cost on an input actually present in the inspected kernel state and does not infer a measurement from a
+source-generated literal.
