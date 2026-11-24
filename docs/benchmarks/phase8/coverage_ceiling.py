@@ -1,16 +1,16 @@
-"""Static coverage CEILING of the v4 scope on the real DEV notebooks (``real_notebooks/``), as decided on 2026-11-24:
-value_counts deferred, ``head`` / ``tail`` copies no-estimate, every remaining Should and Easy item assumed to land.
+"""Static coverage ceiling of the adopted v4 model stack on real DEV notebooks (``real_notebooks/``).
 
 AST only (never executes a cell, reads no data). A cell counts if every detected operation would have a model:
 
-* covered by v3 or landed in v4 (fillna incl. text, astype incl. several columns / dict, read_csv incl. parse_dates);
-* Should / Easy, assumed to land: duplicated, dropna, reset_index, to_numpy, map with a dict / Series / ufunc / name
-  (a NAME argument is counted as covered: OPTIMISTIC, it may be a function), numpy zeros / empty / linspace,
-  ``np.array`` of a name (a literal stays UNKNOWN, prereg item (3)), sample, describe;
+* covered by v3 or landed in v4 (fillna, single-column astype, read_csv except ``parse_dates``);
+* the adopted Should item: ``dropna``;
+* ``numpy.array`` is only adopted for known numeric ndarray input with ``copy=True``; this static pass cannot
+  establish that runtime form, so notebook calls remain uncovered;
 * copy: the adopted receiver forms only (a name, a column selection, a mask with comparisons only, an ``iloc`` slice);
   chains (``df.dropna().copy()``), masks with calls (``isin``) and ``head`` / ``tail`` copies are NOT covered;
 * apply: only ``np.<ufunc>``;
-* everything else (value_counts, to_csv, join, get_dummies, corr, ravel, sort_index, ...) is NOT covered.
+* deferred or invalidated operations (including ``duplicated``, ``reset_index``, ``map``, ``to_numpy``, ``sample``,
+  ``describe``, ``numpy.zeros`` / ``empty`` / ``linspace``) and everything else are NOT covered.
 
 The pre-registered dev target (>= 55%) is a RUN-TIME share; this name-and-form-level count is its static upper bound.
 
@@ -30,7 +30,7 @@ import static_ops  # noqa: E402
 
 V3_OR_LANDED = {"groupby", "pandas.concat", "sort_values", "drop_duplicates", "merge", "set_index", "fillna",
                 "astype", "pandas.read_csv", "operator.matmul", "numpy.sort"}  # fmt: skip
-SHOULD_EASY = {"duplicated", "dropna", "reset_index"}
+SHOULD_EASY = {"dropna"}
 UFUNC_PREFIX = ("np.", "numpy.")
 
 
@@ -81,10 +81,7 @@ def status(op) -> str:  # noqa: ANN001
     if name == "map":
         return "not covered"
     if name == "numpy.array":
-        a = _arg0(op)
-        return (
-            "covered" if isinstance(a, (ast.Name, ast.Attribute, ast.Subscript)) else "not covered"
-        )
+        return "not covered"
     if name in V3_OR_LANDED or name in SHOULD_EASY:
         return "covered"
     return "not covered"
@@ -117,8 +114,8 @@ def main() -> None:
             full += all(s != "not covered" for s in sts)
     share = full / with_op if with_op else float("nan")
     print("# v4 static coverage CEILING, real DEV notebooks\n")
-    print(f"{with_op} code cells with a detected operation; **{full} ({share:.1%})** would have every operation "
-          f"covered if every remaining Should / Easy item lands. Dev target (run-time share): >= 55% -> "
+    print(f"{with_op} code cells with a detected operation; **{full} ({share:.1%})** have every operation covered "
+          f"under the adopted v4 models/forms (optimistic static upper bound). Dev target (run-time share): >= 55% -> "
           f"**{'the ceiling allows it' if share >= 0.55 else 'BELOW the target even at the ceiling'}**.\n")  # fmt: skip
     print("| operation | calls | status |\n|---|---|---|")
     for (name, s), n in sorted(calls.items(), key=lambda x: (-x[1], x[0])):

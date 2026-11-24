@@ -2053,17 +2053,16 @@ Pre-registration `docs/benchmarks/phase8-preregistration.md` with amendments 1-2
   1% of moved bytes implies about 1.22 MiB. The probe-file diff added only the main guard, but it does not establish
   that the post-output formula was preregistered. The attempt is invalid under amendment 6; `reset_index` is no-estimate
   in v4 with the reason recorded in `nexus.deferred`. The previously reported 38.7% (29/75) static ceiling included
-  this now-invalid model and is pending exact recount.
+  this now-invalid model; the corrected adopted-model static upper bound is **28.0% (21/75)**.
 - [x] Should `map`: **NOT ADOPTED, no estimate in v4.** The committed first derivation failed: dict mapper 2.127x,
   Series mapper 1.063x, NumPy ufunc mapper 12.992x (OS peaks vs derived; `p8_map.out`). Dict and ufunc variants exceeded
   ±15%, so `map` remains no-estimate with a named mapper-workspace reason. Updated static ceiling: **52.0% (39/75)**,
-  below 55% even if every remaining item lands. Runtime coverage is still to be measured; the target is unchanged,
-  and a runtime result below 55% will be recorded FAILED under amendment 3(b).
+  below 55% even if every remaining item lands. The final runtime result is recorded below; the target is unchanged.
 - [x] Should `to_numpy`: **NOT ADOPTED, no estimate in v4.** The mixed-frame conversion measured 229.004 MiB against
   228.882 MiB derived (1.001x, within the bar). The Series and homogeneous-frame zero-copy peaks were 0.027 MiB and
   0.035 MiB against a zero-byte derivation; a relative ±15% criterion is undefined, so the operation is not
   measurable under the preregistered bar and remains no-estimate with a named reason. Updated static ceiling:
-  **50.7% (38/75)**, below 55% even if every remaining item lands. Runtime coverage is still pending; target unchanged.
+  **50.7% (38/75)**, below 55% even if every remaining item lands. The final runtime result is recorded below.
 - [x] Should dict/multi-column `astype`: **NOT ADOPTED, no estimate for these forms in v4.** Ratios were 1.004
   (two converted dict columns), 1.005 (two-column selection), and 0.336 (dict with a same-dtype target column).
   The formula over-counts a target that does not allocate, so the item failed; single-column `df['c'].astype(...)`
@@ -2072,8 +2071,8 @@ Pre-registration `docs/benchmarks/phase8-preregistration.md` with amendments 1-2
 - [x] Should `read_csv(parse_dates=...)`: **NOT ADOPTED, no estimate for this form in v4.** Paired actual peaks
   fell from 994.734 to 587.207 MiB with one parsed date column (-407.527 MiB vs +38.147 MiB derived; -10.683x),
   and from 994.621 to 405.336 MiB with two (-589.285 MiB vs +76.294 MiB derived; -7.724x). Parsing dates removes
-  the much larger text result; the additive positive term is contradicted. Updated static ceiling: pending exact
-  recount (**50.7% (38/75)** after all current exclusions).
+  the much larger text result; the additive positive term is contradicted. The then-current static ceiling was
+  50.7% (38/75); see the corrected final upper bound below.
 - [x] Easy win `numpy.zeros`: **NOT ADOPTED, no estimate in v4.** Three OS peaks were 0.031 MiB versus derived
   expected peaks of 152.588 / 114.441 / 114.441 MiB (ratios 0.00020 / 0.00027 / 0.00027). The array remains virtual
   until written; the cell alone has no measurable incremental peak, so the estimate failed. Updated static ceiling:
@@ -2094,5 +2093,16 @@ Pre-registration `docs/benchmarks/phase8-preregistration.md` with amendments 1-2
 - [x] Easy win `describe`: **NOT ADOPTED, no estimate in v4.** Two numeric columns measured 358.164 MiB against
   228.882 MiB derived (1.565x, outside ±15%); one numeric plus one str measured 358.109 / 343.323 MiB (1.043x);
   the two-str variant was censored at a 229.965 MiB bound against 457.764 MiB derived. Both a bar miss and a
-  dtype-specific unmeasurable variant fail the item. Updated static ceiling: **38.7% (29/75)**, below the unchanged
-  55% target.
+  dtype-specific unmeasurable variant fail the item. The corrected final adopted-model static upper bound is
+  **28.0% (21/75)**, below the unchanged 55% target (`phase8/coverage_ceiling.md`).
+
+- [x] Runtime dev coverage (five `real_notebooks/` notebooks, Tier 2 harness, local dev datasets): **14/75 = 18.7%**
+  of cells with at least one detected operation had every operation estimated; there were no analysis errors. All 75
+  operation-bearing cells were analyzed. Notebook1 and notebook4 used `--max-failures 20` to reach later cells after
+  consecutive execution errors (7 and 15 cell errors respectively); notebook1's import cell raised
+  `ModuleNotFoundError`, and notebook4 contains the source syntax error `df15.head()m`. The other notebooks had 1, 1,
+  and 0 cell errors. The dev coverage criterion is **FAILED** under amendment 3(b); the 55% target is unchanged.
+  The adopted-model static upper bound is **21/75 = 28.0%**. For headless/local inputs, notebook4's inline display
+  magic was disabled, Colab uploads were mapped to the pinned local CSVs, and notebook5's KaggleHub loader call was
+  preserved while its adapter read the pinned local CSV; no network access was used. Runtime logs are in ignored
+  `benchmarks/results/phase8-dev-runtime/`.
