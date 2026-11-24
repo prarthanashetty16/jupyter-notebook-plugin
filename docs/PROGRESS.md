@@ -2017,8 +2017,13 @@ Pre-registration `docs/benchmarks/phase8-preregistration.md` with amendments 1-2
   memory therefore depends on the exact key values in a way neither the source nor Tier 1 statistics predict. The
   UNKNOWN message names the reason: "memory depends on the exact key values, through the hash table's pages"
   (`nexus.deferred`).
-- [ ] Item (1d) copy on receivers v3 cannot size: **adopted for the five passing forms** (boolean mask with
+- [x] Item (1d) copy on receivers v3 cannot size: **adopted for the five passing forms** (boolean mask with
   comparisons, `&` / `|` combinations, contiguous column list, reordered column list, `iloc` row slice; probe
   `p8_copy_receivers.out` 1.000-1.002). `head` / `tail` stay NO ESTIMATE: pandas 3.1.1 `head(n)` is
   `self.iloc[:n].copy()`, so the receiver already copies (measured 2.0x the view derivation). Noted for v5; the
-  UNKNOWN message names it (`nexus.deferred`). Measurement fixes and the model: below.
+  UNKNOWN message names it (`nexus.deferred`). Measurement fixes (`p8_copy_receivers_fix.out`): 10% `loc[mask]`
+  1.001, `str`-comparison mask 0.881 (the 12 B/row comparison term slightly over-counts), `tail` 2.0 against the view
+  derivation and 1.000 against "the receiver already copies", so `tail` is no-estimate like `head`. The chain
+  `df.sort_values(c).copy()` (1038 MiB) is above the sort model's own high (931 MiB); its copy has no estimate, so
+  the cell shows no cell range (Rule 1). Model in `copy_fillna.py` (the receiver's cost is the copy's; mask expected =
+  high, the selected fraction being unknown); no multicell dev template uses these forms (0 cells changed).

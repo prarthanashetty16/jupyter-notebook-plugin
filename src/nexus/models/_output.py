@@ -124,6 +124,14 @@ def _whole(f: dict[str, Any], e: Estimate) -> Triple:
     return (float(e.ram_low), float(e.ram_expected), float(e.ram_high))
 
 
+def _copy(f: dict[str, Any], e: Estimate) -> Triple:
+    """The copy's result; a row-selection receiver's transients (mask, take) are freed (v4 item (1d))."""
+    if "result" in f:
+        lo, mid, hi = f["result"]
+        return (float(lo), float(mid), float(hi))
+    return _whole(f, e)
+
+
 def _matmul(f: dict[str, Any], e: Estimate) -> Triple:
     out = float(f["m"] * f["p"] * f["itemsize"])
     return (out, out, out)
@@ -136,7 +144,7 @@ def _np_sort(f: dict[str, Any], e: Estimate) -> Triple:
 
 FORMULAS = {
     "read_csv": _read_csv, "merge": _merge, "groupby": _groupby, "sort_values": _sort_values,
-    "drop_duplicates": _drop_duplicates, "astype": _astype, "concat": _whole, "copy": _whole,
+    "drop_duplicates": _drop_duplicates, "astype": _astype, "concat": _whole, "copy": _copy,
     "fillna": _whole, "matmul": _matmul, "np_sort": _np_sort, "apply_ufunc": _whole,
     "set_index": lambda f, e: (0.0, 0.0, 0.0),  # the result shares the input's blocks
 }  # fmt: skip
