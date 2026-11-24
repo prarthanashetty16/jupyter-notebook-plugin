@@ -128,6 +128,13 @@ def test_v4_output_and_easy_estimates(pipeline):
     assert "numpy.linspace" not in estimates(pipeline, "np.linspace(0, 1, 100)", {"np": np})
 
 
+def test_numpy_array_estimates_known_array_copy(pipeline):
+    source = np.arange(1000, dtype=np.float64)
+    estimated = estimates(pipeline, "np.array(source, copy=True, dtype='float32')", {"np": np, "source": source})
+    assert "numpy.array" in estimated
+    assert estimated["numpy.array"].estimate.ram_expected == 4 * len(source)
+
+
 def test_dict_astype_remains_unestimated(pipeline):
     assert estimates(pipeline, "df.astype({'a': 'float32'})", {"df": frame()}) == {}
 

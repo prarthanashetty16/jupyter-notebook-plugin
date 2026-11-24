@@ -7,12 +7,12 @@ from typing import Any
 
 import numpy as np
 
-from nexus.analyzer import DetectedOp
+from nexus.analyzer import DetectedOp, Expr
 from nexus.models import _time as tt
 from nexus.models import _util as u
 from nexus.models.base import Estimate, NoEstimateError, OperationModel
 from nexus.registry import register_model
-from nexus.state import FrameDescriptor, Inspection
+from nexus.state import ArrayDescriptor, FrameDescriptor, Inspection
 
 
 def _shape(value: Any) -> tuple[int, ...] | None:
@@ -33,17 +33,28 @@ class NumpyZerosModel(OperationModel):
     def matches(self, op: DetectedOp) -> bool:
         return op.name == "numpy.zeros"
 
-    def features(self, op: DetectedOp, state: Inspection) -> dict[str, Any]:
+    def features(self, op: DetectedOp, state: Inspection) -> dict[str, Any]:  # noqa: C901
         try:
             dtype = np.dtype(op.kwargs.get("dtype", "float64"))
         except (TypeError, ValueError):
             raise NoEstimateError("NumPy dtype is not statically known") from None
         if op.name == "numpy.array":
             obj = op.args[0] if op.args else None
-            if not isinstance(obj, (list, tuple)):
-                raise NoEstimateError("np.array from unknown/variable object")
-            shape = (len(obj),)
-            nbytes = math.prod(shape) * dtype.itemsize
+            if not isinstance(obj, Expr):
+                raise NoEstimateError("np.array literal inputs are not validated")
+            source = state.variables.get(str(obj))
+            if not isinstance(source, ArrayDescriptor):
+                raise NoEstimateError("np.array source is not a known ndarray")
+            if op.kwargs.get("copy", True) is False:
+                raise NoEstimateError("np.array(copy=False) may be zero-copy")
+            target = op.kwargs.get("dtype")
+            if target is not None and not isinstance(target, str):
+                raise NoEstimateError("np.array target dtype is not literal")
+            try:
+                itemsize = np.dtype(target or source.dtype).itemsize
+            except (TypeError, ValueError):
+                raise NoEstimateError("np.array target dtype is unsupported") from None
+            nbytes = math.prod(source.shape) * itemsize
             kind = "copy"
         elif op.name == "numpy.linspace":
             num = op.args[2] if len(op.args) >= 3 else op.kwargs.get("num")
