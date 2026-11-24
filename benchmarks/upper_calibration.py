@@ -217,7 +217,7 @@ def multicell_points(repredict: bool = True) -> pd.DataFrame:
                     continue
                 c = p["cell"]
                 dom = max(p["estimates"], key=lambda e: e["ram_expected"])["model"]
-                rows.append({"source": f"multicell v{version}", "unit": f"mc{version}:{r['config']}",
+                rows.append({"source": f"multicell v{version}", "id": key, "unit": f"mc{version}:{r['config']}",
                              "family": dom, "actual": float(r["actual"]), "low": float(c["ram_low"]),
                              "expected": float(c["ram_expected"]), "high": float(c["ram_high"])})  # fmt: skip
     return pd.DataFrame(rows)

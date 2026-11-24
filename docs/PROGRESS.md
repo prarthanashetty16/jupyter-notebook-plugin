@@ -1992,3 +1992,20 @@ changes in response: v3 is not repaired on these data.**
 - [ ] Relabel `benchmarks/phase7_verdict.py` for v4, or create a v4 verdict script (`evaluate --val` must print the
   Phase 8 criteria: split width criterion W(a) / W(b), excludes-label criterion, per platform). val-v5 was reassigned
   from v3 to v4 (Phase 7 pre-registration amendment 2); v3 gets no Linux held-out check.
+
+## Phase 8 (v4) dev progress (`v4-dev` branch; not frozen)
+
+Pre-registration `docs/benchmarks/phase8-preregistration.md` with amendments 1-2. Every number is DEV.
+
+- [x] Item C, upper-bound calibration: procedure and runtime hook (`b954a19`, `777dad2`). Preview on the v3 models:
+  LOCO 0% above high per point and per configuration; W(a) 1.000. The frozen factors are computed once on the final v4
+  models.
+- [x] Item (1a), fillna on `str` columns: **PASSED**. String value 1.000-1.001; the labelled second derivation for
+  non-string values passed fresh variants at 1.023-1.048 (`2a730c9`, `9448763`). Its six flagged dev cells are 0 above
+  the displayed high under amendment 2 (`docs/benchmarks/phase8/rescore_amendment2.md`). Known: the non-string term
+  under-counts by about 1 B/row (22 measured vs 21 adopted, within the bar; not refitted).
+- [x] Item (1b), statistics through a copy of a kernel frame: **PASSED** (`06a9eea`). Cell probe 1.000-1.020; the 14
+  copy -> fillna dev cells, and all 52 cells new in v4 so far, are 0 above the displayed high (LOCO factor) under
+  amendment 2.
+- [ ] Item (1c) value_counts (third and last attempt).
+- [ ] Item (1d) copy on receivers v3 cannot size.
