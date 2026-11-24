@@ -143,8 +143,11 @@ def warn_high_estimate(item: OpEstimate) -> Estimate:
 
 
 def describe_uncovered(ops: list[Any]) -> str:
-    """``df.fillna(0)``, ``a.merge(right, on='k')``: the uncovered operations as written (shortened)."""
+    """``df.fillna(0)``, ``a.merge(right, on='k')``: the uncovered operations as written (shortened), each
+    deferred one followed by the reason it is not modelled (``nexus.deferred``)."""
     import ast
+
+    from nexus.deferred import reason
 
     out = []
     for op in ops:
@@ -152,7 +155,9 @@ def describe_uncovered(ops: list[Any]) -> str:
             text = ast.unparse(op.node)
         except Exception:
             text = getattr(op, "name", "?")
-        out.append(f"`{text if len(text) <= 60 else text[:57] + '...'}`")
+        why = reason(op)
+        shown = f"`{text if len(text) <= 60 else text[:57] + '...'}`"
+        out.append(f"{shown} ({why})" if why else shown)
     return ", ".join(out)
 
 
@@ -184,9 +189,8 @@ def classify(  # noqa: C901
     if headroom is None and resources is not None:
         headroom = resources.effective_available
     if not estimates:
-        return RiskReport(
-            risk=RiskClass.UNKNOWN, reason="no estimate for this cell", headroom=headroom, **snap
-        )
+        why = f"no estimate for {uncovered_ops}" if uncovered_ops else "no estimate for this cell"
+        return RiskReport(risk=RiskClass.UNKNOWN, reason=why, headroom=headroom, **snap)
     if any(not _finite(e) for e in estimates):
         return RiskReport(
             risk=RiskClass.UNKNOWN,

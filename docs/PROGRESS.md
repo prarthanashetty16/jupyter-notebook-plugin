@@ -2007,5 +2007,18 @@ Pre-registration `docs/benchmarks/phase8-preregistration.md` with amendments 1-2
 - [x] Item (1b), statistics through a copy of a kernel frame: **PASSED** (`06a9eea`). Cell probe 1.000-1.020; the 14
   copy -> fillna dev cells, and all 52 cells new in v4 so far, are 0 above the displayed high (LOCO factor) under
   amendment 2.
-- [ ] Item (1c) value_counts (third and last attempt).
-- [ ] Item (1d) copy on receivers v3 cannot size.
+- [x] Item (1c) value_counts: **DEFERRED** (third and last attempt failed; no fourth attempt in v4). The
+  step-decomposition probe (`p8_value_counts_diag.out`, int64, n = 12M) shows the sort never sets the peak
+  (`value_counts()` equals the hash-table step at every cardinality), so the cost is the khash table. The table
+  derivation from the pandas 3.1.1 source (presized to roundup32(n) buckets, memset flag array n_buckets / 8 bytes, key
+  and value arrays resident only on touched 4 KiB pages, int64 hash `(k >> 33) ^ k ^ (k << 11)`, zero-filled x4 key
+  vector) matches u = 50k (1.046) and u = 6M (1.001) but misses **u = 1M by 1.69**. Back-computed from 151 MiB, the
+  1M keys touch about 16,384 pages per array; the source's hash gives exactly 8,192 for keys 0..1M. The resident
+  memory therefore depends on the exact key values in a way neither the source nor Tier 1 statistics predict. The
+  UNKNOWN message names the reason: "memory depends on the exact key values, through the hash table's pages"
+  (`nexus.deferred`).
+- [ ] Item (1d) copy on receivers v3 cannot size: **adopted for the five passing forms** (boolean mask with
+  comparisons, `&` / `|` combinations, contiguous column list, reordered column list, `iloc` row slice; probe
+  `p8_copy_receivers.out` 1.000-1.002). `head` / `tail` stay NO ESTIMATE: pandas 3.1.1 `head(n)` is
+  `self.iloc[:n].copy()`, so the receiver already copies (measured 2.0x the view derivation). Noted for v5; the
+  UNKNOWN message names it (`nexus.deferred`). Measurement fixes and the model: below.
