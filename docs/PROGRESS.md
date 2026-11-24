@@ -1969,3 +1969,18 @@ changes in response: v3 is not repaired on these data.**
 * **Still sealed and unrun:** val-v5 (Linux VM) and test-v2. The Phase 7 verdict for val-v5 is computed by
   `evaluate --val` (commit `12e37c0`). A v3 failure on Windows is already final for v3; val-v5 remains informative for
   Linux and for the risk criteria R1-R3.
+
+## Phase 8b dev notebook set (`real_notebooks/`)
+
+* **Five real notebooks with their datasets** (`real_notebooks/notebook1-5.ipynb`, `dataset1-5.csv`) are the Phase 8b
+  **dev** set. Their identity is pinned in `real_notebooks/MANIFEST.md`: SHA-256 of every file, plus the source and
+  dataset URLs the notebooks themselves state (where a notebook does not say, the manifest says "unknown"). The
+  datasets are git-ignored (`real_notebooks/*.csv`), and so are the notebooks (`*.ipynb`).
+* **Dev only, for good.** A static AST census (`tools/static_ops.py`: no execution, no data read, no predictions or
+  measurements recorded) was run on them and read. Result: 241 code cells, 75 with a pandas / NumPy operation, 18
+  with every operation at least partially modelled. The most frequent uncovered operations are `value_counts`,
+  `duplicated`, `to_csv`, `describe`, `map`, `reset_index`, `sample` and `apply` with a Python function. The census
+  was used to set the **v4 priorities**, so these notebooks can never be held-out data.
+* **Phase 8b held-out set:** a fresh batch of notebooks, sealed separately (digests committed before anything else is
+  done with it). It gets no census, no static analysis and no reading of its cells before the v4 freeze. Its first
+  use is the pre-registered held-out run, logged in the Test-split access log.
