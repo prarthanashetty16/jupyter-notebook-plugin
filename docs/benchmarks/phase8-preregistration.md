@@ -385,3 +385,34 @@ falls from 60.0% to 49.3%.
 * **(b) Coverage:** if the run-time dev coverage on `real_notebooks/` ends below 55%, the dev coverage criterion is
   recorded as **FAILED**. The target is **not lowered**. The freeze proceeds, so the held-out accuracy, width and
   safety criteria can still be tested; the Phase 8b held-out coverage criterion (v4 - v3 >= 15 points) is unchanged.
+
+## Amendment 4 (2026-11-24): audit and probe the unprobed v4 coverage additions
+
+The audit found that commit `dd9d4b6` added the following models without operation-specific probe scripts or committed
+measurement outputs: `map`, `to_numpy`, dict/multi-column `astype`, `read_csv(parse_dates)`, `numpy.zeros`,
+`numpy.empty`, `numpy.array`, `numpy.linspace`, `sample`, and `describe`. The prior session's committed probe evidence
+covers `dropna` and `reset_index`, not these operations. The code in `dd9d4b6` is therefore treated as each item's
+initial, labelled derivation; these models are not considered validated until the following probes are committed and
+run. No existing result is used to change a term before its probe.
+
+* **`map`:** first derivation is one result array (`n * itemsize`) for a ufunc, `8*n` for a dict mapper, and `16*n`
+  for a Series mapper (result plus indexer). Python-function mappers remain no-estimate.
+* **`to_numpy`:** first derivation is zero incremental bytes for a compatible zero-copy Series/frame; otherwise one
+  full moved-input-sized array for conversion, forced copy, or consolidation.
+* **multi-column/dict `astype`:** first derivation is the sum of `n * target_itemsize` over converted columns, with a
+  ±15% band. Unsupported target dtypes remain no-estimate.
+* **`read_csv(parse_dates)`:** first derivation adds `8*n` per parsed date column to the reader's existing range.
+  Unsupported reader options remain no-estimate.
+* **`numpy.zeros`:** first derivation is `shape_product * itemsize`, with expected half that allocation for lazy zero
+  pages and bounds from zero to the full allocation.
+* **`numpy.empty`:** first derivation is one `shape_product * itemsize` allocation (0.7x / 1.0x / 1.0x range).
+* **`numpy.array`:** first derivation is one output allocation from a literal iterable (`n * dtype_itemsize`);
+  unknown/variable iterables remain no-estimate.
+* **`numpy.linspace`:** first derivation is `num * dtype_itemsize`.
+* **`sample`:** first derivation is the selected share of moved frame bytes; with replacement, bound the selected
+  output by its requested size.
+* **`describe`:** first derivation is `n * (8 * numeric_columns + 16 * text_columns)`.
+
+Each item gets one committed probe script and output, fresh variants, OS peak measurement from disk-loaded inputs,
+median of three repeats, and the existing ±15% adoption bar. An item outside the bar or not measurably supported is
+reverted to no-estimate with a named reason in its own commit; no fourth attempt or post-result retuning is allowed.
