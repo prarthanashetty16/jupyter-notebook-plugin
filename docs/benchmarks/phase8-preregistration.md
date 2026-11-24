@@ -425,3 +425,12 @@ cell argument. Before any `numpy.array` probe, its tested form is narrowed to a 
 buffer, `n * target_itemsize`; `copy=False`, object inputs, and unknown iterables remain no-estimate. This tests the
 copy cost on an input actually present in the inspected kernel state and does not infer a measurement from a
 source-generated literal.
+
+## Amendment 6 (2026-11-24): invalidate `reset_index` adoption
+
+The audit found that the `reset_index` probe had no written derivation before it was run. Its adoption formula was
+added to the model after the output: for 8M rows it implies about 183.1 MiB for RangeIndex `drop=False` versus
+122.293 MiB measured, and about 1.22 MiB for `drop=True` versus 0.027 MiB measured. The pre-run-to-adoption probe
+diff adds only the main guard and does not establish that the formula was preregistered. This attempt is **INVALID**;
+the model is removed and `reset_index` remains no-estimate in v4 with a named reason. No further v4 derivation or
+probe is allowed for this operation.

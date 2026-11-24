@@ -20,6 +20,7 @@ def _assess(src: str):
     ("c = df.corr()", "corr"),
     ("d = pd.get_dummies(df)", "pandas.get_dummies"),
     ("df.to_csv('x.csv')", "to_csv"),
+    ("y = df.reset_index()", "reset_index"),
 ])  # fmt: skip
 def test_deferred_operation_is_named_with_its_reason(src: str, name: str):
     r = _assess(src)

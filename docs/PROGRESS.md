@@ -2036,7 +2036,9 @@ Pre-registration `docs/benchmarks/phase8-preregistration.md` with amendments 1-2
 - [x] Should `duplicated`: **NOT ADOPTED, no estimate in v4.** First derivation 0.676 / 0.912 / 0.582. Step diagnostic
   (`p8_duplicated_diag.out`): a grown table was charged 1.5x its final size (khash's realloc growth peaks at 1.25x,
   1.5x for a key-only set); the zero-filled x4 uniques vector and a `str` key's object conversion were missing; group
-  ids and hashing are separate phases. The one allowed second derivation (`p8_duplicated_b2.out`, fresh variants):
+  ids and hashing are separate phases. The one allowed second derivation was committed as `b7217ae`; its retry probe
+  and output were committed as `38c9545` and run exactly once (three repeats per variant within that run):
+  (`p8_duplicated_b2.out`, fresh variants):
   0.865, 1.127, 1.128, a `str` Series censored, and **1.294 on one dense id-like int key** (under-predicted). As
   with value_counts, the int64 hash clusters, so table residency depends on the key values. The message names it.
   Static coverage ceiling without it: 49.3% (amendment 3 (b): the criterion is recorded FAILED if run-time coverage
@@ -2045,9 +2047,13 @@ Pre-registration `docs/benchmarks/phase8-preregistration.md` with amendments 1-2
 - [x] Should `dropna`: **ADOPTED**. The committed derivation used the isna frame, row reduction, and surviving-row take.
   Fresh OS-peak probes passed at 1.001, 1.002, 1.002 and 1.001. Updated static ceiling after the item: 49.3% without
   `duplicated` (60.0% if every remaining item including `duplicated` lands).
-- [x] Should `reset_index`: **ADOPTED** for RangeIndex/materialized-index variants. The probe measured 122.289 MiB for
-  RangeIndex `drop=False`, 0.027 MiB for `drop=True`, and 61.250 MiB for a materialized index. Updated static ceiling:
-  49.3% without `duplicated`; 60.0% if the remaining items all land.
+- [x] Should `reset_index`: **INVALID ATTEMPT; reverted to named no-estimate.** The committed pre-run probe had no
+  derivation, and the model formula was added only after the output. For 8M rows, the RangeIndex `drop=False` output
+  was 122.293 MiB while `moved_bytes + 8*n` implies about 183.1 MiB; `drop=True` measured 0.027 MiB while the model's
+  1% of moved bytes implies about 1.22 MiB. The probe-file diff added only the main guard, but it does not establish
+  that the post-output formula was preregistered. The attempt is invalid under amendment 6; `reset_index` is no-estimate
+  in v4 with the reason recorded in `nexus.deferred`. The previously reported 38.7% (29/75) static ceiling included
+  this now-invalid model and is pending exact recount.
 - [x] Should `map`: **NOT ADOPTED, no estimate in v4.** The committed first derivation failed: dict mapper 2.127x,
   Series mapper 1.063x, NumPy ufunc mapper 12.992x (OS peaks vs derived; `p8_map.out`). Dict and ufunc variants exceeded
   ±15%, so `map` remains no-estimate with a named mapper-workspace reason. Updated static ceiling: **52.0% (39/75)**,
