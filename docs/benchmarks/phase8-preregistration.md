@@ -311,3 +311,42 @@ A metric with fewer than **30** valid points (configurations: fewer than 10) is 
 * The secondary v3-way above_high never decides anything.
 * INCONCLUSIVE is reported as such and never counted as a pass. Every outcome is reported as it comes out, with its 95%
   bounds.
+
+---
+
+## Amendment 1 (2026-11-24): width criterion split, value_counts attempt limit, item (1a) second derivation
+
+Written after the v4 item C dev preview (`b954a19`) and the item (1a) probe (`049ae28`). **No v4 held-out data
+exists**: no v4 synthetic group has been generated, no Phase 8b held-out notebook collected, and val-v5 is sealed and
+unrun. What these dev results showed:
+* W(b) as written fails at v3's own widths, before any v4 change: high/expected median 2.45, 90th percentile 7.25 on
+  the dev preview. The policy-B high of merge (5.71) and read_csv (3.11) drives it, and this pre-registration freezes
+  policy B.
+* The item (1a) non-string fill-value derivation measured 0.759-0.845.
+
+**(A) Width criterion W, replacing the W row of section 2 and the W item of section 4:**
+* **W(a), DECIDING:** on points that both `models-frozen-v3` and v4 estimate, the median of
+  (high_v4 / expected_v4) / (high_v3 / expected_v3) <= **1.30**.
+* **W(b), DECIDING only on points v3 does NOT estimate** (new coverage): median high_v4 / expected_v4 <= **2.0** and
+  90th percentile <= **4.0**. Fewer than 30 such points: INCONCLUSIVE.
+* **W(b) on all points: reported, NOT deciding.** Known limitation: the width of merge and read_csv, inherited from
+  policy B's Tier 0 high, which v4 does not change.
+* Both deciding parts apply per held-out set and per platform, as before. A failure of either is a failure of the
+  whole v4 (section 4). The item C dev success criterion uses the same split.
+
+**(B) value_counts (item (1c)):** the v4 derivation is the **third attempt** (Phase 7a was the first, Phase 7b the
+second; section 1 called it the second in error). If it fails its bar, value_counts is deferred to UNKNOWN with the
+named message of item (4). **No fourth attempt in v4.**
+
+**(C) Item (1a), text-column fillna:**
+* **Exactly one labelled second derivation** for NON-STRING fill values: the copy made before the failed setitem is
+  freed, not held by the traceback (about 21 B/row per filled column instead of 29).
+* It is written down before it runs and is tested on a FRESH set of variants (rows, NA shares, column counts and
+  string lengths not used by the first probe), with the same +-15% bar.
+* **If it fails, text-column fillna stays UNKNOWN in v4, and the string-value path (which passed) is NOT adopted
+  either.**
+* Rerunning the dict variant of the first probe on a smaller frame is a measurement fix, not an attempt. Its original
+  run was censored (the operation's peak stayed below the setup peak), so it produced no measurement.
+
+This amendment narrows nothing that has been measured on held-out data. It replaces a width criterion that could not
+be met by construction with one that judges v4's own changes, and it fixes the number of attempts in advance.
