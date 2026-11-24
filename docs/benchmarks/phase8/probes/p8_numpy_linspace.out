@@ -1,0 +1,4 @@
+{"numpy": "2.5.5", "bar": 0.15}
+{"variant": "40000000 float64", "measured_mib": 305.2421875, "bound_mib": 0.0, "derived_mib": 305.17578125, "ratio": 1.0002176, "within_bar": true, "censored": false}
+{"variant": "60000000 float32", "measured_mib": 686.71484375, "bound_mib": 0.0, "derived_mib": 228.8818359375, "ratio": 3.0003029333333333, "within_bar": false, "censored": false}
+{"variant": "30000000 float64", "measured_mib": 228.9453125, "bound_mib": 0.0, "derived_mib": 228.8818359375, "ratio": 1.0002773333333332, "within_bar": true, "censored": false}

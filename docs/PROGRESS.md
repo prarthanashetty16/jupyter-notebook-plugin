@@ -2075,5 +2075,7 @@ Pre-registration `docs/benchmarks/phase8-preregistration.md` with amendments 1-2
 - [x] Easy win `numpy.empty`: **NOT ADOPTED, no estimate in v4.** Three OS peaks were 0.031 MiB against derived
   allocations of 244.141 / 244.141 / 183.105 MiB (ratios 0.00013 / 0.00013 / 0.00017); the pages remain virtual until
   written. Named no-estimate. Updated static ceiling: **49.3% (37/75)**.
-- [ ] Easy wins `numpy.linspace`, `numpy.array`, `sample`, and `describe`: awaiting the committed
-  probes required by amendment 4.
+- [x] Easy win `numpy.linspace`: **NOT ADOPTED, no estimate in v4.** Ratios were 1.0002 (40M float64), 3.0003
+  (60M float32), and 1.0003 (30M float64). The float32 variant exceeded ±15%; it has three live arrays rather than
+  the derived single output allocation. Updated static ceiling: **48.0% (36/75)**, below the unchanged 55% target.
+- [ ] Easy wins `numpy.array`, `sample`, and `describe`: awaiting the committed probes required by amendment 4.

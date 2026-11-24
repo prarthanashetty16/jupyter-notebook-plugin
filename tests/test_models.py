@@ -125,7 +125,7 @@ def test_v4_output_and_easy_estimates(pipeline):
     assert "describe" in estimates(pipeline, "df.describe()", {"df": df})
     assert "numpy.zeros" not in estimates(pipeline, "np.zeros((100, 100))", {"np": np})
     assert "numpy.empty" not in estimates(pipeline, "np.empty((100, 100))", {"np": np})
-    assert "numpy.linspace" in estimates(pipeline, "np.linspace(0, 1, 100)", {"np": np})
+    assert "numpy.linspace" not in estimates(pipeline, "np.linspace(0, 1, 100)", {"np": np})
 
 
 def test_dict_astype_remains_unestimated(pipeline):

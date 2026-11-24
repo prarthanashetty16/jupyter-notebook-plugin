@@ -18,6 +18,7 @@ DEFERRED: dict[str, str] = {
     "to_numpy": "zero-copy peak is below the reliable measurement floor; no relative error bar can be tested",
     "numpy.zeros": "zero-filled allocation stays virtual until the user writes pages; incremental peak is unmeasurable",
     "numpy.empty": "uninitialized allocation stays virtual until the user writes pages; incremental peak is unmeasurable",
+    "numpy.linspace": "float32 linspace has three live arrays, not the derived single output buffer",
     "to_csv": "deferred in v4: writer buffers not derived",
     "join": "deferred in v4: not derived",
     "pandas.get_dummies": "deferred in v4: not derived",

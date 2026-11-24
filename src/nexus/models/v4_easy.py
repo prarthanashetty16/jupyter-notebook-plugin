@@ -86,7 +86,6 @@ class NumpyEmptyModel(NumpyZerosModel):
         return op.name == "numpy.empty"
 
 
-@register_model
 class NumpyLinspaceModel(NumpyZerosModel):
     """Peak RAM of ``np.linspace`` with a literal count."""
 
