@@ -1,0 +1,6 @@
+{"pandas": "3.1.1", "numpy": "2.5.5", "bar": 0.15, "attempt": 2}
+{"variant": "2 keys: random float + wide random int, all distinct", "statement": "y = df.duplicated()", "measured_mib": 429.82421875, "censored": false, "bound_mib": 0.0, "derived_mib": 496.8115234375, "ratio": 0.8651655577068611, "within_bar": true}
+{"variant": "3 keys, low / mid cardinality, float with nulls", "statement": "y = df.duplicated()", "measured_mib": 542.35546875, "censored": false, "bound_mib": 0.0, "derived_mib": 481.24127197265625, "ratio": 1.1269928419207076, "within_bar": true}
+{"variant": "subset: str key + int key", "statement": "y = df.duplicated(subset=['s', 'i'])", "measured_mib": 273.1328125, "censored": false, "bound_mib": 0.0, "derived_mib": 242.0511474609375, "ratio": 1.1284094926427832, "within_bar": true}
+{"variant": "str Series, 3M distinct", "statement": "y = df['s'].duplicated()", "measured_mib": null, "censored": true, "bound_mib": 109.80859375, "derived_mib": 100.9984130859375, "ratio": null, "within_bar": null}
+{"variant": "one dense id-like int key (subset='id')", "statement": "y = df.duplicated(subset='id')", "measured_mib": 268.5546875, "censored": false, "bound_mib": 0.0, "derived_mib": 207.5367431640625, "ratio": 1.2940103203204911, "within_bar": false}

@@ -2033,5 +2033,11 @@ Pre-registration `docs/benchmarks/phase8-preregistration.md` with amendments 1-2
   v4; the `duplicated` diagnostic (amendment 3) locates the term.
 - **`tail` copies like `head`** (pandas 3.1.1 `tail(n)` is `iloc[-n:].copy()`; measured 1.000 against "the receiver
   already copies"): `X.tail(n).copy()` has no estimate, and its message names the reason.
-- [ ] Should `duplicated`: first derivation FAILED (0.676 / 0.912 / 0.582); one labelled second derivation allowed
-  (amendment 3 (a)).
+- [x] Should `duplicated`: **NOT ADOPTED, no estimate in v4.** First derivation 0.676 / 0.912 / 0.582. Step diagnostic
+  (`p8_duplicated_diag.out`): a grown table was charged 1.5x its final size (khash's realloc growth peaks at 1.25x,
+  1.5x for a key-only set); the zero-filled x4 uniques vector and a `str` key's object conversion were missing; group
+  ids and hashing are separate phases. The one allowed second derivation (`p8_duplicated_b2.out`, fresh variants):
+  0.865, 1.127, 1.128, a `str` Series censored, and **1.294 on one dense id-like int key** (under-predicted). As
+  with value_counts, the int64 hash clusters, so table residency depends on the key values. The message names it.
+  Static coverage ceiling without it: 49.3% (amendment 3 (b): the criterion is recorded FAILED if run-time coverage
+  ends below 55%).

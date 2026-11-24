@@ -19,9 +19,9 @@ DEFERRED: dict[str, str] = {
     "join": "deferred in v4: not derived",
     "pandas.get_dummies": "deferred in v4: not derived",
     "corr": "deferred in v4: not derived",
-    # v4 Should item: the derivation (drop_duplicates' hash phase without the take) over-predicted its probe at 8M rows
-    # (0.58-0.68, docs/benchmarks/phase8/probes/p8_duplicated.out): not adopted
-    "duplicated": "not modelled in v4: its derivation over-predicted the measured peak",
+    # v4 Should item: first derivation 0.58-0.68 (p8_duplicated.out); the one allowed second derivation (amendment 3)
+    # under-predicted a dense id-like key by 1.29 (p8_duplicated_b2.out): not adopted
+    "duplicated": "not modelled in v4: the hash table's memory depends on the key values (dense ids measured 1.29x)",
 }
 # pandas 3.1.1 ``head`` / ``tail`` are ``iloc[...].copy()``: the receiver already copies (probe p8_copy_receivers)
 COPY_OF_COPYING_RECEIVER = (
