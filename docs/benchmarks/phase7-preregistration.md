@@ -223,3 +223,13 @@ any group has been seen. This amendment adds a held-out set and a rule. It relax
 * **Failure:** the above_high bars are part of section 4's "failure of the whole v3" (as for v2). The uncovered-operation
   rule is an item criterion (item 4); its failure withdraws the claim that uncovered operations are handled
   conservatively.
+
+---
+
+## Amendment 2 (2026-11-24): val-v5 reassigned to v4; no Linux held-out check of v3
+
+Append-only; the text above is unchanged. **val-v5 was never run or read for v3.** The Phase 8 pre-registration
+(`docs/benchmarks/phase8-preregistration.md`, commit `f2e19cc`) reassigns it, sealed, as a **v4 Linux held-out group**
+(digest re-checked there). **v3's Linux held-out check is therefore NOT performed.** The v3 verdict stays the Windows
+held-out result recorded in `docs/PROGRESS.md` ("v3 Windows held-out verdict: FAILED"). The val-v5 rows of section 2
+(RAM, time, R1-R3 on val-v5) are never evaluated for v3 and are reported as NOT PERFORMED, never as passed.

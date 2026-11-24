@@ -1984,3 +1984,11 @@ changes in response: v3 is not repaired on these data.**
 * **Phase 8b held-out set:** a fresh batch of notebooks, sealed separately (digests committed before anything else is
   done with it). It gets no census, no static analysis and no reading of its cells before the v4 freeze. Its first
   use is the pre-registered held-out run, logged in the Test-split access log.
+
+## Before Phase 8c (to-do)
+
+- [ ] Relabel the val-v5 runbook (`docs/benchmarks/val-v5-linux-runbook.md`) for v4: checkout `models-frozen-v4`, the
+  Phase 8 criteria (`docs/benchmarks/phase8-preregistration.md`, amendment 1) as authoritative.
+- [ ] Relabel `benchmarks/phase7_verdict.py` for v4, or create a v4 verdict script (`evaluate --val` must print the
+  Phase 8 criteria: split width criterion W(a) / W(b), excludes-label criterion, per platform). val-v5 was reassigned
+  from v3 to v4 (Phase 7 pre-registration amendment 2); v3 gets no Linux held-out check.
