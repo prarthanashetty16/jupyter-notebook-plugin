@@ -22,6 +22,11 @@ namespace:
 Phase 7a probe 1c (docs/benchmarks/phase7a/probes/p1c_cell_frames.out): shapes / dtypes are enough for
 concat (1.00), copy and sort, and bound fillna; merge and groupby on shapes alone are wide but contain
 the measured peak (Tier 0). Column statistics are NOT carried in v3.
+
+v4 item (1b): a deep ``x = df.copy()`` of a kernel frame ``df`` that no earlier statement of the cell mentions
+holds exactly the kernel object's values (the kernel is inspected before the cell runs), so an operation on ``x``
+runs its Tier 1 statistics on the kernel ``df`` (``stats_namespace``). Copies of such a copy inherit the alias; any
+other producer (sort, fillna, read_csv, concat) leaves statistics off.
 """
 
 from __future__ import annotations
@@ -47,6 +52,9 @@ class CellBindings:
     binds: dict[str, list[tuple[int, int | None]]] = field(
         default_factory=dict
     )  # name -> (stmt, op id)
+    mentions: dict[str, list[int]] = field(
+        default_factory=dict
+    )  # name -> statements that mention it
 
     def stmt_of(self, lineno: int) -> int | None:
         for i, (lo, hi) in enumerate(self.spans):
@@ -94,6 +102,8 @@ def bindings(tree: ast.Module, ops: list[Any]) -> CellBindings:
             producer = by_node.get(key(st.value))
         for name in dict.fromkeys(_store_names(st)):
             cb.binds.setdefault(name, []).append((i, producer))
+        for name in dict.fromkeys(n.id for n in ast.walk(st) if isinstance(n, ast.Name)):
+            cb.mentions.setdefault(name, []).append(i)
     return cb
 
 
@@ -143,14 +153,15 @@ def output_descriptor(  # noqa: C901
     if model == "copy":
         if not features.get("deep", True):
             return None
+        # the alias of a copy of a kernel frame is set by ``record``; a copy of a copy keeps it
         return replace(src, name=name, consolidated=True if src.consolidated is not None else None)
     if model == "sort_values":
         return replace(src, name=name, index_kind="Index", index_nbytes=8 * src.shape[0],
-                       nbytes=src.nbytes - src.index_nbytes + 8 * src.shape[0])  # fmt: skip
+                       nbytes=src.nbytes - src.index_nbytes + 8 * src.shape[0], stats_alias=None)  # fmt: skip
     if model == "fillna":
         if src.text_columns:
             return None  # an incompatible value coerces text columns to object
-        return replace(src, name=name)
+        return replace(src, name=name, stats_alias=None)
     return None
 
 
@@ -204,5 +215,49 @@ def record(
         return
     inputs = [state.variables[n] for n in _names(op) if n in state.variables]
     desc = output_descriptor("result", model, features, estimate, inputs)
+    if desc is not None and model == "copy":
+        desc = replace(desc, stats_alias=_copy_alias(op, cb, state))
     if desc is not None:
         produced[id(op)] = desc
+
+
+def _copy_alias(op: Any, cb: CellBindings, state: Inspection) -> str | None:
+    """The kernel name whose values a deep whole-frame ``R.copy()`` holds, or None.
+
+    ``R`` must be a plain name. If ``R`` was bound earlier in the cell, its own alias carries over (a copy of a
+    copy); otherwise ``R`` is the kernel object and no earlier statement may mention it (nothing could have
+    changed it before the copy)."""
+    recv = getattr(getattr(op.node, "func", None), "value", None)
+    if not isinstance(recv, ast.Name):
+        return None
+    si = cb.stmt_of(op.lineno)
+    if si is None:
+        return None
+    if cb.last_binding(recv.id, si) is not None:  # a frame made in the cell: its own alias, if any
+        return getattr(state.variables.get(recv.id), "stats_alias", None)
+    return recv.id if all(m >= si for m in cb.mentions.get(recv.id, [])) else None
+
+
+def stats_namespace(
+    op: Any, cb: CellBindings | None, produced: dict[int, Descriptor], namespace: Any
+) -> Any | None:
+    """A namespace view for Tier 1 statistics of an op on frames made in the cell: each such name maps to the
+    kernel object its ``stats_alias`` names. None if any touched cell frame has no alias (statistics stay off)."""
+    from collections import ChainMap
+
+    if cb is None:
+        return None
+    si = cb.stmt_of(op.lineno)
+    if si is None:
+        return None
+    view: dict[str, Any] = {}
+    for name in _names(op):
+        b = cb.last_binding(name, si)
+        if b is None:
+            continue
+        desc = produced.get(b[1]) if b[1] is not None else None
+        alias = getattr(desc, "stats_alias", None)
+        if alias is None or alias not in namespace:
+            return None
+        view[name] = namespace[alias]
+    return ChainMap(view, namespace) if view else None

@@ -127,18 +127,18 @@ def _head() -> str:
 
 
 def _tree_state() -> str:
-    """Digest of the model sources (``src/nexus`` at HEAD + uncommitted and untracked changes there), so a cached
-    prediction is reused only for the same models, whatever else was committed."""
+    """Digest of the model sources' CONTENT (every file under ``src/nexus`` except caches), so a cached prediction
+    is reused for the same models whether or not they are committed."""
     import hashlib
 
-    def git(*args: str) -> str:
-        return subprocess.run(["git", *args], capture_output=True, text=True).stdout
-
-    h = hashlib.sha256(git("rev-parse", "HEAD:src/nexus").encode())
-    h.update(git("diff", "HEAD", "--", "src/nexus").encode())
-    for name in sorted(git("ls-files", "--others", "--exclude-standard", "src/nexus").split()):
-        h.update(name.encode() + Path(name).read_bytes())
-    return f"src/nexus:{h.hexdigest()[:16]}"
+    h = hashlib.sha256()
+    root = Path("src/nexus")
+    for f in sorted(x for x in root.rglob("*") if x.is_file() and "__pycache__" not in x.parts):
+        data = f.read_bytes().replace(
+            bytes([13, 10]), bytes([10])
+        )  # same digest for CRLF / LF checkouts
+        h.update(f.as_posix().encode() + bytes([0]) + data)
+    return f"content:{h.hexdigest()[:16]}"
 
 
 def _load_cache(state: str) -> dict[str, Any]:

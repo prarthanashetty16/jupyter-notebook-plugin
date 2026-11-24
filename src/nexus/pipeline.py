@@ -100,7 +100,14 @@ class Pipeline:
                     tier0_features = features
                     tier0 = None
                     used = 0
-                    if cell_frame:  # statistics would read the stale kernel object: Tier 0 only
+                    alias_ns = (
+                        cellframes.stats_namespace(op, cb, produced, namespace)
+                        if cell_frame and self._tier >= 1
+                        else None
+                    )
+                    if alias_ns is not None:  # v4 (1b): a copy of a kernel frame: its statistics
+                        features, used = self._tier1(model, op, features, alias_ns, source, t0)
+                    elif cell_frame:  # statistics would read the stale kernel object: Tier 0 only
                         features = {
                             **features,
                             "tier1": {"used": False, "reason": cellframes.CELL_FRAME_REASON},

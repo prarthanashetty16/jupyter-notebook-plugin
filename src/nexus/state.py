@@ -60,6 +60,9 @@ class FrameDescriptor(Descriptor):
     # text, the 8-byte pointers only. Excludes the string objects (shared, never copied) and the
     # index. None for descriptors built without it; ``moved_bytes`` then falls back to ``nbytes``.
     shallow_bytes: int | None = None
+    # v4 item (1b): a frame made in the cell by a deep ``copy()`` of a kernel frame holds that frame's values, so
+    # Tier 1 statistics may read the kernel object of this name (None: no such object, statistics are skipped)
+    stats_alias: str | None = None
 
     @property
     def moved_bytes(self) -> int:
