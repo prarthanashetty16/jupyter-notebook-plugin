@@ -77,7 +77,6 @@ class NumpyZerosModel(OperationModel):
         )
 
 
-@register_model
 class NumpyEmptyModel(NumpyZerosModel):
     """Peak RAM of ``np.empty`` with a literal shape."""
 

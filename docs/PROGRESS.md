@@ -2072,5 +2072,8 @@ Pre-registration `docs/benchmarks/phase8-preregistration.md` with amendments 1-2
   expected peaks of 152.588 / 114.441 / 114.441 MiB (ratios 0.00020 / 0.00027 / 0.00027). The array remains virtual
   until written; the cell alone has no measurable incremental peak, so the estimate failed. Updated static ceiling:
   **49.3% (37/75)**, below the unchanged 55% target.
-- [ ] Easy wins `numpy.empty`, `numpy.linspace`, `numpy.array`, `sample`, and `describe`: awaiting the committed
+- [x] Easy win `numpy.empty`: **NOT ADOPTED, no estimate in v4.** Three OS peaks were 0.031 MiB against derived
+  allocations of 244.141 / 244.141 / 183.105 MiB (ratios 0.00013 / 0.00013 / 0.00017); the pages remain virtual until
+  written. Named no-estimate. Updated static ceiling: **49.3% (37/75)**.
+- [ ] Easy wins `numpy.linspace`, `numpy.array`, `sample`, and `describe`: awaiting the committed
   probes required by amendment 4.
