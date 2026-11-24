@@ -30,7 +30,7 @@ import static_ops  # noqa: E402
 
 V3_OR_LANDED = {"groupby", "pandas.concat", "sort_values", "drop_duplicates", "merge", "set_index", "fillna",
                 "astype", "pandas.read_csv", "operator.matmul", "numpy.sort"}  # fmt: skip
-SHOULD_EASY = {"duplicated", "dropna", "reset_index", "numpy.zeros", "numpy.empty", "numpy.linspace",
+SHOULD_EASY = {"duplicated", "dropna", "reset_index", "numpy.empty", "numpy.linspace",
                "sample", "describe"}  # fmt: skip
 UFUNC_PREFIX = ("np.", "numpy.")
 

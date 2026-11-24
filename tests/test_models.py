@@ -123,7 +123,7 @@ def test_v4_output_and_easy_estimates(pipeline):
     assert "to_numpy" not in estimates(pipeline, "df.to_numpy()", {"df": df})
     assert "sample" in estimates(pipeline, "df.sample(n=100)", {"df": df})
     assert "describe" in estimates(pipeline, "df.describe()", {"df": df})
-    assert "numpy.zeros" in estimates(pipeline, "np.zeros((100, 100))", {"np": np})
+    assert "numpy.zeros" not in estimates(pipeline, "np.zeros((100, 100))", {"np": np})
     assert "numpy.linspace" in estimates(pipeline, "np.linspace(0, 1, 100)", {"np": np})
 
 

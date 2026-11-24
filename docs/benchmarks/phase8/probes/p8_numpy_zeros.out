@@ -1,0 +1,4 @@
+{"numpy": "2.5.5", "bar": 0.15}
+{"variant": "40M float64", "measured_mib": 0.03125, "bound_mib": 0.0, "derived_expected_mib": 152.587890625, "ratio": 0.0002048, "within_bar": false, "censored": false}
+{"variant": "60M float32", "measured_mib": 0.03125, "bound_mib": 0.0, "derived_expected_mib": 114.44091796875, "ratio": 0.00027306666666666667, "within_bar": false, "censored": false}
+{"variant": "30M int64", "measured_mib": 0.03125, "bound_mib": 0.0, "derived_expected_mib": 114.44091796875, "ratio": 0.00027306666666666667, "within_bar": false, "censored": false}

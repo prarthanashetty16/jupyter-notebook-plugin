@@ -25,7 +25,6 @@ def _shape(value: Any) -> tuple[int, ...] | None:
     return None
 
 
-@register_model
 class NumpyZerosModel(OperationModel):
     """Peak RAM of ``np.zeros`` with a literal shape."""
 
@@ -38,7 +37,7 @@ class NumpyZerosModel(OperationModel):
         try:
             dtype = np.dtype(op.kwargs.get("dtype", "float64"))
         except (TypeError, ValueError):
-            raise NoEstimateError("NumPy dtype is not statically known")
+            raise NoEstimateError("NumPy dtype is not statically known") from None
         if op.name == "numpy.array":
             obj = op.args[0] if op.args else None
             if not isinstance(obj, (list, tuple)):
