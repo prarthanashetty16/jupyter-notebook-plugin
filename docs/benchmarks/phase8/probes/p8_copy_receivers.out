@@ -1,0 +1,10 @@
+{"pandas": "3.1.1", "numpy": "2.5.5", "rows": 8000000, "bar": 0.15}
+{"statement": "y = df[df['f0'] > 0.5].copy()", "measured_mib": 519.5234375, "bound_mib": 0.0, "censored": false, "derived_mib": 519.1412353515625, "ratio": 1.000736219977168, "within_bar": true}
+{"statement": "y = df.loc[df['f0'] > 0.9].copy()", "measured_mib": null, "bound_mib": 122.1484375, "censored": true, "derived_mib": 103.61865234375, "ratio": null, "within_bar": null}
+{"statement": "y = df[(df['f0'] > 0.2) & (df['i0'] < 500_000)].copy()", "measured_mib": 415.33984375, "bound_mib": 0.0, "censored": false, "derived_mib": 414.9573516845703, "ratio": 1.0009217623543165, "within_bar": true}
+{"statement": "y = df[df['s0'] == 'x00001'].copy()", "measured_mib": null, "bound_mib": 123.62109375, "censored": true, "derived_mib": 91.552734375, "ratio": null, "within_bar": null}
+{"statement": "y = df[['f0', 'f1', 'f2', 'f3']].copy()", "measured_mib": 244.640625, "bound_mib": 0.0, "censored": false, "derived_mib": 244.140625, "ratio": 1.002048, "within_bar": true}
+{"statement": "y = df[['f2', 'f0', 'f1']].copy()", "measured_mib": 366.73046875, "bound_mib": 0.0, "censored": false, "derived_mib": 366.2109375, "ratio": 1.0014186666666667, "within_bar": true}
+{"statement": "y = df.iloc[:4_000_000].copy()", "measured_mib": 244.21875, "bound_mib": 0.0, "censored": false, "derived_mib": 244.140625, "ratio": 1.00032, "within_bar": true}
+{"statement": "y = df.head(5_000_000).copy()", "measured_mib": 610.43359375, "bound_mib": 0.0, "censored": false, "derived_mib": 305.17578125, "ratio": 2.0002688, "within_bar": false}
+{"statement": "y = df.sort_values('f0').copy()", "measured_mib": 1038.11328125, "bound_mib": 0.0, "censored": false, "derived_mib": null, "ratio": null, "within_bar": null}
