@@ -1,6 +1,6 @@
 # v4 item C: upper-bound calibration, DEV preview
 
-Tree `f2e19cc+992d4e1cc143`. Split conformal, alpha = 0.02, own factor for families with >= 30 configurations, pooled otherwise. **Preview on the current models: the frozen artifact is computed once, on the final v4 models (pre-registration, Order 5).**
+Tree `src/nexus:38d1ec5d9126ea43`. Split conformal, alpha = 0.02, own factor for families with >= 30 configurations, pooled otherwise. **Preview on the current models: the frozen artifact is computed once, on the final v4 models (pre-registration, Order 5).**
 
 ## Factors
 
@@ -38,5 +38,7 @@ Configurations per family: read_csv 54, sort_values 37, merge 25, astype 24, con
 ## Pre-registered dev criteria
 
 * LOCO <= 2% above high per point and per configuration, pooled and per family with >= 30 configurations: **MET** (pooled 0.00% of points, 0.00% of configurations; read_csv 0.00% / 0.00%; sort_values 0.00% / 0.00%).
-* W(a) median high_cal / high_v3 <= 1.30: 1.000 (**MET**).
-* W(b) median high / expected <= 2.0: 2.45; p90 <= 4.0: 7.25 (**FAILED**).
+* W(a), DECIDING (amendment 1), points both v3 and v4 estimate (472; on the current models every point is shared): median (high_v4 / exp_v4) / (high_v3 / exp_v3) <= 1.30: 1.000 (**MET**).
+* W(b), DECIDING only on points v3 does not estimate: 0 such points on the current models -> **INCONCLUSIVE** (it applies once v4 adds coverage).
+* W(b) on all points, NOT deciding: median 2.45 (2.0), p90 7.25 (4.0). Known limitation: merge / read_csv width from policy B's Tier 0 high.
+* Excluded from the residuals (pre-registered): multicell Tier 0 only 67 cells, multicell no estimate 2 cells, multicell uncovered operation (Rule 1) 74 cells.

@@ -6,3 +6,4 @@
 - 2026-11-23 09:19:46 | READ stored former held-out multicell rows (dev since 2026-11-22) | reason: Phase 7b dev evaluation of the v3 working tree (prediction only, no measurement)
 - 2026-11-23 10:28:23 | READ stored former held-out multicell rows (dev since 2026-11-22) | reason: Phase 7c item 1, risk class of cells with uncovered operations (prediction only)
 - 2026-11-24 14:44:46 | READ consumed held-out multicell rows (dev data), LOGGED RETROACTIVELY | the v4 item C calibration preview (`benchmarks.upper_calibration`, tree f2e19cc+992d4e1cc143) read the stored v1 / v2 / v3 held-out results (all consumed, dev) earlier today before this logging was wired in; prediction only, no measurement |
+- 2026-11-24 14:56:18 | READ consumed held-out multicell v1 rows (dev data) | reason: v4 item C: upper-bound calibration residuals (dev)

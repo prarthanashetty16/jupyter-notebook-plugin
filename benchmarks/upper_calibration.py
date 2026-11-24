@@ -127,13 +127,18 @@ def _head() -> str:
 
 
 def _tree_state() -> str:
-    """HEAD plus a digest of the uncommitted model sources, so a cached prediction is reused only for the same tree."""
+    """Digest of the model sources (``src/nexus`` at HEAD + uncommitted and untracked changes there), so a cached
+    prediction is reused only for the same models, whatever else was committed."""
     import hashlib
 
-    diff = subprocess.run(
-        ["git", "diff", "HEAD", "--", "src/nexus"], capture_output=True, text=True
-    ).stdout
-    return f"{_head()}+{hashlib.sha256(diff.encode()).hexdigest()[:12]}"
+    def git(*args: str) -> str:
+        return subprocess.run(["git", *args], capture_output=True, text=True).stdout
+
+    h = hashlib.sha256(git("rev-parse", "HEAD:src/nexus").encode())
+    h.update(git("diff", "HEAD", "--", "src/nexus").encode())
+    for name in sorted(git("ls-files", "--others", "--exclude-standard", "src/nexus").split()):
+        h.update(name.encode() + Path(name).read_bytes())
+    return f"src/nexus:{h.hexdigest()[:16]}"
 
 
 def _load_cache(state: str) -> dict[str, Any]:
@@ -164,12 +169,22 @@ def _repredict(version: int, r: dict[str, Any], key: str, state: str) -> dict[st
     return out
 
 
-def _scored(p: dict[str, Any]) -> bool:
-    """v4 Rule 1: a cell with an operation without an estimate has no cell range, so it gives no residual."""
+def _exclusion(p: dict[str, Any]) -> str | None:
+    """Why a re-predicted cell gives no residual (None: it does). v4 Rule 1: a cell with an operation without an
+    estimate has no cell range; residuals are Tier 1 only (item C)."""
     c = p.get("cell")
-    return not (
-        p.get("harness") or c is None or p["uncovered"] or c["tier"] < 1 or c["ram_expected"] <= 0
-    )
+    if p.get("harness"):
+        return "harness event"
+    if c is None:
+        return "no estimate"
+    if p["uncovered"]:
+        return "uncovered operation (Rule 1)"
+    if c["tier"] < 1:
+        return "Tier 0 only"
+    return "expected 0" if c["ram_expected"] <= 0 else None
+
+
+EXCLUDED: dict[str, int] = {}
 
 
 def multicell_points(repredict: bool = True) -> pd.DataFrame:
@@ -196,7 +211,9 @@ def multicell_points(repredict: bool = True) -> pd.DataFrame:
                         continue
                     cache[key] = _repredict(version, r, key, state)
                 p = cache[key]
-                if not _scored(p):
+                why = _exclusion(p)
+                if why is not None:
+                    EXCLUDED[f"multicell {why}"] = EXCLUDED.get(f"multicell {why}", 0) + 1
                     continue
                 c = p["cell"]
                 dom = max(p["estimates"], key=lambda e: e["ram_expected"])["model"]
@@ -258,7 +275,7 @@ def summary(points: pd.DataFrame, high: pd.Series) -> dict[str, Any]:
             "width_med": float(width.median()), "width_p90": float(width.quantile(0.9))}  # fmt: skip
 
 
-def report(points: pd.DataFrame, alpha: float = ALPHA) -> str:
+def report(points: pd.DataFrame, alpha: float = ALPHA, excluded: str = "not counted") -> str:
     nl = chr(10)
     units = units_of(points)
     pooled, own = fit(units, alpha)
@@ -323,10 +340,14 @@ def report(points: pd.DataFrame, alpha: float = ALPHA) -> str:
             for f, x in fam_lo.items()
         )
         + ").",
-        f"* W(a) median high_cal / high_v3 <= 1.30: {w_a.median():.3f} "
+        f"* W(a), DECIDING (amendment 1), points both v3 and v4 estimate ({len(points)}; on the current models "
+        f"every point is shared): median (high_v4 / exp_v4) / (high_v3 / exp_v3) <= 1.30: {w_a.median():.3f} "
         f"(**{'MET' if w_a.median() <= 1.30 else 'FAILED'}**).",
-        f"* W(b) median high / expected <= 2.0: {s_cal['width_med']:.2f}; p90 <= 4.0: {s_cal['width_p90']:.2f} "
-        f"(**{'MET' if s_cal['width_med'] <= 2.0 and s_cal['width_p90'] <= 4.0 else 'FAILED'}**).",
+        "* W(b), DECIDING only on points v3 does not estimate: 0 such points on the current models -> "
+        "**INCONCLUSIVE** (it applies once v4 adds coverage).",
+        f"* W(b) on all points, NOT deciding: median {s_cal['width_med']:.2f} (2.0), p90 {s_cal['width_p90']:.2f} "
+        "(4.0). Known limitation: merge / read_csv width from policy B's Tier 0 high.",
+        f"* Excluded from the residuals (pre-registered): {excluded}.",
         "",
     ]
     return nl.join(lines)
@@ -365,7 +386,8 @@ def main(argv: list[str] | None = None) -> int:
     power_record(False, "dev")
     points = all_points(args.single, repredict=not args.no_repredict)
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(report(points), encoding="utf-8")
+    excluded = ", ".join(f"{k} {v} cells" for k, v in sorted(EXCLUDED.items())) or "none"
+    args.out.write_text(report(points, excluded=excluded), encoding="utf-8")
     print(args.out.read_text(encoding="utf-8"))
     if args.write:
         ARTIFACT.write_text(json.dumps(artifact(points), indent=1) + chr(10), encoding="utf-8")
