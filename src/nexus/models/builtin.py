@@ -19,6 +19,8 @@ _MODULES = (
     "set_index",
     "dropna",
     "reset_index",
+    "v4_outputs",
+    "v4_easy",
 )
 
 

@@ -1,0 +1,141 @@
+"""Models for easy NumPy allocation/sequence operations and pandas describe."""
+
+from __future__ import annotations
+
+import math
+from typing import Any
+
+import numpy as np
+
+from nexus.analyzer import DetectedOp
+from nexus.models import _time as tt
+from nexus.models import _util as u
+from nexus.models.base import Estimate, NoEstimateError, OperationModel
+from nexus.registry import register_model
+from nexus.state import FrameDescriptor, Inspection
+
+
+def _shape(value: Any) -> tuple[int, ...] | None:
+    if isinstance(value, int):
+        return (value,)
+    if isinstance(value, tuple) and all(isinstance(v, int) for v in value):
+        return value
+    if isinstance(value, list) and all(isinstance(v, int) for v in value):
+        return tuple(value)
+    return None
+
+
+@register_model
+class NumpyZerosModel(OperationModel):
+    """Peak RAM of ``np.zeros`` with a literal shape."""
+
+    name = "numpy.zeros"
+
+    def matches(self, op: DetectedOp) -> bool:
+        return op.name == "numpy.zeros"
+
+    def features(self, op: DetectedOp, state: Inspection) -> dict[str, Any]:
+        try:
+            dtype = np.dtype(op.kwargs.get("dtype", "float64"))
+        except (TypeError, ValueError):
+            raise NoEstimateError("NumPy dtype is not statically known")
+        if op.name == "numpy.array":
+            obj = op.args[0] if op.args else None
+            if not isinstance(obj, (list, tuple)):
+                raise NoEstimateError("np.array from unknown/variable object")
+            shape = (len(obj),)
+            nbytes = math.prod(shape) * dtype.itemsize
+            kind = "copy"
+        elif op.name == "numpy.linspace":
+            num = op.args[2] if len(op.args) >= 3 else op.kwargs.get("num")
+            if not isinstance(num, int):
+                raise NoEstimateError("np.linspace num is not literal")
+            nbytes = num * dtype.itemsize
+            kind = "sequence"
+        else:
+            shape = _shape(op.args[0]) if op.args else None
+            if shape is None:
+                raise NoEstimateError("NumPy allocation shape is not literal")
+            nbytes = math.prod(shape) * dtype.itemsize
+            kind = "zeros" if op.name == "numpy.zeros" else "empty"
+        return {"nbytes": nbytes, "kind": kind}
+
+    def estimate(self, features: dict[str, Any], tier: int) -> Estimate:
+        u.require_tier(tier)
+        nbytes = float(features["nbytes"])
+        if features["kind"] == "zeros":
+            low, expected, high = 0.0, nbytes * 0.5, nbytes
+        elif features["kind"] == "empty":
+            low, expected, high = nbytes * 0.7, nbytes, nbytes
+        else:
+            low, expected, high = nbytes * 0.85, nbytes, nbytes * 1.15
+        return u.build(
+            (low, expected, high),
+            u.time_band_for_tier(tt.copy_s(nbytes), tier),
+            0.65,
+            tier,
+            ["shape x itemsize", features["kind"]],
+        )
+
+
+@register_model
+class NumpyEmptyModel(NumpyZerosModel):
+    """Peak RAM of ``np.empty`` with a literal shape."""
+
+    name = "numpy.empty"
+
+    def matches(self, op: DetectedOp) -> bool:
+        return op.name == "numpy.empty"
+
+
+@register_model
+class NumpyLinspaceModel(NumpyZerosModel):
+    """Peak RAM of ``np.linspace`` with a literal count."""
+
+    name = "numpy.linspace"
+
+    def matches(self, op: DetectedOp) -> bool:
+        return op.name == "numpy.linspace"
+
+
+@register_model
+class NumpyArrayModel(NumpyZerosModel):
+    """Peak RAM of ``np.array`` from a literal iterable."""
+
+    name = "numpy.array"
+
+    def matches(self, op: DetectedOp) -> bool:
+        return op.name == "numpy.array"
+
+
+@register_model
+class DescribeModel(OperationModel):
+    """Peak RAM of numeric/object describe quantile work."""
+
+    name = "describe"
+
+    def matches(self, op: DetectedOp) -> bool:
+        return op.name == "describe"
+
+    def features(self, op: DetectedOp, state: Inspection) -> dict[str, Any]:
+        desc = state.variables.get(op.receiver) if op.receiver else None
+        if not isinstance(desc, FrameDescriptor):
+            raise NoEstimateError("describe receiver is not a known DataFrame")
+        numeric = sum(dtype.startswith(("int", "uint", "float")) for dtype in desc.dtypes.values())
+        text = desc.text_columns
+        n = desc.shape[0]
+        return {"n_rows": n, "numeric_columns": numeric, "text_columns": text}
+
+    def estimate(self, features: dict[str, Any], tier: int) -> Estimate:
+        u.require_tier(tier)
+        n = float(features["n_rows"])
+        numeric = float(features["numeric_columns"])
+        text = float(features["text_columns"])
+        peak = n * (8.0 * numeric + 16.0 * text)
+        return u.build(
+            (0.8 * peak, peak, 1.2 * peak),
+            u.time_band_for_tier(tt.copy_s(peak), tier),
+            0.55,
+            tier,
+            ["numeric quantile workspace", "object/str column workspace"],
+        )

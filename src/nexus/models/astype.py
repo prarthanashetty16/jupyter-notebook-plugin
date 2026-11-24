@@ -120,6 +120,17 @@ class AstypeModel(OperationModel):
         df = u.frame(state, op.receiver)
         column = _column_name(op)
         target = op.args[0] if op.args else op.kwargs.get("dtype")
+        if column is None:
+            if isinstance(target, dict) and all(isinstance(k, str) for k in target):
+                missing = [k for k in target if k not in df.dtypes]
+                if missing:
+                    raise NoEstimateError("astype dict has unknown columns")
+                return {
+                    "n_rows": df.shape[0],
+                    "source_dtype": df.dtypes,
+                    "target": target,
+                    "astype_mode": "dict",
+                }
         if column is None or column not in df.dtypes or not isinstance(target, str):
             raise NoEstimateError("column or target dtype not statically known")
         if target not in ("str", "object", "category"):
@@ -189,6 +200,30 @@ class AstypeModel(OperationModel):
 
     def estimate(self, features: dict[str, Any], tier: int) -> Estimate:
         u.require_tier(tier)
+        if features.get("astype_mode") in ("dict", "frame"):
+            n = float(features["n_rows"])
+            source = features["source_dtype"]
+            target = features["target"]
+            peak = 0.0
+            items = target.items() if features["astype_mode"] == "dict" else (
+                (col, target) for col in source
+            )
+            for col, target_dtype in items:
+                src_dtype = source[col] if isinstance(source, dict) else str(source)
+                try:
+                    out_size = np.dtype(target_dtype).itemsize
+                except TypeError:
+                    out_size = 8
+                peak += n * out_size
+            band = (0.85 * peak, peak, 1.15 * peak)
+            seconds = tt.copy_s(peak) * 2.0
+            return u.build(
+                band,
+                u.time_band_for_tier(seconds, tier),
+                0.55,
+                tier,
+                ["per-column sum of astype result arrays"],
+            )
         n, source, target = features["n_rows"], features["source_dtype"], features["target"]
         source_text = u.is_text(source)
         ram_range: tuple[float, float, float] | None = None

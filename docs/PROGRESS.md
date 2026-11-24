@@ -2041,3 +2041,18 @@ Pre-registration `docs/benchmarks/phase8-preregistration.md` with amendments 1-2
   with value_counts, the int64 hash clusters, so table residency depends on the key values. The message names it.
   Static coverage ceiling without it: 49.3% (amendment 3 (b): the criterion is recorded FAILED if run-time coverage
   ends below 55%).
+
+- [x] Should `dropna`: **ADOPTED**. The committed derivation used the isna frame, row reduction, and surviving-row take.
+  Fresh OS-peak probes passed at 1.001, 1.002, 1.002 and 1.001. Updated static ceiling after the item: 49.3% without
+  `duplicated` (60.0% if every remaining item including `duplicated` lands).
+- [x] Should `reset_index`: **ADOPTED** for RangeIndex/materialized-index variants. The probe measured 122.289 MiB for
+  RangeIndex `drop=False`, 0.027 MiB for `drop=True`, and 61.250 MiB for a materialized index. Updated static ceiling:
+  49.3% without `duplicated`; 60.0% if the remaining items all land.
+- [x] Should `map`, `to_numpy`, multi-column/dict `astype`, and `read_csv(parse_dates=...)`: implemented conservatively
+  and kept defensive unknown handling. `map` covers dict/Series/NumPy-ufunc forms with Python-function mappers deferred;
+  `to_numpy` distinguishes zero-copy and consolidation-copy cases; dict/multi-column `astype` sums the per-column
+  result; `parse_dates` stays on the Tier 0/defensive path instead of a guessed Tier 1 derivation. Updated static
+  ceiling: 49.3% without `duplicated`; 60.0% at the all-items ceiling.
+- [x] Easy wins `numpy.zeros`, `numpy.empty`, `numpy.linspace`, `numpy.array`, `sample`, and `describe`: implemented for
+  literal shapes/counts and known row shapes. Unknown literals and Python-dependent work remain no-estimate. Updated
+  static ceiling: 49.3% without `duplicated`; 60.0% at the all-items ceiling.

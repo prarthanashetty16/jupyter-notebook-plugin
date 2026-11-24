@@ -166,6 +166,7 @@ class ReadCsvModel(OperationModel):
             "reader_path": path,
             "workers": workers,
             "subset_read": bool(kw) and ("nrows" in kw or "usecols" in kw),
+            "parse_dates": kw.get("parse_dates") if kw else None,
         }
 
     # options that change what the parser allocates; statistics assume the plain call
@@ -197,6 +198,11 @@ class ReadCsvModel(OperationModel):
         ):
             return None
         out: dict[str, Any] = {}
+        if "parse_dates" in kw:
+            parsed = kw["parse_dates"]
+            if not (isinstance(parsed, (bool, list, tuple))):
+                return None
+            out["parse_dates"] = parsed
         sep = kw.get("sep", kw.get("delimiter", ","))
         if not isinstance(sep, str) or len(sep) != 1 or ord(sep) > 127:
             return None  # sniffing (None), regex or multi-character separators: the python engine
@@ -353,6 +359,13 @@ class ReadCsvModel(OperationModel):
             driver = (
                 "tokenizer text + per-field buffers and chunk concatenation (not just the frame)"
             )
+        parsed = features.get("parse_dates")
+        if parsed is not None:
+            count = len(parsed) if isinstance(parsed, (list, tuple)) else 1
+            rows = features.get("n_rows") or 0.0
+            extra = count * rows * 8.0
+            ram = (ram[0] + extra * 0.85, ram[1] + extra, ram[2] + extra * 1.15)
+            driver = f"{driver}; parse_dates datetime arrays ({count} columns)"
         return u.build(
             ram,
             u.time_band_for_tier(tt.read_csv(features), tier),
