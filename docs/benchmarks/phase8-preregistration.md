@@ -370,3 +370,18 @@ notebook collected, val-v5 sealed and unrun).
   factor, which is fitted on dev residuals. A held-out shift in those models' errors larger than the factor goes
   straight above high; the held-out criteria are what test it.
 * Nothing measured on held-out data is affected. The held-out criteria of section 2 are unchanged.
+
+## Amendment 3 (2026-11-24): duplicated second derivation; the coverage target is not lowered
+
+Written after the `duplicated` probe (`401b03d`). No v4 held-out data exists. **This amendment follows the
+`duplicated` failure:** its derivation (the v3 `drop_duplicates` hash phase without the take) measured 0.676 and 0.582
+on two of its three measured variants. Without `duplicated`, the static coverage ceiling on the real dev notebooks
+falls from 60.0% to 49.3%.
+
+* **(a) `duplicated`:** exactly ONE labelled second derivation. It is based on a step-by-step diagnostic run FIRST:
+  the peak after each internal step (factorize per key, combined ids, hash table, result), on the three measured
+  variants. The second derivation is written down and committed before its probe, and tested on a FRESH set of
+  variants with the +-15% bar. If it fails, `duplicated` stays no-estimate in v4, with its reason named.
+* **(b) Coverage:** if the run-time dev coverage on `real_notebooks/` ends below 55%, the dev coverage criterion is
+  recorded as **FAILED**. The target is **not lowered**. The freeze proceeds, so the held-out accuracy, width and
+  safety criteria can still be tested; the Phase 8b held-out coverage criterion (v4 - v3 >= 15 points) is unchanged.

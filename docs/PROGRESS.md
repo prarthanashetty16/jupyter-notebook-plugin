@@ -2027,3 +2027,11 @@ Pre-registration `docs/benchmarks/phase8-preregistration.md` with amendments 1-2
   `df.sort_values(c).copy()` (1038 MiB) is above the sort model's own high (931 MiB); its copy has no estimate, so
   the cell shows no cell range (Rule 1). Model in `copy_fillna.py` (the receiver's cost is the copy's; mask expected =
   high, the selected fraction being unknown); no multicell dev template uses these forms (0 cells changed).
+
+- **Known, deferred to v5:** the v3 `drop_duplicates` hash term likely OVER-predicts at 8M rows (safe side). The
+  `duplicated` probe, which reuses it without the take, measured 0.58-0.68 of it (`p8_duplicated.out`). Not changed in
+  v4; the `duplicated` diagnostic (amendment 3) locates the term.
+- **`tail` copies like `head`** (pandas 3.1.1 `tail(n)` is `iloc[-n:].copy()`; measured 1.000 against "the receiver
+  already copies"): `X.tail(n).copy()` has no estimate, and its message names the reason.
+- [ ] Should `duplicated`: first derivation FAILED (0.676 / 0.912 / 0.582); one labelled second derivation allowed
+  (amendment 3 (a)).
