@@ -1,0 +1,15 @@
+pandas 3.1.1, numpy 2.5.5, n = 12000000
+| keys | step | measured MiB | derived phase 1 MiB |
+|---|---|---|---|
+| int64 u=50000 | 1 table (htable.value_count) | 70.5 | 67.4 |
+| int64 u=50000 | 2 value_counts(sort=False) | 70.5 |  |
+| int64 u=50000 | 3 value_counts() | 70.5 |  |
+| int64 u=50000 | 4 sort of the u counts alone | 2.3 |  |
+| int64 u=1000000 | 1 table (htable.value_count) | 151.1 | 89.6 |
+| int64 u=1000000 | 2 value_counts(sort=False) | 151.1 |  |
+| int64 u=1000000 | 3 value_counts() | 151.0 |  |
+| int64 u=1000000 | 4 sort of the u counts alone | 44.0 |  |
+| int64 u=6000000 | 1 table (htable.value_count) | 362.0 | 361.6 |
+| int64 u=6000000 | 2 value_counts(sort=False) | 362.0 |  |
+| int64 u=6000000 | 3 value_counts() | 362.0 |  |
+| int64 u=6000000 | 4 sort of the u counts alone | 219.8 |  |
