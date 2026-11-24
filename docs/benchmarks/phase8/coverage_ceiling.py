@@ -70,6 +70,8 @@ def status(op) -> str:  # noqa: ANN001
         if isinstance(recv, ast.Subscript) and isinstance(recv.slice, ast.Constant):
             return "covered"
         return "not covered"
+    if name == "pandas.read_csv" and "parse_dates" in op.kwargs:
+        return "not covered"
     if name == "apply":
         a = _arg0(op)
         return (

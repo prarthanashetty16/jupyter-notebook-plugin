@@ -12,6 +12,7 @@ from nexus import stats
 from nexus.models import _util as u
 from nexus.models.groupby import _aggregated_columns
 from nexus.pipeline import Pipeline
+from nexus.risk import assess
 
 N = 300_000
 
@@ -242,7 +243,7 @@ def test_read_csv_options_tier1_only_when_understood(tmp_path):
         f"pd.read_csv({p}, dtype='float64')",
     )  # fmt: skip
     refused = (
-        f"pd.read_csv({p}, dtype={{'a': 'str'}})", f"pd.read_csv({p}, parse_dates=['a'])",
+        f"pd.read_csv({p}, dtype={{'a': 'str'}})",
         f"pd.read_csv({p}, low_memory=False)", f"pd.read_csv({p}, sep='::')",
         f"pd.read_csv({p}, names=['x', 'y'])", f"pd.read_csv({p}, chunksize=100)",
         f"pd.read_csv({p}, sep=sep)",
@@ -256,3 +257,12 @@ def test_read_csv_options_tier1_only_when_understood(tmp_path):
     a = Pipeline(tier=1).run(f"pd.read_csv({p})", {"pd": pd}).estimates[0].estimate
     b = Pipeline(tier=1).run(f"pd.read_csv({t}, sep={tab})", {"pd": pd}).estimates[0].estimate
     assert a.ram_expected == pytest.approx(b.ram_expected, rel=0.05)  # same rows / fields
+
+
+def test_read_csv_parse_dates_is_named_no_estimate(tmp_path):
+    path = tmp_path / "dates.csv"
+    pd.DataFrame({"a": ["2020-01-01"]}).to_csv(path, index=False)
+    report = Pipeline(tier=1).run(f"pd.read_csv({str(path)!r}, parse_dates=['a'])", {"pd": pd})
+    assert report.ops and not report.estimates
+    risk = assess(report)
+    assert risk is not None and "parse_dates peak differs sharply" in risk.reason

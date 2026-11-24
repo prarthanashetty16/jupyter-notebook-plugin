@@ -2063,6 +2063,10 @@ Pre-registration `docs/benchmarks/phase8-preregistration.md` with amendments 1-2
   The formula over-counts a target that does not allocate, so the item failed; single-column `df['c'].astype(...)`
   remains unchanged. Updated static ceiling: **50.7% (38/75)**; the removed forms were not the limiting cells in the
   census. It remains below 55% even if all later items land.
-- [ ] Should `read_csv(parse_dates=...)`: awaiting the committed probe required by amendment 4.
+- [x] Should `read_csv(parse_dates=...)`: **NOT ADOPTED, no estimate for this form in v4.** Paired actual peaks
+  fell from 994.734 to 587.207 MiB with one parsed date column (-407.527 MiB vs +38.147 MiB derived; -10.683x),
+  and from 994.621 to 405.336 MiB with two (-589.285 MiB vs +76.294 MiB derived; -7.724x). Parsing dates removes
+  the much larger text result; the additive positive term is contradicted. Updated static ceiling: pending exact
+  recount (**50.7% (38/75)** after all current exclusions).
 - [ ] Easy wins `numpy.zeros`, `numpy.empty`, `numpy.linspace`, `numpy.array`, `sample`, and `describe`: awaiting
   the committed probes required by amendment 4. Updated static ceiling: pending measurement outcome.

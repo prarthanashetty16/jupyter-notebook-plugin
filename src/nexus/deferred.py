@@ -50,4 +50,6 @@ def reason(op: Any) -> str | None:
             return ASTYPE_MULTI_REASON
         if isinstance(recv, ast.Subscript) and isinstance(recv.slice, (ast.List, ast.Tuple)):
             return ASTYPE_MULTI_REASON
+    if name == "pandas.read_csv" and "parse_dates" in getattr(op, "kwargs", {}):
+        return "parse_dates peak differs sharply from ordinary text parsing; no v4 term is validated"
     return DEFERRED.get(name or "")
