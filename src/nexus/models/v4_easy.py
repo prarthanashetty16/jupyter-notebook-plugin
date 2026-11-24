@@ -12,7 +12,7 @@ from nexus.models import _time as tt
 from nexus.models import _util as u
 from nexus.models.base import Estimate, NoEstimateError, OperationModel
 from nexus.registry import register_model
-from nexus.state import ArrayDescriptor, FrameDescriptor, Inspection
+from nexus.state import ArrayDescriptor, Inspection
 
 
 def _shape(value: Any) -> tuple[int, ...] | None:
@@ -116,34 +116,3 @@ class NumpyArrayModel(NumpyZerosModel):
         return op.name == "numpy.array"
 
 
-@register_model
-class DescribeModel(OperationModel):
-    """Peak RAM of numeric/object describe quantile work."""
-
-    name = "describe"
-
-    def matches(self, op: DetectedOp) -> bool:
-        return op.name == "describe"
-
-    def features(self, op: DetectedOp, state: Inspection) -> dict[str, Any]:
-        desc = state.variables.get(op.receiver) if op.receiver else None
-        if not isinstance(desc, FrameDescriptor):
-            raise NoEstimateError("describe receiver is not a known DataFrame")
-        numeric = sum(dtype.startswith(("int", "uint", "float")) for dtype in desc.dtypes.values())
-        text = desc.text_columns
-        n = desc.shape[0]
-        return {"n_rows": n, "numeric_columns": numeric, "text_columns": text}
-
-    def estimate(self, features: dict[str, Any], tier: int) -> Estimate:
-        u.require_tier(tier)
-        n = float(features["n_rows"])
-        numeric = float(features["numeric_columns"])
-        text = float(features["text_columns"])
-        peak = n * (8.0 * numeric + 16.0 * text)
-        return u.build(
-            (0.8 * peak, peak, 1.2 * peak),
-            u.time_band_for_tier(tt.copy_s(peak), tier),
-            0.55,
-            tier,
-            ["numeric quantile workspace", "object/str column workspace"],
-        )

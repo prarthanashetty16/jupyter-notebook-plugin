@@ -37,6 +37,12 @@ def test_dict_astype_names_its_failed_derivation():
     assert "dict/multi-column astype workspace derivation failed" in r.reason
 
 
+def test_describe_names_its_failed_derivation():
+    r = _assess("y = df.describe()")
+    assert r is not None and r.risk is RiskClass.UNKNOWN
+    assert DEFERRED["describe"] in r.reason
+
+
 def test_copy_of_head_or_tail_names_the_copying_receiver():
     for src in ("y = df.head(5).copy()", "y = df.tail(5).copy()"):
         r = _assess(src)

@@ -21,6 +21,7 @@ DEFERRED: dict[str, str] = {
     "numpy.linspace": "float32 linspace has three live arrays, not the derived single output buffer",
     "numpy.array": "requires a known numeric ndarray input with copy=True; literal and unknown iterables are not modelled",
     "sample": "row-take peak includes index selection workspace not captured by selected data bytes",
+    "describe": "numeric workspace exceeded the derivation and the text-only peak was censored",
     "to_csv": "deferred in v4: writer buffers not derived",
     "join": "deferred in v4: not derived",
     "pandas.get_dummies": "deferred in v4: not derived",

@@ -2085,4 +2085,8 @@ Pre-registration `docs/benchmarks/phase8-preregistration.md` with amendments 1-2
 - [x] Easy win `sample`: **NOT ADOPTED, no estimate in v4.** Fresh 15M-row variants measured/derived at 3.006
   (10% without replacement), 2.065 (50% without replacement), and 2.064 (all rows with replacement). Random index
   selection adds workspace not represented by selected data bytes. Updated static ceiling: **46.7% (35/75)**.
-- [ ] Easy win `describe`: awaiting the committed probe required by amendment 4.
+- [x] Easy win `describe`: **NOT ADOPTED, no estimate in v4.** Two numeric columns measured 358.164 MiB against
+  228.882 MiB derived (1.565x, outside ±15%); one numeric plus one str measured 358.109 / 343.323 MiB (1.043x);
+  the two-str variant was censored at a 229.965 MiB bound against 457.764 MiB derived. Both a bar miss and a
+  dtype-specific unmeasurable variant fail the item. Updated static ceiling: **38.7% (29/75)**, below the unchanged
+  55% target.
