@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from nexus import cellframes, dryrun, guard, ranges, stats, timecal
+from nexus import cellframes, dryrun, guard, ranges, stats, timecal, upperbound
 from nexus.analyzer import DetectedOp, analyze_cell
 from nexus.controller import Controller
 from nexus.failsafe import Deadline
@@ -121,6 +121,7 @@ class Pipeline:
                             # risk v2 (C3) WARNs on this for read_csv / merge; the display keeps policy B
                             features = {**features, "tier1_own_ram_high": int(estimate.ram_high)}
                             estimate = ranges.apply(model.name, estimate, tier0)
+                            estimate = upperbound.apply(model.name, estimate)
                         elif tier0 is not None:  # keep Tier 0 and say why
                             estimate = replace(tier0, note=f"Tier 1 rejected: {problem}")
                             features = {**features, "tier1": {"used": False, "reason": problem}}

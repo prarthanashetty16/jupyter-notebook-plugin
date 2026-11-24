@@ -95,3 +95,24 @@ def load(path: Path | None = None, version: int = 1) -> MulticellSplit:
     if set(dev) | set(held) != current or set(dev) & set(held):
         raise ValueError("multicell split no longer matches the configurations")
     return MulticellSplit(int(data["version"]), tuple(dev), tuple(held), data["digest"])
+
+
+# Held-out parts whose one evaluation is done and that are dev data since (PROGRESS, Test-split access log):
+# v1 since 2026-11-22, v2 and v3 since 2026-11-24. A future group is NOT listed here until its evaluation is done.
+CONSUMED = (1, 2, 3)
+
+
+def consumed_heldout_results(version: int, reason: str) -> Path:
+    """Path of a CONSUMED held-out part's results, for dev tooling; every call is logged in the group's access log.
+
+    Refuses a group that is not consumed, so dev tools never read a protected held-out part.
+    """
+    if version not in CONSUMED:
+        raise PermissionError(f"multicell v{version} held-out part is not consumed: protected")
+    from benchmarks.multicell.run import SUITES, _log_access
+
+    _mod, results, _cache, log = SUITES[version]
+    _log_access(
+        f"READ consumed held-out multicell v{version} rows (dev data) | reason: {reason}", log
+    )
+    return results / "heldout" / "results.jsonl"

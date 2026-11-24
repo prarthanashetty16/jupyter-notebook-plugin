@@ -246,4 +246,6 @@ def cell_estimate(  # noqa: C901
         note=next((e.note for e in ests if e.note), None),
         flags=tuple(dict.fromkeys(f for e in ests for f in e.flags)),
     )  # fmt: skip
-    return cell, "statements", []
+    from nexus import upperbound  # v4 item C: the cell's family is its dominant-peak operation
+
+    return upperbound.apply(op_estimates[top_k].model, cell), "statements", []
