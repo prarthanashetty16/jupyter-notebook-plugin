@@ -15,6 +15,7 @@ DEFERRED: dict[str, str] = {
     "value_counts": "memory depends on the exact key values, through the hash table's pages",
     "apply": "apply with a Python function: per-element allocations are not derivable",
     "map": "mapper workspace not derived: dict and NumPy ufunc peaks exceeded the v4 derivation",
+    "to_numpy": "zero-copy peak is below the reliable measurement floor; no relative error bar can be tested",
     "to_csv": "deferred in v4: writer buffers not derived",
     "join": "deferred in v4: not derived",
     "pandas.get_dummies": "deferred in v4: not derived",

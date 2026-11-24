@@ -1,0 +1,4 @@
+{"pandas": "3.1.1", "numpy": "2.5.5", "rows": 15000000, "bar": 0.15}
+{"variant": "single Series, default zero-copy", "measured_mib": 0.02734375, "bound_mib": 0.0, "derived_mib": 0.0, "ratio": null, "within_bar": null, "censored": false}
+{"variant": "consolidated homogeneous frame, zero-copy", "measured_mib": 0.03515625, "bound_mib": 0.0, "derived_mib": 0.0, "ratio": null, "within_bar": null, "censored": false}
+{"variant": "mixed frame, consolidation to object", "measured_mib": 229.00390625, "bound_mib": 0.0, "derived_mib": 228.8818359375, "ratio": 1.0005333333333333, "within_bar": true, "censored": false}

@@ -2053,10 +2053,14 @@ Pre-registration `docs/benchmarks/phase8-preregistration.md` with amendments 1-2
   ±15%, so `map` remains no-estimate with a named mapper-workspace reason. Updated static ceiling: **52.0% (39/75)**,
   below 55% even if every remaining item lands. Runtime coverage is still to be measured; the target is unchanged,
   and a runtime result below 55% will be recorded FAILED under amendment 3(b).
-- [ ] Should `to_numpy`, multi-column/dict `astype`, and `read_csv(parse_dates=...)`: awaiting the committed probes
-  required by amendment 4.
-  `to_numpy` distinguishes zero-copy and consolidation-copy cases; dict/multi-column `astype` sums the per-column
+- [x] Should `to_numpy`: **NOT ADOPTED, no estimate in v4.** The mixed-frame conversion measured 229.004 MiB against
+  228.882 MiB derived (1.001x, within the bar). The Series and homogeneous-frame zero-copy peaks were 0.027 MiB and
+  0.035 MiB against a zero-byte derivation; a relative ±15% criterion is undefined, so the operation is not
+  measurable under the preregistered bar and remains no-estimate with a named reason. Updated static ceiling:
+  **50.7% (38/75)**, below 55% even if every remaining item lands. Runtime coverage is still pending; target unchanged.
+- [ ] Should multi-column/dict `astype` and `read_csv(parse_dates=...)`: awaiting the committed probes required by
+  amendment 4. Dict/multi-column `astype` sums the per-column
   result; `parse_dates` stays on the Tier 0/defensive path instead of a guessed Tier 1 derivation. Updated static
-  ceiling: pending measurement outcome.
+  ceiling: **50.7% (38/75)**, below 55% even if all later items land.
 - [ ] Easy wins `numpy.zeros`, `numpy.empty`, `numpy.linspace`, `numpy.array`, `sample`, and `describe`: awaiting
   the committed probes required by amendment 4. Updated static ceiling: pending measurement outcome.

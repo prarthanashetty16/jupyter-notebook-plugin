@@ -9,49 +9,7 @@ from nexus.models import _time as tt
 from nexus.models import _util as u
 from nexus.models.base import Estimate, NoEstimateError, OperationModel
 from nexus.registry import register_model
-from nexus.state import FrameDescriptor, Inspection, SeriesDescriptor
-
-
-@register_model
-class ToNumpyModel(OperationModel):
-    """Peak RAM of ``to_numpy``: zero-copy for one dtype, copy for mixed or forced dtype."""
-
-    name = "to_numpy"
-
-    def matches(self, op: DetectedOp) -> bool:
-        return op.name == "to_numpy"
-
-    def features(self, op: DetectedOp, state: Inspection) -> dict[str, Any]:
-        desc = state.variables.get(op.receiver) if op.receiver else None
-        if isinstance(desc, SeriesDescriptor):
-            nbytes = desc.nbytes
-            dtype = desc.dtype
-        elif isinstance(desc, FrameDescriptor):
-            nbytes = desc.moved_bytes
-            dtype = "mixed" if len(set(desc.dtypes.values())) > 1 else next(iter(desc.dtypes.values()), "unknown")
-        else:
-            raise NoEstimateError("to_numpy receiver is not known")
-        target = op.kwargs.get("dtype")
-        copy = op.kwargs.get("copy", False)
-        return {"nbytes": nbytes, "dtype": dtype, "target_dtype": target, "copy": copy}
-
-    def estimate(self, features: dict[str, Any], tier: int) -> Estimate:
-        u.require_tier(tier)
-        nbytes = float(features["nbytes"])
-        zero_copy = (
-            features["dtype"] != "mixed"
-            and features["target_dtype"] is None
-            and features["copy"] is False
-        )
-        peak = 0.0 if zero_copy else nbytes
-        ram = (0.0, peak, peak * 1.15 if peak else 8.0)
-        return u.build(
-            ram,
-            u.time_band_for_tier(tt.copy_s(peak), tier),
-            0.7 if zero_copy else 0.55,
-            tier,
-            ["zero-copy for compatible ndarray block" if zero_copy else "array/result consolidation copy"],
-        )
+from nexus.state import Inspection
 
 
 @register_model
