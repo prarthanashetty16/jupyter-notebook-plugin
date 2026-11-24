@@ -2048,11 +2048,15 @@ Pre-registration `docs/benchmarks/phase8-preregistration.md` with amendments 1-2
 - [x] Should `reset_index`: **ADOPTED** for RangeIndex/materialized-index variants. The probe measured 122.289 MiB for
   RangeIndex `drop=False`, 0.027 MiB for `drop=True`, and 61.250 MiB for a materialized index. Updated static ceiling:
   49.3% without `duplicated`; 60.0% if the remaining items all land.
-- [x] Should `map`, `to_numpy`, multi-column/dict `astype`, and `read_csv(parse_dates=...)`: implemented conservatively
-  and kept defensive unknown handling. `map` covers dict/Series/NumPy-ufunc forms with Python-function mappers deferred;
+- [x] Should `map`: **NOT ADOPTED, no estimate in v4.** The committed first derivation failed: dict mapper 2.127x,
+  Series mapper 1.063x, NumPy ufunc mapper 12.992x (OS peaks vs derived; `p8_map.out`). Dict and ufunc variants exceeded
+  ±15%, so `map` remains no-estimate with a named mapper-workspace reason. Updated static ceiling: **52.0% (39/75)**,
+  below 55% even if every remaining item lands. Runtime coverage is still to be measured; the target is unchanged,
+  and a runtime result below 55% will be recorded FAILED under amendment 3(b).
+- [ ] Should `to_numpy`, multi-column/dict `astype`, and `read_csv(parse_dates=...)`: awaiting the committed probes
+  required by amendment 4.
   `to_numpy` distinguishes zero-copy and consolidation-copy cases; dict/multi-column `astype` sums the per-column
   result; `parse_dates` stays on the Tier 0/defensive path instead of a guessed Tier 1 derivation. Updated static
-  ceiling: 49.3% without `duplicated`; 60.0% at the all-items ceiling.
-- [x] Easy wins `numpy.zeros`, `numpy.empty`, `numpy.linspace`, `numpy.array`, `sample`, and `describe`: implemented for
-  literal shapes/counts and known row shapes. Unknown literals and Python-dependent work remain no-estimate. Updated
-  static ceiling: 49.3% without `duplicated`; 60.0% at the all-items ceiling.
+  ceiling: pending measurement outcome.
+- [ ] Easy wins `numpy.zeros`, `numpy.empty`, `numpy.linspace`, `numpy.array`, `sample`, and `describe`: awaiting
+  the committed probes required by amendment 4. Updated static ceiling: pending measurement outcome.

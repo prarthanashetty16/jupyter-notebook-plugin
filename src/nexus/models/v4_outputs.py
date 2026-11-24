@@ -2,78 +2,14 @@
 
 from __future__ import annotations
 
-import ast
 from typing import Any
 
-import numpy as np
-
-from nexus.analyzer import DetectedOp, Expr
+from nexus.analyzer import DetectedOp
 from nexus.models import _time as tt
 from nexus.models import _util as u
-from nexus.models.base import Estimate, NoEstimateError, OperationModel, Tier1Context
+from nexus.models.base import Estimate, NoEstimateError, OperationModel
 from nexus.registry import register_model
-from nexus.state import ArrayDescriptor, FrameDescriptor, Inspection, SeriesDescriptor
-
-
-def _series_or_column(op: DetectedOp, state: Inspection) -> tuple[int, str]:
-    desc = state.variables.get(op.receiver) if op.receiver else None
-    func = getattr(op.node, "func", None)
-    value = getattr(func, "value", None)
-    col = None
-    if isinstance(value, ast.Subscript) and isinstance(value.slice, ast.Constant):
-        col = value.slice.value if isinstance(value.slice.value, str) else None
-    if isinstance(desc, SeriesDescriptor) and col is None:
-        return desc.shape[0], desc.dtype
-    if isinstance(desc, FrameDescriptor) and col in desc.dtypes:
-        return desc.shape[0], desc.dtypes[col]
-    raise NoEstimateError("map receiver is not a known Series or literal column")
-
-
-@register_model
-class MapModel(OperationModel):
-    """Peak RAM of dict/Series and NumPy ufunc mappers; Python functions stay deferred."""
-
-    name = "map"
-
-    def matches(self, op: DetectedOp) -> bool:
-        return op.name == "map"
-
-    def features(self, op: DetectedOp, state: Inspection) -> dict[str, Any]:
-        if len(op.args) != 1:
-            raise NoEstimateError("map mapper is not exactly known")
-        mapper = op.args[0]
-        if isinstance(mapper, Expr):
-            text = str(mapper).strip()
-            if text.startswith("{"):
-                kind = "dict"
-            elif text.startswith(("np.", "numpy.")):
-                kind = "ufunc"
-            else:
-                kind = "series"
-        elif isinstance(mapper, np.ufunc):
-            kind = "ufunc"
-        elif isinstance(mapper, dict):
-            kind = "dict"
-        else:
-            raise NoEstimateError("unsupported map mapper")
-        n, dtype = _series_or_column(op, state)
-        itemsize = np.dtype(dtype).itemsize if dtype != "str" and dtype != "object" else 8
-        return {"n_rows": n, "mapper_kind": kind, "itemsize": itemsize}
-
-    def estimate(self, features: dict[str, Any], tier: int) -> Estimate:
-        u.require_tier(tier)
-        n = float(features["n_rows"])
-        kind = features["mapper_kind"]
-        peak = n * (features["itemsize"] if kind == "ufunc" else 8.0)
-        if kind == "series":
-            peak *= 2.0
-        return u.build(
-            (0.85 * peak, peak, 1.15 * peak),
-            u.time_band_for_tier(tt.copy_s(peak), tier),
-            0.7,
-            tier,
-            [f"{kind} mapper result and indexer"],
-        )
+from nexus.state import FrameDescriptor, Inspection, SeriesDescriptor
 
 
 @register_model
@@ -87,11 +23,6 @@ class ToNumpyModel(OperationModel):
 
     def features(self, op: DetectedOp, state: Inspection) -> dict[str, Any]:
         desc = state.variables.get(op.receiver) if op.receiver else None
-        func = getattr(op.node, "func", None)
-        value = getattr(func, "value", None)
-        col = None
-        if isinstance(value, ast.Subscript) and isinstance(value.slice, ast.Constant):
-            col = value.slice.value if isinstance(value.slice.value, str) else None
         if isinstance(desc, SeriesDescriptor):
             nbytes = desc.nbytes
             dtype = desc.dtype

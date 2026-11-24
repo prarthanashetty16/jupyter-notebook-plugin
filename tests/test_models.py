@@ -119,7 +119,7 @@ def test_reset_index_estimate(pipeline):
 
 def test_v4_output_and_easy_estimates(pipeline):
     df = frame(10_000)
-    assert "map" in estimates(pipeline, "df['s0'].map({'v0': 1})", {"df": df})
+    assert "map" not in estimates(pipeline, "df['s0'].map({'v0': 1})", {"df": df})
     assert "to_numpy" in estimates(pipeline, "df.to_numpy()", {"df": df})
     assert "sample" in estimates(pipeline, "df.sample(n=100)", {"df": df})
     assert "describe" in estimates(pipeline, "df.describe()", {"df": df})

@@ -73,12 +73,7 @@ def status(op) -> str:  # noqa: ANN001
             else "not covered"
         )
     if name == "map":
-        a = _arg0(op)
-        if isinstance(a, (ast.Dict, ast.Attribute)) or (
-            a is not None and ast.unparse(a).startswith(UFUNC_PREFIX)
-        ):
-            return "covered"
-        return "covered (optimistic: a name)" if isinstance(a, ast.Name) else "not covered"
+        return "not covered"
     if name == "numpy.array":
         a = _arg0(op)
         return (
