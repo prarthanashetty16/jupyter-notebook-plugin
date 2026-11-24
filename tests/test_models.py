@@ -100,6 +100,16 @@ def test_ram_grows_with_input_size(pipeline):
     assert large.estimate.time_expected > 5 * small.estimate.time_expected
 
 
+def test_dropna_estimate(pipeline):
+    df = frame(10_000)
+    df["f0"] = np.linspace(0.0, 1.0, len(df))
+    df.loc[df.index[:1000], "f0"] = np.nan
+    estimate = estimates(pipeline, "df.dropna(subset=['f0'])", {"df": df})["dropna"]
+    assert estimate.estimate.ram_low > 0
+    assert estimate.estimate.ram_low <= estimate.estimate.ram_expected
+    assert estimate.estimate.ram_expected <= estimate.estimate.ram_high
+
+
 @pytest.mark.parametrize(
     ("source", "ns"),
     [

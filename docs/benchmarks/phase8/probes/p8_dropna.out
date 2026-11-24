@@ -1,0 +1,5 @@
+{"pandas": "3.1.1", "numpy": "2.5.5", "bar": 0.15}
+{"variant": "how='any', all columns, 10% + 5% nulls", "statement": "y = df.dropna()", "measured_mib": 411.3984375, "censored": false, "bound_mib": 0.0, "derived_mib": 411.07647705078125, "ratio": 1.0007832130204302, "within_bar": true}
+{"variant": "subset=['f0'], 30% nulls", "statement": "y = df.dropna(subset=['f0'])", "measured_mib": 314.92578125, "censored": false, "bound_mib": 0.0, "derived_mib": 314.3492660522461, "ratio": 1.0018339956857354, "within_bar": true}
+{"variant": "how='all', 50% / 50% nulls in the checked pair", "statement": "y = df.dropna(how='all', subset=['f0', 'f1'])", "measured_mib": 343.84375, "censored": false, "bound_mib": 0.0, "derived_mib": 343.2614974975586, "ratio": 1.0016962359795263, "within_bar": true}
+{"variant": "no null at all (shallow copy path)", "statement": "y = df.dropna()", "measured_mib": 95.45703125, "censored": false, "bound_mib": 0.0, "derived_mib": 95.367431640625, "ratio": 1.00093952, "within_bar": true}

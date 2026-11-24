@@ -17,6 +17,7 @@ _MODULES = (
     "copy_fillna",
     "explode_apply",
     "set_index",
+    "dropna",
 )
 
 
