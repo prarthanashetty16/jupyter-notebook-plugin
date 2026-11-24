@@ -127,6 +127,10 @@ def test_v4_output_and_easy_estimates(pipeline):
     assert "numpy.linspace" in estimates(pipeline, "np.linspace(0, 1, 100)", {"np": np})
 
 
+def test_dict_astype_remains_unestimated(pipeline):
+    assert estimates(pipeline, "df.astype({'a': 'float32'})", {"df": frame()}) == {}
+
+
 @pytest.mark.parametrize(
     ("source", "ns"),
     [

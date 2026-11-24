@@ -28,6 +28,7 @@ DEFERRED: dict[str, str] = {
 COPY_OF_COPYING_RECEIVER = (
     "copy of head() / tail(), which already copy in pandas 3.1.1: not modelled in v4"
 )
+ASTYPE_MULTI_REASON = "dict/multi-column astype workspace derivation failed the v4 probe"
 
 
 def reason(op: Any) -> str | None:
@@ -42,4 +43,11 @@ def reason(op: Any) -> str | None:
         ):
             return COPY_OF_COPYING_RECEIVER
         return None
+    if name == "astype":
+        args = getattr(op, "args", ())
+        recv = getattr(getattr(getattr(op, "node", None), "func", None), "value", None)
+        if args and isinstance(args[0], dict):
+            return ASTYPE_MULTI_REASON
+        if isinstance(recv, ast.Subscript) and isinstance(recv.slice, (ast.List, ast.Tuple)):
+            return ASTYPE_MULTI_REASON
     return DEFERRED.get(name or "")

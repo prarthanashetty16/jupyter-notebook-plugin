@@ -2058,9 +2058,11 @@ Pre-registration `docs/benchmarks/phase8-preregistration.md` with amendments 1-2
   0.035 MiB against a zero-byte derivation; a relative ±15% criterion is undefined, so the operation is not
   measurable under the preregistered bar and remains no-estimate with a named reason. Updated static ceiling:
   **50.7% (38/75)**, below 55% even if every remaining item lands. Runtime coverage is still pending; target unchanged.
-- [ ] Should multi-column/dict `astype` and `read_csv(parse_dates=...)`: awaiting the committed probes required by
-  amendment 4. Dict/multi-column `astype` sums the per-column
-  result; `parse_dates` stays on the Tier 0/defensive path instead of a guessed Tier 1 derivation. Updated static
-  ceiling: **50.7% (38/75)**, below 55% even if all later items land.
+- [x] Should dict/multi-column `astype`: **NOT ADOPTED, no estimate for these forms in v4.** Ratios were 1.004
+  (two converted dict columns), 1.005 (two-column selection), and 0.336 (dict with a same-dtype target column).
+  The formula over-counts a target that does not allocate, so the item failed; single-column `df['c'].astype(...)`
+  remains unchanged. Updated static ceiling: **50.7% (38/75)**; the removed forms were not the limiting cells in the
+  census. It remains below 55% even if all later items land.
+- [ ] Should `read_csv(parse_dates=...)`: awaiting the committed probe required by amendment 4.
 - [ ] Easy wins `numpy.zeros`, `numpy.empty`, `numpy.linspace`, `numpy.array`, `sample`, and `describe`: awaiting
   the committed probes required by amendment 4. Updated static ceiling: pending measurement outcome.

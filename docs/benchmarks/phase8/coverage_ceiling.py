@@ -65,6 +65,11 @@ def status(op) -> str:  # noqa: ANN001
     name = op.name
     if name == "copy":
         return "covered" if copy_covered(op) else "not covered"
+    if name == "astype":
+        recv = getattr(getattr(op.node, "func", None), "value", None)
+        if isinstance(recv, ast.Subscript) and isinstance(recv.slice, ast.Constant):
+            return "covered"
+        return "not covered"
     if name == "apply":
         a = _arg0(op)
         return (
