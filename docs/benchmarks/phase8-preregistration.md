@@ -350,3 +350,23 @@ named message of item (4). **No fourth attempt in v4.**
 
 This amendment narrows nothing that has been measured on held-out data. It replaces a width criterion that could not
 be met by construction with one that judges v4's own changes, and it fixes the number of attempts in advance.
+
+## Amendment 2 (2026-11-24): dev "above high" criteria are judged on the displayed v4 high
+
+Written after the item (1b) dev evaluation (`06a9eea`). No v4 held-out data exists (no v4 group generated, no Phase 8b
+notebook collected, val-v5 sealed and unrun).
+
+* **Rule.** Every dev "above high" criterion of an item (section 1) is judged on the **displayed v4 high**: the model
+  high raised by item C, `max(model high, expected x q)`. **q is computed leave-one-configuration-out:** the factor is
+  fitted with the item C procedure on all dev configurations EXCEPT the one being scored. The frozen factors do not
+  exist until the final v4 models, so this is the only honest way to apply them to a dev cell before the freeze. The
+  procedure (alpha 0.02, configuration maxima, families with >= 30 configurations, pooled otherwise) is unchanged.
+* **Stated plainly: this reading was chosen AFTER seeing item (1b)'s dev results.** On the model highs, 6 of the 14
+  copy -> fillna dev cells were above high (by up to 1.6%); on the preview-calibrated high, none was. It is adopted
+  because it matches how held-out data is scored: held-out points are scored on the displayed high, which includes
+  the frozen item C factor. Judging dev cells on a high that v4 never displays would test a different object.
+* **Known weakness.** Some models emit `high = expected` when their Tier 1 statistics decide every term: fillna with
+  known missing-value columns, copy, and the str-column fillna terms. Their margin then comes ONLY from the item C
+  factor, which is fitted on dev residuals. A held-out shift in those models' errors larger than the factor goes
+  straight above high; the held-out criteria are what test it.
+* Nothing measured on held-out data is affected. The held-out criteria of section 2 are unchanged.
