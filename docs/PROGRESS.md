@@ -2203,6 +2203,8 @@ not been run.
   pilot first, same output folder for full/resume, no recalibration between.
 - [x] `ruff check .` passed; changed Python files passed `ruff format --check`.
 - [x] Full pytest on mains: 903 passed, 2 tag-dependent freeze tests skipped before the v4 tag exists.
-- [x] Fresh clone at candidate commit `29555f4`: temporary local v4 validation tag; guard reported 50 frozen files and
+- [x] Fresh GitHub clone checked out `models-frozen-v4` with v1-v4 tags present: guard reported 50 frozen files and
   `problems: []`; `tests/test_timecal.py` and `tests/test_realworld_harness.py` passed (27 passed, 0 skipped).
-- [ ] Annotated v4 tag, guard-from-tag, branch/tag push: pending.
+- [x] Annotated `models-frozen-v4` on commit `dceab6d1a545f7fc2c3e98e87b2cdbd2a1c40f0b`; the guard from the tag
+  reported 50 files and `problems: []`. The tag was not moved.
+- [x] Push `v4-dev` and `models-frozen-v4` to `origin`. This final PROGRESS-only record is outside the frozen file set.
