@@ -1,4 +1,4 @@
-"""Phase 8a evaluation of harness records (``cells.jsonl``), exactly as pre-registered.
+"""Phase 8 real-notebook evaluation of harness records (``cells.jsonl``).
 
 ``docs/benchmarks/phase8a-preregistration.md``: valid points, RAM above_high <= 3% and time
 within-one >= 95% with a 30-point minimum (else INCONCLUSIVE), the risk engine at three simulated
@@ -31,6 +31,7 @@ TIME_WITHIN_ONE_MIN = 0.95
 LIMITS_MIB = (2048, 1024)
 RECALL_TARGET, FAR_TARGET, FAR_PER_OP_TARGET, HIGH_PRECISION_TARGET = 0.98, 0.30, 0.50, 0.75
 MIN_POSITIVES = 20
+PARTIAL_HEADROOMS_MIB = (64, 128, 256, 512, 1024, 2048, 4096, 8192)
 
 
 def load(dirs: list[Path]) -> pd.DataFrame:
@@ -103,6 +104,14 @@ def verdict(n: int, ok: bool) -> str:
     return "MET" if ok else "FAILED"
 
 
+def safety_verdict(n: int, violations: int, missing_classes: int = 0) -> str:
+    if missing_classes:
+        return f"INCONCLUSIVE ({missing_classes} rows lack simulated risk classes)"
+    if n == 0:
+        return "INCONCLUSIVE (no measured cells)"
+    return "MET" if violations == 0 else "FAILED"
+
+
 def _estimates(r: pd.Series) -> list[Estimate]:
     out = []
     for e in r.get("estimates") or []:
@@ -111,6 +120,71 @@ def _estimates(r: pd.Series) -> list[Estimate]:
                             time_expected=float(e["time_expected"]), time_high=float(e["time_high"]),
                             confidence=float(e["confidence"]), tier=int(e["tier"])))  # fmt: skip
     return out
+
+
+def _estimate_from_dict(value: Any) -> Estimate | None:
+    if not isinstance(value, dict):
+        return None
+    return Estimate(
+        ram_low=int(value["ram_low"]),
+        ram_expected=int(value["ram_expected"]),
+        ram_high=int(value["ram_high"]),
+        time_low=float(value["time_low"]),
+        time_expected=float(value["time_expected"]),
+        time_high=float(value["time_high"]),
+        confidence=float(value["confidence"]),
+        tier=int(value["tier"]),
+    )
+
+
+def partial_safety(d: pd.DataFrame) -> dict[str, Any]:
+    """Score only partial and wholly uncovered rows with valid actual peaks."""
+    partial, uncovered = [], []
+    for _, row in d.iterrows():
+        ops = row.get("ops")
+        total = len(ops) if isinstance(ops, list) else 0
+        missing_value = row.get("uncovered")
+        missing = 0 if pd.isna(missing_value) else int(missing_value)
+        if total and 0 < missing < total:
+            partial.append(row)
+        elif total and missing == total:
+            uncovered.append(row)
+
+    def score(rows: list[pd.Series], include_lower: bool) -> dict[str, Any]:
+        measured = [row for row in rows if row.get("ram_class") == "valid"]
+        lower = [
+            str(row["hash"])
+            for row in measured
+            if include_lower
+            and isinstance(row.get("cell"), dict)
+            and int(row["cell"]["ram_low"]) > float(row["ram_value"])
+        ]
+        missing_lower = [
+            str(row["hash"])
+            for row in measured
+            if include_lower and not isinstance(row.get("cell"), dict)
+        ]
+        missing_classes = []
+        risk = []
+        for row in measured:
+            classes = row.get("simulated_risk_classes")
+            if not isinstance(classes, dict) or any(
+                str(h) not in classes for h in PARTIAL_HEADROOMS_MIB
+            ):
+                missing_classes.append(str(row["hash"]))
+                continue
+            for headroom in PARTIAL_HEADROOMS_MIB:
+                if classes[str(headroom)] == "OK" and float(row["ram_value"]) > headroom * MIB:
+                    risk.append((str(row["hash"]), headroom))
+        return {
+            "n": len(measured),
+            "lower_violations": lower,
+            "missing_lower_bounds": missing_lower,
+            "risk_violations": risk,
+            "missing_classes": missing_classes,
+        }
+
+    return {"partial": score(partial, True), "uncovered": score(uncovered, False)}
 
 
 def risk_eval(valid: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, Any]]:
@@ -125,7 +199,17 @@ def risk_eval(valid: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, Any]]:
             ("free RAM at start", float(r["avail_start"]), a > float(r["avail_start"])),
             *[(f"{L} MiB", L * MIB - rss, rss + a > L * MIB) for L in LIMITS_MIB],
         ):
-            rep = classify(est, headroom=int(max(head, 0)), uncovered=int(r.get("uncovered") or 0))
+            cell = _estimate_from_dict(r.get("cell"))
+            warn = r.get("cell_warn")
+            rep = classify(
+                est,
+                headroom=int(max(head, 0)),
+                uncovered=int(r.get("uncovered") or 0),
+                cell=cell,
+                warn_high=int(warn["ram_high"]) if isinstance(warn, dict) else None,
+                covered_operations=len(est),
+                total_operations=len(r.get("ops")) if isinstance(r.get("ops"), list) else 0,
+            )
             alert = rep.risk in (RiskClass.WARN, RiskClass.HIGH_RISK)
             rows.append({"limit": name, "op": dominant_op(r), "positive": bool(positive), "alert": alert,
                          "high": rep.risk == RiskClass.HIGH_RISK, "class": rep.risk.value,
@@ -182,8 +266,12 @@ def _table(rows: list[dict[str, Any]]) -> list[str]:
 
 def report(df: pd.DataFrame) -> str:  # noqa: C901
     df = df.copy()
+    if "uncovered" not in df:
+        df["uncovered"] = 0
+    else:
+        df["uncovered"] = pd.to_numeric(df["uncovered"], errors="coerce").fillna(0)
     df["group"] = df.apply(group_of, axis=1)
-    lines = ["# Phase 8a results (real notebooks; evaluation only, nothing tuned)", ""]
+    lines = ["# Phase 8 real-notebook results (evaluation only, nothing tuned)", ""]
     lines += [
         "## Cells by group",
         "",
@@ -193,8 +281,15 @@ def report(df: pd.DataFrame) -> str:  # noqa: C901
     has = df["cell"].map(lambda c: isinstance(c, dict))
     vr = df[has & (df["ram_class"] == "valid")]
     vt = df[has & (df["time_class"] == "valid") & (df["status"] == "ok")]
-    lines += ["## Accuracy on valid points (primary: Pipeline(tier=2) with the controller)", ""]
-    rm, tm = ram_metrics(vr, "cell"), time_metrics(vt, "cell")
+    vr_full = vr[vr["uncovered"].fillna(1) == 0]
+    lines += [
+        "## Accuracy on valid points (primary: Pipeline(tier=2) with the controller)",
+        "",
+        "RAM above-high is scored only on fully covered cells; partial cells are scored separately below. "
+        "Time uses all valid time points.",
+        "",
+    ]
+    rm, tm = ram_metrics(vr_full, "cell"), time_metrics(vt, "cell")
     lines += _table([{"metric": "RAM", **rm}]) + [""] + _table([{"metric": "time", **tm}]) + [""]
     lines.append(
         f"* **RAM verdict (above_high <= 3%):** {verdict(rm.get('n', 0), rm.get('above_high', 1) <= RAM_ABOVE_HIGH_MAX)}"
@@ -207,22 +302,22 @@ def report(df: pd.DataFrame) -> str:  # noqa: C901
     lines += ["", "Secondary (Tier 0, what `%load_ext nexus` uses today; no verdict):", ""]
     lines += _table([{"metric": "RAM tier 0", **ram_metrics(vr0, "cell_tier0")},
                      {"metric": "time tier 0", **time_metrics(vt0, "cell_tier0")}])  # fmt: skip
-    full = vr[vr["uncovered"].fillna(1) == 0]
+    full = vr_full
     lines += ["", "Fully covered subset (every detected operation has an estimate):", ""]
     lines += _table([{"metric": "RAM", **ram_metrics(full, "cell")},
                      {"metric": "time", **time_metrics(vt[vt["uncovered"].fillna(1) == 0], "cell")}])  # fmt: skip
-    if len(vr):
-        vr = vr.assign(op=vr.apply(dominant_op, axis=1))
+    if len(vr_full):
+        vr_full = vr_full.assign(op=vr_full.apply(dominant_op, axis=1))
         lines += ["", "RAM per dominant operation:", ""]
-        lines += _table([{"op": op, **ram_metrics(g, "cell")} for op, g in vr.groupby("op")])
-        vr = vr.assign(
+        lines += _table([{"op": op, **ram_metrics(g, "cell")} for op, g in vr_full.groupby("op")])
+        vr_full = vr_full.assign(
             logerr=np.log(
-                vr["cell"].map(lambda c: max(c["ram_expected"], 1)) / vr["ram_value"]
+                vr_full["cell"].map(lambda c: max(c["ram_expected"], 1)) / vr_full["ram_value"]
             ).abs()
         )
         lines += ["", "Worst RAM predictions (operation and input shapes only):", ""]
         worst = []
-        for _, r in vr.sort_values("logerr", ascending=False).head(10).iterrows():
+        for _, r in vr_full.sort_values("logerr", ascending=False).head(10).iterrows():
             shapes = "; ".join(
                 f"{v['kind']} {v['shape']} {v.get('dtypes')}"
                 for v in (r.get("inputs") or {}).values()
@@ -231,6 +326,28 @@ def report(df: pd.DataFrame) -> str:  # noqa: C901
                           "expected MiB": r["cell"]["ram_expected"] / MIB, "actual MiB": r["ram_value"] / MIB,
                           "inputs": shapes[:160]})  # fmt: skip
         lines += _table(worst)
+    safety = partial_safety(df)
+    partial_result, uncovered_result = safety["partial"], safety["uncovered"]
+    lines += [
+        "",
+        "## Partial-cell scoring (Phase 8 preregistration Amendment 7)",
+        "",
+        f"Partial cells with valid measured RAM: {partial_result['n']}; lower-bound violations "
+        f"(displayed low > actual): {len(partial_result['lower_violations'])}; missing covered lower bounds: "
+        f"{len(partial_result['missing_lower_bounds'])} -> "
+        f"{safety_verdict(partial_result['n'], len(partial_result['lower_violations']) + len(partial_result['missing_lower_bounds']))}.",
+        f"Partial risk violations (OK while actual > simulated headroom): "
+        f"{len(partial_result['risk_violations'])} -> "
+        f"{safety_verdict(partial_result['n'], len(partial_result['risk_violations']), len(partial_result['missing_classes']))}.",
+        f"Wholly uncovered cells with valid measured RAM: {uncovered_result['n']}; risk violations "
+        f"(OK while actual > simulated headroom): {len(uncovered_result['risk_violations'])} -> "
+        f"{safety_verdict(uncovered_result['n'], len(uncovered_result['risk_violations']), len(uncovered_result['missing_classes']))}.",
+    ]
+    if partial_result["missing_classes"] or uncovered_result["missing_classes"]:
+        lines.append(
+            "Risk-safety scoring is INCONCLUSIVE where simulated headroom classes are missing: "
+            f"partial {partial_result['missing_classes']}; wholly uncovered {uncovered_result['missing_classes']}."
+        )
     # risk
     risk = df[df["risk"].map(lambda x: isinstance(x, dict))]
     lines += [

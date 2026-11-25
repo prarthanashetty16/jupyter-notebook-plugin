@@ -111,17 +111,10 @@ def predict(state: State, tier: int, hard_deadline_s: float | None = None) -> di
                 "estimates": [],
                 "hard_deadline_fired": True,
             }
-        if deadline.expired():
-            return {
-                "overhead_cold_s": None,
-                "overhead_warm_s": None,
-                "ops": [],
-                "skipped": [],
-                "inspected_bytes": 0,
-                "estimates": [],
-                "hard_deadline_fired": True,
-            }
         warm = cold
+        deadline_fired = any(
+            (item.features.get("tier1") or {}).get("hard_deadline_fired") for item in cold.estimates
+        )
     return {
         "overhead_cold_s": cold.elapsed_s,
         "overhead_warm_s": warm.elapsed_s,

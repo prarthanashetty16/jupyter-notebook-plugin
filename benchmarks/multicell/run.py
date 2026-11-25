@@ -7,7 +7,9 @@
 
 ``--version 2`` selects the Phase 7 group (``cases_v2``, ``split_v2.json``; results in
 ``benchmarks/results/multicell_v2``, access log ``docs/benchmarks/phase7-heldout-access-log.md``), the
-held-out check of freeze v3; v1 (the default) is the Phase 6c group, all dev since 2026-11-22.
+held-out check of freeze v3. ``--version 4`` selects the Phase 8c group (``cases_v4``,
+``split_v4.json``; held-out execution requires ``models-frozen-v4``). v1 (the default) is the
+Phase 6c group, all dev since 2026-11-22.
 
 Each cell: the prediction (``Pipeline(tier=1)`` on the cell with its inputs loaded; the cell-level
 model ``nexus.cellpeak`` and, for comparison, the v1 aggregation ``nexus.risk.combine``) in a fresh
@@ -31,7 +33,7 @@ from typing import Any
 import pandas as pd
 import psutil
 
-from benchmarks.multicell import cases, cases_v2, cases_v3
+from benchmarks.multicell import cases, cases_v2, cases_v3, cases_v4
 from benchmarks.multicell import split as split_mod
 
 RESULTS = Path("benchmarks/results/multicell")
@@ -44,11 +46,14 @@ SUITES = {
         Path("docs/benchmarks/phase7-heldout-access-log.md")),
     3: (cases_v3, Path("benchmarks/results/multicell_v3"), Path("benchmarks/.cache/multicell_v3"),
         Path("docs/benchmarks/phase7-heldout-access-log.md")),
+    4: (cases_v4, Path("benchmarks/results/multicell_v4"), Path("benchmarks/.cache/multicell_v4"),
+        Path("docs/benchmarks/phase8-heldout-access-log.md")),
 }  # fmt: skip
 # simulated headrooms (MiB) at which the prediction child records the risk class (the uncovered-operation rule)
 HEADROOMS_MIB = (64, 128, 256, 512, 1024, 2048, 4096, 8192)
 MIB = 2**20
 ABOVE_HIGH_CELL, ABOVE_HIGH_CONFIG = 0.03, 0.05
+ABOVE_HIGH_CONFIG_V4 = 0.03
 
 
 # -- child-process functions (module level: spawn-picklable) ------------------------------------------
@@ -155,7 +160,7 @@ def run(
             raise SystemExit("--heldout needs --reason")
         from benchmarks.frozen import require_frozen
 
-        frozen = require_frozen()
+        frozen = require_frozen("models-frozen-v4") if version == 4 else require_frozen()
         from benchmarks.heldout_env import require_profile
 
     keys = set(sp.heldout if heldout else sp.dev)
@@ -208,8 +213,14 @@ def run(
 
 
 # -- evaluation --------------------------------------------------------------------------------------
-def metrics(rows: list[dict[str, Any]], key: str) -> dict[str, Any]:
-    pts = [r for r in rows if r.get("actual") and r.get(key)]
+def metrics(
+    rows: list[dict[str, Any]], key: str, *, fully_covered_only: bool = False
+) -> dict[str, Any]:
+    pts = [
+        r
+        for r in rows
+        if r.get("actual") and r.get(key) and (not fully_covered_only or not r.get("uncovered", 0))
+    ]
     if not pts:
         return {"n": 0}
     a = pd.Series([float(r["actual"]) for r in pts])
@@ -251,7 +262,9 @@ def _table(rows: list[dict[str, Any]]) -> list[str]:
             *["| " + " | ".join(_fmt(r.get(c), c) for c in cols) + " |" for r in rows]]  # fmt: skip
 
 
-def report(rows: list[dict[str, Any]], title: str) -> str:
+def report(rows: list[dict[str, Any]], title: str, *, version: int = 1) -> str:
+    v4 = version == 4
+    fully_covered_only = v4
     lines = [f"# {title}", ""]
     measured = [r for r in rows if r.get("actual")]
     events = [r for r in rows if r.get("harness")]
@@ -263,51 +276,143 @@ def report(rows: list[dict[str, Any]], title: str) -> str:
         ]
     lines.append(f"{len(rows)} cells run; {len(measured)} with a measured peak (others censored / killed: "
                  f"{[r['id'] for r in rows if not r.get('actual')]}).")  # fmt: skip
-    lines += ["", "## All cells", ""]
+    lines += [
+        "",
+        "## Fully covered cells (above-high criteria; partial cells excluded)"
+        if v4
+        else "## All cells",
+        "",
+    ]
     lines += _table(
         [
-            {"model": "new (cellpeak)", **metrics(rows, "new")},
-            {"model": "v1 (combine)", **metrics(rows, "v1")},
+            {
+                "model": "new (cellpeak)",
+                **metrics(rows, "new", fully_covered_only=fully_covered_only),
+            },
+            {"model": "v1 (combine)", **metrics(rows, "v1", fully_covered_only=fully_covered_only)},
         ]
     )
-    new = metrics(rows, "new")
+    new = metrics(rows, "new", fully_covered_only=fully_covered_only)
     if new.get("n"):
+        config_bar = ABOVE_HIGH_CONFIG_V4 if v4 else ABOVE_HIGH_CONFIG
         cell_ok = new["above_high"] <= ABOVE_HIGH_CELL
-        cfg_ok = new["configs_above_high"] / max(new["configs"], 1) <= ABOVE_HIGH_CONFIG
+        cfg_rate = new["configs_above_high"] / max(new["configs"], 1)
+        cfg_ok = cfg_rate <= config_bar
         lines += ["", f"* **above_high <= 3% of cells:** {new['above_high']:.1%} -> {'MET' if cell_ok else 'FAILED'}",
-                  f"* **above_high <= 5% of configurations:** {new['configs_above_high']} of {new['configs']} -> "
+                  f"* **above_high <= {config_bar:.0%} of configurations:** {new['configs_above_high']} of "
+                  f"{new['configs']} ({cfg_rate:.1%}) -> "
                   f"{'MET' if cfg_ok else 'FAILED'}"]  # fmt: skip
     covered = [r for r in rows if r.get("uncovered") == 0]
-    lines += ["", "## Cells whose every operation has an estimate (descriptive)", ""]
+    lines += [
+        "",
+        "## Cells whose every operation has an estimate (descriptive)",
+        "",
+    ]
     lines += _table(
-        [{"model": "new", **metrics(covered, "new")}, {"model": "v1", **metrics(covered, "v1")}]
+        [
+            {"model": "new", **metrics(covered, "new")},
+            {"model": "v1", **metrics(covered, "v1")},
+        ]
     )
     lines += ["", "## Per template (new model)", ""]
     per = []
     for t in sorted({r["template"] for r in rows}):
         g = [r for r in rows if r["template"] == t]
-        per.append({"template": t, **metrics(g, "new"), "v1_bias": metrics(g, "v1").get("bias", float("nan")),
+        per.append({"template": t, **metrics(g, "new", fully_covered_only=fully_covered_only),
+                    "v1_bias": metrics(g, "v1", fully_covered_only=fully_covered_only).get("bias", float("nan")),
                     "uncovered_ops": sum(r.get("uncovered", 0) for r in g)})  # fmt: skip
     lines += _table(per)
-    lines += ["", "## Uncovered-operation rule (amendment 1): a cell with an uncovered operation must never be OK", "",
-              "at a simulated headroom its ACTUAL exceeds (UNKNOWN, WARN and HIGH_RISK are acceptable).", ""]  # fmt: skip
-    unc = [r for r in rows if r.get("uncovered") and r.get("classes") and r.get("actual")]
-    viol = [
-        (r["id"], h)
-        for r in unc
-        for h, c in r["classes"].items()
-        if c == "OK" and r["actual"] > int(h) * MIB
-    ]
-    lines.append(f"Cells with an uncovered operation: {len(unc)}; violations (OK while actual > headroom): "
-                 f"{len(viol)} -> {'MET' if not viol else 'FAILED'}" + (f": {viol}" if viol else ""))  # fmt: skip
+    if v4:
+
+        def ops_count(row: dict[str, Any]) -> int:
+            return len(row.get("ops") or [])
+
+        partial = [r for r in rows if 0 < int(r.get("uncovered", 0)) < ops_count(r)]
+        wholly_uncovered = [
+            r for r in rows if ops_count(r) and int(r.get("uncovered", 0)) == ops_count(r)
+        ]
+        partial_measured = [r for r in partial if r.get("actual") and r.get("new")]
+        lower_viol = [
+            r["id"] for r in partial_measured if int(r["new"]["ram_low"]) > int(r["actual"])
+        ]
+        partial_viol = [
+            (r["id"], h)
+            for r in partial_measured
+            for h, risk_class in (r.get("classes") or {}).items()
+            if risk_class == "OK" and int(r["actual"]) > int(h) * MIB
+        ]
+        lines += [
+            "",
+            "## Partial-cell scoring (Phase 8 preregistration Amendment 7)",
+            "",
+            f"Cells: {len(covered)} fully covered, {len(partial)} partial, "
+            f"{len(wholly_uncovered)} wholly uncovered.",
+            f"Partial cells scored with measured actuals and a covered estimate: {len(partial_measured)}.",
+            f"Partial lower-bound violations (displayed low > actual): {len(lower_viol)} -> "
+            f"{'MET' if not lower_viol else 'FAILED'}" + (f": {lower_viol}" if lower_viol else ""),
+            f"Partial risk violations (OK while actual > simulated headroom): {len(partial_viol)} -> "
+            f"{'MET' if not partial_viol else 'FAILED'}"
+            + (f": {partial_viol}" if partial_viol else ""),
+        ]
+        unc = [r for r in wholly_uncovered if r.get("classes") and r.get("actual")]
+        uncovered_viol = [
+            (r["id"], h)
+            for r in unc
+            for h, risk_class in r["classes"].items()
+            if risk_class == "OK" and int(r["actual"]) > int(h) * MIB
+        ]
+        lines.append(
+            f"Wholly uncovered cells with actuals and risk classes: {len(unc)}; violations: "
+            f"{len(uncovered_viol)} -> {'MET' if not uncovered_viol else 'FAILED'}"
+            + (f": {uncovered_viol}" if uncovered_viol else "")
+        )
+    else:
+        lines += [
+            "",
+            "## Uncovered-operation rule (amendment 1): a cell with an uncovered operation must never be OK",
+            "",
+            "at a simulated headroom its ACTUAL exceeds (UNKNOWN, WARN and HIGH_RISK are acceptable).",
+            "",
+        ]
+        unc = [r for r in rows if r.get("uncovered") and r.get("classes") and r.get("actual")]
+        viol = [
+            (r["id"], h)
+            for r in unc
+            for h, c in r["classes"].items()
+            if c == "OK" and r["actual"] > int(h) * MIB
+        ]
+        lines.append(
+            f"Cells with an uncovered operation: {len(unc)}; violations (OK while actual > headroom): "
+            f"{len(viol)} -> {'MET' if not viol else 'FAILED'}" + (f": {viol}" if viol else "")
+        )
     lines += ["", "## Every cell (MiB)", ""]
     cells = []
     for r in rows:
         n, v = r.get("new") or {}, r.get("v1") or {}
         actual = f"{r['actual'] / MIB:.0f}" if r.get("actual") else "-"
+        if v4 and r.get("uncovered"):
+            covered_count = ops_count(r) - int(r.get("uncovered", 0))
+            new_range = (
+                f"at least {n['ram_low'] / MIB:.0f} (covers {covered_count} of {ops_count(r)})"
+                if n
+                else "no estimate"
+            )
+            v1_range = "not scored (partial)"
+        else:
+            new_range = (
+                f"{n.get('ram_low', 0) / MIB:.0f} / {n.get('ram_expected', 0) / MIB:.0f} / "
+                f"{n.get('ram_high', 0) / MIB:.0f}"
+                if n
+                else "no estimate"
+            )
+            v1_range = (
+                f"{v.get('ram_expected', 0) / MIB:.0f} / {v.get('ram_high', 0) / MIB:.0f}"
+                if v
+                else "no estimate"
+            )
         cells.append({"cell": r["id"], "actual": actual,
-                      "new low/exp/high": f"{n.get('ram_low', 0) / MIB:.0f} / {n.get('ram_expected', 0) / MIB:.0f} / {n.get('ram_high', 0) / MIB:.0f}",
-                      "v1 exp/high": f"{v.get('ram_expected', 0) / MIB:.0f} / {v.get('ram_high', 0) / MIB:.0f}",
+                      "new low/exp/high": new_range,
+                      "v1 exp/high": v1_range,
                       "mode": r.get("mode"), "uncovered": r.get("uncovered")})  # fmt: skip
     lines += _table(cells)
     return "\n".join(lines) + "\n"
@@ -327,16 +432,22 @@ def evaluate(
     if heldout:
         if not reason:
             raise SystemExit("--heldout needs --reason")
+        from benchmarks.frozen import require_frozen
+
+        if version == 4:
+            require_frozen("models-frozen-v4")
+        else:
+            require_frozen()
         tag = "" if version == 1 else f" v{version}"
         _log_access(f"EVALUATE held-out multicell{tag} | reason: {reason}", log)
     path = results / part / "results.jsonl"
     rows = [json.loads(line) for line in path.open(encoding="utf-8")]
     out.mkdir(parents=True, exist_ok=True)
     target = out / (f"multicell_{part}.md" if version == 1 else f"multicell_v{version}_{part}.md")
-    phase = "Phase 6c" if version == 1 else f"v{version}, Phase 7"
+    phase = "Phase 6c" if version == 1 else ("Phase 8c" if version == 4 else f"v{version}, Phase 7")
     title = (f"Multi-statement cells ({phase}): HELD-OUT part (read once)" if heldout
              else f"Multi-statement cells ({phase}): DEV part (not validation)")  # fmt: skip
-    target.write_text(report(rows, title), encoding="utf-8")
+    target.write_text(report(rows, title, version=version), encoding="utf-8")
     return target
 
 

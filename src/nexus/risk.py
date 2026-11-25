@@ -65,24 +65,43 @@ class RiskReport:
     time_bucket: str | None = None
     long_run: bool = False
     drivers: tuple[str, ...] = ()
+    partial: bool = False
+    covered_operations: int | None = None
+    total_operations: int | None = None
 
     def lines(self) -> list[str]:
         out = [f"[nexus] {self.risk.value}: {self.reason}"]
-        if self.ram_expected is not None and self.headroom is not None:
-            out.append(
-                f"  predicted peak {human_bytes(self.ram_low or 0)}-{human_bytes(self.ram_high or 0)} "
-                f"(expected {human_bytes(self.ram_expected)}) vs {human_bytes(self.headroom)} available"
-                + (
-                    f" (container limit {human_bytes(self.cgroup_limit)})"
-                    if self.cgroup_limit
+        if self.ram_expected is not None:
+            if self.partial:
+                coverage = (
+                    f" (covers {self.covered_operations} of {self.total_operations} operations)"
+                    if self.covered_operations is not None and self.total_operations is not None
                     else ""
                 )
-            )
+                out.append(
+                    f"  covered part: at least {human_bytes(self.ram_low or 0)}{coverage}; "
+                    "no upper bound for the full cell"
+                    + (
+                        f" (vs {human_bytes(self.headroom)} available)"
+                        if self.headroom is not None
+                        else ""
+                    )
+                )
+            elif self.headroom is not None:
+                out.append(
+                    f"  predicted peak {human_bytes(self.ram_low or 0)}-{human_bytes(self.ram_high or 0)} "
+                    f"(expected {human_bytes(self.ram_expected)}) vs {human_bytes(self.headroom)} available"
+                    + (
+                        f" (container limit {human_bytes(self.cgroup_limit)})"
+                        if self.cgroup_limit
+                        else ""
+                    )
+                )
         if self.tier is not None:
             conf = f"{self.confidence:.2f}" if self.confidence is not None else "n/a"
             fb = f"; fallback: {self.fallback}" if self.fallback else ""
             out.append(f"  tier {self.tier}, confidence {conf}{fb}")
-        if self.time_bucket:
+        if self.time_bucket and not self.partial:
             out.append(
                 f"  time: about {self.time_bucket}" + (" (long run)" if self.long_run else "")
             )
@@ -171,12 +190,15 @@ def classify(  # noqa: C901
     cell: Estimate | None = None,
     warn_high: int | None = None,
     uncovered_ops: str | None = None,
+    covered_operations: int | None = None,
+    total_operations: int | None = None,
 ) -> RiskReport:
     """Classify a cell from its operation estimates.
 
     ``headroom`` overrides the snapshot's effective available RAM (the evaluation simulates
-    ``limit - baseline`` with it). ``uncovered`` is the number of detected operations without
-    an estimate: when the class would be OK they make it UNKNOWN (``uncovered_ops`` names them).
+    ``limit - baseline`` with it). ``uncovered`` is the number of detected operations without an
+    estimate: when the class would be OK they make it UNKNOWN (``uncovered_ops`` names them).
+    Partial cells expose only a covered-part lower bound, never a full-cell upper bound.
     ``warn_high`` is the upper bound WARN uses (risk v2); None: the cell's ``high``.
     """
     snap = {}
@@ -210,6 +232,8 @@ def classify(  # noqa: C901
             headroom=headroom,
             **snap,
         )
+    covered_count = covered_operations if covered_operations is not None else len(estimates)
+    total_count = total_operations if total_operations is not None else covered_count + uncovered
     bucket, long_run = _bucket(cell)
     drivers = tuple(cell.drivers)
     if drivers_from:
@@ -226,6 +250,9 @@ def classify(  # noqa: C901
         "time_bucket": bucket,
         "long_run": long_run,
         "drivers": drivers,
+        "partial": bool(uncovered),
+        "covered_operations": covered_count if uncovered else None,
+        "total_operations": total_count if uncovered else None,
         **snap,
     }
     if headroom is None:
@@ -309,4 +336,6 @@ def assess(report: CellReport) -> RiskReport | None:
         cell=cell,
         warn_high=None if warn is None else warn.ram_high,
         uncovered_ops=describe_uncovered(missing) if missing else None,
+        covered_operations=len(covered),
+        total_operations=len(report.ops),
     )

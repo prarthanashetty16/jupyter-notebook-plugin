@@ -59,11 +59,51 @@ def test_tier1_off_keeps_tier0_estimates(df):
     assert item.estimate.tier == 0 and "tier1" not in item.features
 
 
-def test_hard_deadline_aborts_instead_of_falling_back_to_tier0(df):
+def test_deadline_before_tier1_statistics_aborts(df):
     from nexus.failsafe import Deadline
 
     with pytest.raises(TimeoutError):
         Pipeline(tier=1).run('df["s"].astype("category")', {"df": df}, Deadline(0.0))
+
+
+def test_tier1_hard_deadline_keeps_visible_tier0_estimate(df, monkeypatch):
+    class DeadlineDuringTier1:
+        fired = False
+
+        def check(self):
+            return None
+
+        def expired(self):
+            return self.fired
+
+    deadline = DeadlineDuringTier1()
+    pipeline = Pipeline(tier=1)
+    model = pipeline.registry.get("astype")
+
+    def expire(op, features, ctx):
+        deadline.fired = True
+        raise TimeoutError("test deadline")
+
+    monkeypatch.setattr(model, "tier1_features", expire)
+    source = 'df["s"].astype("category")'
+    report = pipeline.run(source, {"df": df}, deadline)
+    (item,) = report.estimates
+    (tier0_item,) = Pipeline(tier=0).run(source, {"df": df}).estimates
+
+    assert item.estimate.tier == 0
+    assert item.estimate.ram_high == tier0_item.estimate.ram_high
+    assert item.features["tier1"] == {
+        "used": False,
+        "reason": "hard deadline",
+        "hard_deadline_fired": True,
+    }
+
+    from nexus.render import fallback_reason
+    from nexus.risk import assess
+
+    risk = assess(report)
+    assert risk is not None and risk.ram_high == tier0_item.estimate.ram_high
+    assert fallback_reason(item) == "hard deadline; Tier 0 estimate retained"
 
 
 def test_tier1_never_changes_the_users_frame(df):

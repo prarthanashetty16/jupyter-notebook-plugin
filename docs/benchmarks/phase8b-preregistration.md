@@ -4,6 +4,7 @@
 exists in this workspace:
 * the model under test is now v4;
 * the notebook count is dropped; the requirement is >= 150 run-time eligible cells.
+* partial-cell display and scoring follow Phase 8 preregistration Amendment 7, committed before any Phase 8b collection.
 
 No held-out notebook has been collected, opened, inventoried or analysed. The five notebooks in `real_notebooks/` are the
 Phase 8b DEV set (their census was read) and are excluded from this batch.
@@ -63,15 +64,14 @@ collected, sealed the same way. No count of any kind is taken before the run.
 
 ## 4. Accuracy, risk and failure
 
-As in the Phase 8 pre-registration (`docs/benchmarks/phase8-preregistration.md`), section 2:
-* RAM above_high <= 3% of valid points, quoted with the one-sided 95% upper bound ("consistent with <= x%"). Cells
-  labelled "excludes `<op>`" are not scored here (Rule 1);
-* the excludes-label criterion: 0 cells labelled "excludes `<op>`" that are OK at a simulated headroom their actual peak
-  exceeds;
+As in the Phase 8 pre-registration (`docs/benchmarks/phase8-preregistration.md`), section 2 and Amendment 7:
+* RAM above_high <= 3% of valid, fully covered cells, quoted with the one-sided 95% upper bound ("consistent with
+  <= x%"). Partial cells are excluded from above-high denominators and reported separately;
+* partial cells are scored at each simulated headroom from 64 MiB through 8 GiB: zero cases where risk is OK while the
+  actual peak exceeds headroom, and zero displayed lower bounds greater than the actual peak;
 * the uncovered-operation rule for cells with no estimated operation;
 * time within-one, Tier 1, >= 95% (Wilson lower bound quoted);
 * range width W;
-* secondary, not deciding: above_high with the "excludes" cells scored the v3 way;
 * fewer than 30 valid points: INCONCLUSIVE;
 * risk classes reported; R1-R3 claimed only at limits with >= 20 positives.
 

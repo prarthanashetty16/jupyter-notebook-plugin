@@ -15,7 +15,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
-from benchmarks.multicell import cases, cases_v2, cases_v3
+from benchmarks.multicell import cases, cases_v2, cases_v3, cases_v4
 
 SALT = "phase6c-multicell-v1:"
 SPLIT_FILE = Path(__file__).with_name("split_v1.json")
@@ -25,12 +25,16 @@ SPLIT_FILE_V2 = Path(__file__).with_name("split_v2.json")
 # v3 (Phase 7c, amendment 1 of the Phase 7 pre-registration): the ENLARGED group, TWO held out per template
 SALT_V3 = "phase7c-multicell-v3:"
 SPLIT_FILE_V3 = Path(__file__).with_name("split_v3.json")
+# v4 (Phase 8c Amendment 7): new pre-registered group with two held-out configurations per template
+SALT_V4 = "phase8c-multicell-v4:"
+SPLIT_FILE_V4 = Path(__file__).with_name("split_v4.json")
 _VERSIONS = {
     1: (SALT, SPLIT_FILE, cases),
     2: (SALT_V2, SPLIT_FILE_V2, cases_v2),
     3: (SALT_V3, SPLIT_FILE_V3, cases_v3),
+    4: (SALT_V4, SPLIT_FILE_V4, cases_v4),
 }
-HELD_PER_TEMPLATE = {1: 1, 2: 1, 3: 2}
+HELD_PER_TEMPLATE = {1: 1, 2: 1, 3: 2, 4: 2}
 
 
 def all_configs(version: int = 1) -> list:

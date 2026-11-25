@@ -19,6 +19,12 @@ DEFAULT_TIER = 1  # Phase 6c: statistics on by default; Tier 2 dry runs are opt-
 _GRACE_S = 0.05
 
 
+def _has_hard_deadline_firing(report: CellReport) -> bool:
+    return any(
+        (item.features.get("tier1") or {}).get("hard_deadline_fired") for item in report.estimates
+    )
+
+
 class NexusSession:
     """State and hook handlers for one IPython shell.
 
@@ -96,6 +102,7 @@ class NexusSession:
                     log.debug("nexus: hard analysis deadline fired; cell left unestimated")
                     return
                 self.last_report = report
+                self.deadline_firings += int(_has_hard_deadline_firing(report))
                 self.last_risk = assess(report)
                 risk = self.last_risk
                 if self.verbose:

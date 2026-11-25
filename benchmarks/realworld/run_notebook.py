@@ -51,6 +51,7 @@ MIB = 2**20
 RAM_FLOOR = 32 * MIB
 TIME_FLOOR_S = 0.100
 SAMPLE_S = 0.002
+RISK_HEADROOMS_MIB = (64, 128, 256, 512, 1024, 2048, 4096, 8192)
 SHELL_CELL = re.compile(
     r"^\s*(!|%pip|%conda|%%bash|%%sh|%system|%%script|%%cmd|%%powershell|%sx|%%sx)", re.M
 )
@@ -119,9 +120,11 @@ def _estimate_dict(e: Any) -> dict[str, Any]:
 
 
 def _analyse(src: str, ns: dict[str, Any], primary: Any, secondary: Any) -> dict[str, Any]:
+    from dataclasses import replace
+
     from nexus.cellpeak import cell_estimate
     from nexus.failsafe import Deadline
-    from nexus.risk import assess
+    from nexus.risk import assess, classify, warn_high_estimate
     from nexus.session import DEFAULT_BUDGET_S
     from nexus.suggestions import suggest
 
@@ -136,8 +139,32 @@ def _analyse(src: str, ns: dict[str, Any], primary: Any, secondary: Any) -> dict
         cell, mode, _flags = cell_estimate(src, rep.estimates)  # the cell-level model (Phase 6c)
         rec["cell_mode"] = mode
         rec["cell"] = _estimate_dict(cell) if cell else None
-        rec["uncovered"] = len({id(o) for o in rep.ops} - {id(e.op) for e in rep.estimates})
+        covered = {id(e.op) for e in rep.estimates}
+        missing = [o for o in rep.ops if id(o) not in covered]
+        rec["uncovered"] = len(missing)
+        rec["hard_deadline_fired"] = any(
+            (e.features.get("tier1") or {}).get("hard_deadline_fired") for e in rep.estimates
+        )
+        rec["covered"] = bool(rep.ops) and not missing and not rec["hard_deadline_fired"]
         rec["inputs"] = _describe_inputs(rep)
+        warn, _warn_mode, _warn_flags = (
+            cell_estimate(src, [replace(e, estimate=warn_high_estimate(e)) for e in rep.estimates])
+            if rep.estimates
+            else (None, None, None)
+        )
+        rec["cell_warn"] = _estimate_dict(warn) if warn else None
+        rec["simulated_risk_classes"] = {
+            str(headroom): classify(
+                [e.estimate for e in rep.estimates],
+                headroom=headroom * MIB,
+                uncovered=len(missing),
+                cell=cell,
+                warn_high=None if warn is None else warn.ram_high,
+                covered_operations=len(covered),
+                total_operations=len(rep.ops),
+            ).risk.value
+            for headroom in RISK_HEADROOMS_MIB
+        }
         risk = assess(rep)
         rec["risk"] = (
             {"class": risk.risk.value, "reason_kind": risk.reason.split(":")[0][:60], "headroom": risk.headroom}
@@ -151,6 +178,9 @@ def _analyse(src: str, ns: dict[str, Any], primary: Any, secondary: Any) -> dict
         rec["cell_tier0"] = _estimate_dict(c0) if c0 else None
     except Exception as exc:
         rec["analysis_error"] = type(exc).__name__
+        if isinstance(exc, TimeoutError):
+            rec["hard_deadline_fired"] = True
+            rec["covered"] = False
     rec["analysis_s"] = time.perf_counter() - t0
     return rec
 

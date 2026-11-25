@@ -61,7 +61,7 @@ ACTUAL_FIELDS = [
 PREDICTION_FIELDS = [
     "point_id", "tier", "status", "error", "has_estimate", "model", "ram_low", "ram_expected",
     "ram_high", "time_low", "time_expected", "time_high", "confidence", "drivers", "features",
-    "overhead_cold_s", "overhead_warm_s", "analysis_peak_bytes", "inspected_bytes", "skipped",
+    "hard_deadline_fired", "overhead_cold_s", "overhead_warm_s", "analysis_peak_bytes", "inspected_bytes", "skipped",
     "other_ops", "split", *ENV_FIELDS,
 ]  # fmt: skip
 SKIPPED_CAP = "skipped_cap"
@@ -348,7 +348,7 @@ def run_prediction(
     row["other_ops"] = json.dumps([o for o in info["ops"] if o != point.op])
     if matching:
         e = matching[0]
-        row.update(has_estimate=True, model=e["model"], drivers=json.dumps(e["drivers"]),
+        row.update(has_estimate=not row["hard_deadline_fired"], model=e["model"], drivers=json.dumps(e["drivers"]),
                    features=json.dumps(e["features"], default=str))  # fmt: skip
         row["estimate_tier"] = e["tier"]
         for key in ("ram_low", "ram_expected", "ram_high", "time_low", "time_expected",

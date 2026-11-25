@@ -782,20 +782,22 @@ def write_validation_report(
         from benchmarks import controller_eval  # the Phase 4d success criteria S1-S5 (LEGACY)
 
         lines.append(
-            "\n## LEGACY: Phase 4d controller criteria S1-S5 (not the Phase 7 acceptance criteria)\n\n"
+            "\n## LEGACY: Phase 4d controller criteria S1-S5 (not the Phase 8 acceptance criteria)\n\n"
             "Kept for continuity with the Phase 4d pre-registration (its S1 allows 5% of configurations "
-            "above high). The authoritative verdict for `models-frozen-v3` is the Phase 7 section at the "
+            "above high). The authoritative verdict for `models-frozen-v4` is the Phase 8 section at the "
             "end.\n"
         )
         lines.append(controller_eval.validation_section(val))
-        from benchmarks import risk_eval  # R1-R3 (Phase 7 pre-registration, section 2)
+        from benchmarks import risk_eval  # R1-R3 (Phase 8 pre-registration, section 2)
 
         lines.append(risk_eval.section(val, "Risk engine on val-v5 (pre-registered R1-R3)"))
-        from benchmarks import phase7_verdict  # the Phase 7 acceptance verdict (authoritative)
+        from benchmarks import phase8_verdict  # the Phase 8 acceptance verdict (authoritative)
 
         comp = controller_eval.completion(set(val["point_id"]))
         planned = sum(n for _, n in comp.values()) or None
-        lines.append(phase7_verdict.section(val, planned=planned))
+        baseline_path = results_dir / VAL_DIR / "v3_predictions.csv"
+        baseline = pd.read_csv(baseline_path) if baseline_path.exists() else None
+        lines.append(phase8_verdict.section(val, planned=planned, v3_predictions=baseline))
     lines.append("\n## Measurement caveats\n")
     lines.append(CAVEATS)
     report = results_dir / "validation_report.md"

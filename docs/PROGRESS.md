@@ -1985,17 +1985,22 @@ changes in response: v3 is not repaired on these data.**
   done with it). It gets no census, no static analysis and no reading of its cells before the v4 freeze. Its first
   use is the pre-registered held-out run, logged in the Test-split access log.
 
-## Before Phase 8c (to-do)
+## Phase 8c closeout checklist
 
-- [ ] Relabel the val-v5 runbook (`docs/benchmarks/val-v5-linux-runbook.md`) for v4: checkout `models-frozen-v4`, the
-  Phase 8 criteria (`docs/benchmarks/phase8-preregistration.md`, amendment 1) as authoritative.
-- [ ] Relabel `benchmarks/phase7_verdict.py` for v4, or create a v4 verdict script (`evaluate --val` must print the
-  Phase 8 criteria: split width criterion W(a) / W(b), excludes-label criterion, per platform). val-v5 was reassigned
-  from v3 to v4 (Phase 7 pre-registration amendment 2); v3 gets no Linux held-out check.
+- [x] Relabel the val-v5 runbook for `models-frozen-v4` and Phase 8 criteria.
+- [x] Add the v4 Phase 8 verdict to `evaluate --val`, including W(a)/W(b) scoring and a prediction-only v3 baseline
+  command. Multicell partial-cell criteria remain in the separate v4 multicell report.
+- [x] Commit Amendment 7 before creating the v4 multicell group; create its digest-frozen metadata only (no inputs or
+  outcomes).
+- [x] Re-run the 28-input prediction-only deadline check on mains, as information only; all four raw reports are linked below.
+- [x] Ruff checks and full pytest suite: 902 passed, 2 tag-dependent freeze tests skipped because `models-frozen-v4`
+  is intentionally not created before review.
+- [ ] Commit and push to `v4-dev`. Do not create the v4 tag before review.
 
 ## Phase 8 (v4) dev progress (`v4-dev` branch; not frozen)
 
-Pre-registration `docs/benchmarks/phase8-preregistration.md` with amendments 1-2. Every number is DEV.
+Pre-registration `docs/benchmarks/phase8-preregistration.md` with amendments 1-7. Every number is DEV; no protected
+held-out values have been read.
 
 ### v4 dev summary
 
@@ -2020,14 +2025,18 @@ Pre-registration `docs/benchmarks/phase8-preregistration.md` with amendments 1-2
 | 3. `sample` | **FAILED** | Random-index workspace made measured peaks 2.064–3.006x the selected-data derivation. |
 | 3. `describe` | **FAILED** | Numeric workspace exceeded the derivation and a two-string case was censored; no-estimate. |
 | 4. Deferred-operation UNKNOWN behavior | **PASS** | `apply`/Python-function `map`, `to_csv`, `join`, `pd.get_dummies`, and `corr` remain named no-estimate because they are not modelled in v4. Messages are tested; the 46 dev multicell cells with uncovered operations had 0 risk/headroom violations. |
-| T. Tier selection and deadline | **FAILED** | Non-firing repeats were identical, but deadline firings were 79/84 (94.05%) contended and 28/84 (33.33%) idle. The requested 28×3 check is also below the preregistered 30×10 minimum. See the [contended](./benchmarks/phase8/tier1_selection_cores2.md) and [idle](./benchmarks/phase8/tier1_selection_idle.md) reports. |
+| T. Tier selection and deadline | **FAILED** | The original result was 79/84 (94.05%) contended and 28/84 (33.33%) idle. The post-fallback information-only rerun fired 48/84, 31/84, and 30/84 under 2-core contention (57.14%, 36.90%, 35.71%; pooled 109/252 = 43.25%) versus <=5%, and 44/84 idle (52.38%) versus 0%. Non-firing selection was stable, but the firing bars failed. The 28-input × 3-repeats design is also below the preregistered 30 × 10 minimum. |
 | Runtime dev coverage | **FAILED** | Final all-cells result is 14/75 = 18.7%, below 55%; earlier provisional 15/74 (20.3%) is superseded by the full run. |
+| Amendment 7 partial-cell display and safety scoring | **NOT EVALUATED ON HELD-OUT DATA** | The output/scoring path and focused tests are included; the v4 multicell group and Phase 8b batch remain sealed and have no outcomes. |
+| Section 2 held-out criteria (RAM, time, W, R1-R3, uncovered/partial safety, paired coverage) | **NOT RUN** | val-v5, test-v2, and the fresh Phase 8b notebooks remain unread; the v4 multicell split is metadata-only and unrun. |
 
 Final item C factors (alpha = 0.02, configuration maxima): pooled **q = 1.184** (239 configurations); `read_csv` **q = 1.175** (59 configurations); `sort_values` **q = 1.197** (37 configurations, at sample maximum). Other families use the pooled factor. The final artifact is [upper-v1.json](../src/nexus/calibration/upper-v1.json), computed from the current v4 models; the full dev report is [calibration_final_v4.md](./benchmarks/phase8/calibration_final_v4.md). W(b) on all points is descriptive only (median width 2.10, p90 7.22); the deciding W(b) group has no points.
 
 Adopted v4 operation forms: text/non-string `fillna`, copy-through-`fillna`, the five passing `copy` receiver forms, `dropna`, and known numeric ndarray `numpy.array(copy=True)`. Failed or deferred forms remain named no-estimate; the item rows above give each reason. The main blockers were key-dependent hash-table residency, allocation/workspace terms contradicted by probes, and unmeasurable zero-copy/lazy-page peaks.
 
-The determinism check found no Tier 1/Tier 0 selection flips among non-firing repeats (0/28 in each condition); estimate signatures matched for the comparable non-firing inputs (0/1 contended, 0/19 idle). There were also three contended `memory_limit` worker failures, separately counted as not estimated and not as deadline firings.
+The post-fallback rerun found no Tier 1/Tier 0 selection flips among non-firing repeats (0/28 in each of the three contended runs and the idle run); estimate signatures matched for 4, 10, 10, and 13 comparable inputs, respectively. Contended runs also had 24 `memory_limit` worker failures each (72 total), separately counted as not estimated and not as deadline firings; the idle run had none. The 250 ms hard deadline still fires frequently, so the safe default is to show the same operation's Tier 0 estimate with Tier 0 high/policy B and assess risk from it, while recording the firing and excluding it from coverage claims. This is safer than silently showing no estimate for a cooperative Tier 1 timeout, without disguising the failed T criterion; timeouts outside this cooperative path retain the interceptor fail-safe behavior.
+
+Information-only rerun reports: [contended 1](./benchmarks/phase8/tier1_selection_recheck_cores2_1.md), [contended 2](./benchmarks/phase8/tier1_selection_recheck_cores2_2.md), [contended 3](./benchmarks/phase8/tier1_selection_recheck_cores2_3.md), and [idle](./benchmarks/phase8/tier1_selection_recheck_idle.md). Each uses 28 dev inputs × 3 repeats on mains; all deadline firings count as not estimated.
 
 **v5 direction:** investigate Tier 2 sandboxed extrapolation as a general fallback for operations without a derived model, with the primary goal of improving operation coverage. Keep the existing safety gate: unknown or side-effecting code must not be executed in the sandbox.
 
@@ -2140,3 +2149,43 @@ The determinism check found no Tier 1/Tier 0 selection flips among non-firing re
   magic was disabled, Colab uploads were mapped to the pinned local CSVs, and notebook5's KaggleHub loader call was
   preserved while its adapter read the pinned local CSV; no network access was used. Runtime logs are in ignored
   `benchmarks/results/phase8-dev-runtime/`.
+
+### Information-only probe ratios (no generic bound adopted)
+
+For each failed/deferred frame-referencing form below, the ratio is stored measured peak divided by the referenced
+frame/Series payload bytes, using the probe's known row counts and dtypes; no probe was rerun for this calculation.
+String probes whose exact `memory_usage(deep=True)` was not stored are not used to increase a numeric-frame maximum.
+Censored measurements are bounds, not point ratios.
+
+| Failed/deferred form | Worst measured peak / input bytes | Stored evidence |
+|---|---:|---|
+| `value_counts` | **3.95x** (362.0 / 91.55 MiB; 12M int64 Series) | [value_counts probe](./benchmarks/phase8/probes/p8_value_counts_diag.out) |
+| `duplicated` | **4.02x** (429.82 / 106.81 MiB; 7M-row, two-int64 frame); dense-int variant 1.76x | [second derivation probe](./benchmarks/phase8/probes/p8_duplicated_b2.out) |
+| `copy` on `head` / `tail` receivers | **up to 1.25x** using the stored 8-byte/column payload denominator; `tail` on a numeric frame was 1.00x | [copy receiver probes](./benchmarks/phase8/probes/p8_copy_receivers.out), [measurement fixes](./benchmarks/phase8/probes/p8_copy_receivers_fix.out) |
+| `reset_index` | **1.002x** (122.293 / 122.070 MiB; RangeIndex, `drop=False`) | [reset-index probe](./benchmarks/phase8/probes/p8_reset_index.out) |
+| `Series.map` | **12.99x** (2,478.11 / 190.74 MiB; 25M int64 Series, NumPy ufunc); dict mapper 2.13x | [map probe](./benchmarks/phase8/probes/p8_map.out) |
+| `to_numpy` | **1.001x** (229.004 / 228.882 MiB; mixed numeric frame); zero-copy variants were about 0.0002x | [to_numpy probe](./benchmarks/phase8/probes/p8_to_numpy.out) |
+| dict / multi-column `astype` | **0.335x** (92.047 / 274.658 MiB; 12M-row, three-numeric-column frame) | [astype probe](./benchmarks/phase8/probes/p8_astype_multi.out) |
+| `sample` | **2.064x** (472.344 / 228.882 MiB; 15M-row, two-numeric-column frame) | [sample probe](./benchmarks/phase8/probes/p8_sample.out) |
+| `describe` | **1.565x** (358.164 / 228.882 MiB; 15M-row, two-numeric-column frame) | [describe probe](./benchmarks/phase8/probes/p8_describe.out) |
+| `read_csv(parse_dates=...)` | N/A: the operation reads a file, not a referenced frame | [parse-dates probe](./benchmarks/phase8/probes/p8_read_csv_dates.out) |
+| `numpy.zeros`, `numpy.empty`, `numpy.linspace` | N/A: no referenced input frame; observed allocations do not establish an input-frame multiplier | [zeros](./benchmarks/phase8/probes/p8_numpy_zeros.out), [empty](./benchmarks/phase8/probes/p8_numpy_empty.out), [linspace](./benchmarks/phase8/probes/p8_numpy_linspace.out) |
+| Python-function `apply` / `map`, `to_csv`, `join`, `get_dummies`, `corr`; `copy` on an unmodelled receiver | N/A: deliberately deferred or no stored isolated peak/input pair | Deferred-operation policy and `copy` receiver findings above |
+
+**Worst across the measured frame-referencing variants: 12.99x (`Series.map` with a NumPy ufunc).** This is information
+only, not a safe bound: observed ratios range from near zero for zero-copy conversions to nearly 13x for one
+data-dependent mapper, with hash-table operations also varying by key distribution. A generic `k × input bytes`
+fallback does not look stable or defensible and is **not adopted**. The measured `sort_values(...).copy()` peak is for
+the whole chain, and the unmodelled `dropna().copy()` regression has no stored isolated input/peak pair; neither is
+misreported as an operation-specific ratio.
+
+### Phase 8c status
+
+The amendment-7 fallback is intentionally visible and conservative: a cooperative Tier 1 statistics deadline records
+the flag and reason, returns the same operation's Tier 0 estimate (including Tier 0 high under policy B), and computes
+risk from that estimate. The firing remains a failure of item T and counts as not estimated in all coverage metrics.
+Timeouts outside the cooperative Tier 1 path retain the interceptor's fail-safe behavior. Partial cells display only
+`at least X (covers k of n operations)`, without a full-cell upper bound; risk remains UNKNOWN unless the covered part
+itself proves WARN or HIGH_RISK. The new multicell split is metadata-only: 32 held-out configurations / 64 cells across
+16 templates, including seven templates designed to produce partial cells; no inputs have been generated and it has
+not been run.

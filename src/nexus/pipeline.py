@@ -42,6 +42,18 @@ def _stats_summary(extra: dict[str, Any]) -> dict[str, Any]:
     return dict(extra.get("tier1", {}))
 
 
+def _tier1_deadline_fallback(model: Any, features: dict[str, Any]) -> tuple[dict[str, Any], int]:
+    log.debug("nexus: Tier 1 hard deadline fired for %s; retaining Tier 0", model.name)
+    return {
+        **features,
+        "tier1": {
+            "used": False,
+            "reason": "hard deadline",
+            "hard_deadline_fired": True,
+        },
+    }, 0
+
+
 class Pipeline:
     """Runs one cell's source through analysis, state inspection and the model registry."""
 
@@ -84,10 +96,11 @@ class Pipeline:
             deadline.check()
         estimates: list[OpEstimate] = []
         dry: dict[str, Any] = {}  # one dry run per cell, shared by its ops
+        deadline_fired = False
         cb = cellframes.cell_bindings(source, ops)
         produced: dict[int, Any] = {}  # id(op) -> predicted result descriptor (nexus.cellframes)
         for op in ops:
-            if deadline is not None:
+            if deadline is not None and not deadline_fired:
                 deadline.check()
             state, cell_frame = cellframes.state_for(op, cb, produced, inspection)
             if state is None:  # touches a frame made earlier in this cell whose shape is unknown
@@ -105,7 +118,16 @@ class Pipeline:
                         if cell_frame and self._tier >= 1
                         else None
                     )
-                    if alias_ns is not None:  # v4 (1b): a copy of a kernel frame: its statistics
+                    if deadline_fired:
+                        features = {
+                            **features,
+                            "tier1": {
+                                "used": False,
+                                "reason": "hard deadline",
+                                "hard_deadline_fired": True,
+                            },
+                        }
+                    elif alias_ns is not None:  # v4 (1b): a copy of a kernel frame: its statistics
                         features, used = self._tier1(
                             model, op, features, alias_ns, source, deadline
                         )
@@ -118,6 +140,9 @@ class Pipeline:
                         features, used = self._tier1(
                             model, op, features, namespace, source, deadline
                         )
+                    deadline_fired = deadline_fired or bool(
+                        (features.get("tier1") or {}).get("hard_deadline_fired")
+                    )
                     estimate = None
                     if used >= 1:
                         tier0 = self._tier0_estimate(model, tier0_features)
@@ -143,7 +168,12 @@ class Pipeline:
                         estimate = tier0 = model.estimate(features, used)
                     if isinstance(estimate, Estimate):  # time: residual + conformal range
                         estimate = timecal.calibrate(model.name, estimate)
-                    if self._tier >= 2 and isinstance(estimate, Estimate) and not cell_frame:
+                    if (
+                        self._tier >= 2
+                        and isinstance(estimate, Estimate)
+                        and not cell_frame
+                        and not deadline_fired
+                    ):
                         estimate, features = self._tier2(
                             op, estimate, features, source, namespace, dry, tier0, inspection
                         )
@@ -166,7 +196,7 @@ class Pipeline:
         except Exception:
             log.debug("nexus: resource probe failed", exc_info=True)
             resources = None
-        if deadline is not None:
+        if deadline is not None and not deadline_fired:
             deadline.check()
         return CellReport(
             ops=ops,
@@ -249,8 +279,9 @@ class Pipeline:
     ) -> tuple[dict[str, Any], int]:
         """Add Tier 1 statistics to ``features``; (features, tier actually used).
 
-        No statistics or an unexpected model failure keeps the Tier 0 features. A hard deadline
-        is propagated so the interceptor can remain silent instead of displaying a Tier 0 fallback.
+        No statistics or an unexpected model failure keeps the Tier 0 features. A cooperative hard
+        deadline returns Tier 0 and records the firing so the interceptor can display the
+        conservative fallback instead of dropping the estimate.
         """
         started = time.perf_counter()
         try:
@@ -258,13 +289,21 @@ class Pipeline:
             with stats.cell_seed(source):
                 extra = model.tier1_features(op, features, ctx)
         except NoEstimateError as why:
+            if deadline is not None and deadline.expired():
+                return _tier1_deadline_fallback(model, features)
             log.debug("nexus: tier 1 unavailable for %s: %s", model.name, why)
             return {**features, "tier1": {"used": False, "reason": str(why)}}, 0
         except TimeoutError:
-            raise
+            if deadline is None or not deadline.expired():
+                raise
+            return _tier1_deadline_fallback(model, features)
         except Exception as exc:
+            if deadline is not None and deadline.expired():
+                return _tier1_deadline_fallback(model, features)
             log.debug("nexus: tier 1 failed for %s", model.name, exc_info=True)
             return {**features, "tier1": {"used": False, "reason": type(exc).__name__}}, 0
+        if deadline is not None and deadline.expired():
+            return _tier1_deadline_fallback(model, features)
         if not extra:
             return {**features, "tier1": {"used": False, "reason": "no statistics"}}, 0
         info = {**_stats_summary(extra), "used": True, "stats_s": time.perf_counter() - started}

@@ -1,10 +1,8 @@
 """The frozen model stack: manifest, and the guard that held-out runs must pass.
 
-The current freeze is ``FROZEN_TAG`` (``models-frozen-v3``, Phase 7d; the tag name lives ONLY here: the guard and
-every held-out entry point use this constant). ``models-frozen-v2`` (Phase 6c) and ``models-frozen-v1`` (Phase 6) are
-kept and documented in ``docs/benchmarks/frozen-manifest-v2.md`` / ``-v1.md``. A held-out run (val-v5 through ``python -m benchmarks
-full --splits val-v5``, its ``evaluate --val``, ``evaluate --final`` for test-v2, the Phase 8a
-real-notebook evaluation) calls ``require_frozen()``. Since Phase 6b the check is MANIFEST-BASED:
+The current target freeze is ``FROZEN_TAG`` (``models-frozen-v4``, Phase 8; the tag name lives ONLY here: the guard and
+every held-out entry point use this constant). ``models-frozen-v3`` (Phase 7d), v2 (Phase 6c) and v1 (Phase 6) are
+previous freezes. A held-out run calls ``require_frozen()``. Since Phase 6b the check is MANIFEST-BASED:
 it compares the SHA-256 (LF line endings) of every file that defines the predictions
 (``FROZEN_PATTERNS``, resolved against the tag's tree) with the tag's own copy, and aborts if one
 differs, is missing, or if a new file matching a frozen pattern exists. Everything else (docs,
@@ -28,8 +26,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-FROZEN_TAG = "models-frozen-v3"
-PREVIOUS_TAG = "models-frozen-v2"
+FROZEN_TAG = "models-frozen-v4"
+PREVIOUS_TAG = "models-frozen-v3"
 ROOT = Path(__file__).resolve().parent.parent
 
 # The files that define the predictions (shell-style patterns relative to the repository root).
@@ -162,26 +160,29 @@ HISTORY = (
     ("models-frozen-v3", "Phase 7d", "read_csv reader paths and arguments, merge output term, consolidation check, "
      "conservative rebinding release, frames created in the cell, apply(np.<ufunc>), set_index, cell-seeded sampler, "
      "risk v2 (C3) and named UNKNOWN (`docs/benchmarks/phase7b/README.md`)"),
+    ("models-frozen-v4", "Phase 8", "derived operation additions and explicit no-estimate cases, calibrated RAM high "
+     "(`calibration/upper-v1.json`), cell-seeded sampler, Tier 0 fallback on cooperative Tier 1 deadlines, and partial "
+     "cell lower-bound display (`docs/benchmarks/phase8-preregistration.md`)"),
 )  # fmt: skip
 LIMITATIONS = (
-    "**Determinism NOT achieved on contended machines**: the deterministic statistics gate failed its pre-registered rule "
-    "(the deadline fired after admission on 12 of 29 2-core inputs, 41% > 10%) and was **reverted** to v2's adaptive gate; "
-    "final code: 12 of 28 inputs flip Tier 1 / Tier 0 on 2 contended CPUs, 0 of 28 on 16 CPUs; same-tier spreads remain "
-    "(drop_duplicates strings 10M ~22%, groupby 10M 0.05%).",
-    "**Item (2) dev criterion FAILED**: 2 of 66 v1 multi-statement cells above the v3 high (copy_fillna/mixed, 88 vs 65 and "
-    "176 vs 130 MiB; an uncovered fillna on text columns); risk UNKNOWN or HIGH_RISK, never OK.",
-    "**Uncovered**: value_counts, explode, apply with Python functions, set_index with text / several keys / append, "
-    "fillna on text columns, parse_dates, text columns on the parallel read_csv path (v2 term), operations on merge / "
-    "groupby / drop_duplicates results made in the cell; no column statistics carried between statements.",
-    "**CPU-dependent read_csv path**: parallel (file >= 5 MiB and pandas' worker count > 1; affinity / cgroup on Linux "
-    "only) or serial; the same call can get another estimate on another machine.",
-    "**One laptop, synthetic data**: every probe and dev figure comes from one Windows 11 laptop and synthetic frames "
-    "(plus two dev notebooks); Linux only through the planned val-v5 VM run.",
+    "**Tier-selection deadline criterion FAILED**: firings were 79/84 on 2 contended cores and 28/84 on the idle machine. "
+    "A cooperative Tier 1 timeout now returns the visible Tier 0 estimate, but still counts as not estimated for coverage.",
+    "**Runtime coverage criterion FAILED**: 14/75 operation-bearing cells (18.7%) had every operation estimated, "
+    "below the preregistered 55% target; the earlier 15/74 figure was superseded by the full run.",
+    "**Deferred operations**: value_counts, duplicated, reset_index, Series.map, to_numpy zero-copy forms, dict/multi-column "
+    "astype, read_csv(parse_dates), numpy.zeros/empty/linspace, sample, and describe remain no-estimate where their "
+    "probe derivations failed or were not measurable. Python-function apply/map, to_csv, join, get_dummies, and corr "
+    "remain explicitly named unknowns.",
+    "**Coverage remains narrow**: adopted v4 additions include text fillna, copy-through-fillna, five copy receiver forms, "
+    "dropna, and known numeric ndarray numpy.array(copy=True); unsupported receiver forms and unknown operations remain "
+    "unestimated rather than guessed.",
+    "**One developer machine**: derivations and dev evaluation use a Windows laptop and synthetic data; val-v5 and the "
+    "new v4 held-out groups have not been run.",
     "**Supported environment**: pandas >= 3.1 (Python >= 3.11) on Windows and Linux. Models and the instrument's "
     "validation assume pandas 3 copy-on-write (Python 3.10 resolves pandas 2.x: unsupported, report-only in CI); on "
     "macOS the instrument cannot isolate an operation's peak (report-only in CI). Derived from pandas 3.1.1 only.",
-    "**R2 is a dev selection**: risk v2 (C3) was selected on dev by a rule written beforehand (dev R2 pooled 17.1%, merge "
-    "9.4%, read_csv 39.0%); it is a claim only if val-v5 confirms it.",
+    "**Tier 2 is not a general fallback**: it remains an opt-in sandboxed estimator for qualifying, safe operations; "
+    "coverage gaps still produce no estimate.",
 )  # fmt: skip
 
 
