@@ -2203,5 +2203,6 @@ not been run.
   pilot first, same output folder for full/resume, no recalibration between.
 - [x] `ruff check .` passed; changed Python files passed `ruff format --check`.
 - [x] Full pytest on mains: 903 passed, 2 tag-dependent freeze tests skipped before the v4 tag exists.
-- [ ] Fresh-clone guard and freeze-guard tests (not skipped): pending.
+- [x] Fresh clone at candidate commit `29555f4`: temporary local v4 validation tag; guard reported 50 frozen files and
+  `problems: []`; `tests/test_timecal.py` and `tests/test_realworld_harness.py` passed (27 passed, 0 skipped).
 - [ ] Annotated v4 tag, guard-from-tag, branch/tag push: pending.
