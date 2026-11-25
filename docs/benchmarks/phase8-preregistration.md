@@ -434,3 +434,47 @@ added to the model after the output: for 8M rows it implies about 183.1 MiB for 
 diff adds only the main guard and does not establish that the formula was preregistered. This attempt is **INVALID**;
 the model is removed and `reset_index` remains no-estimate in v4 with a named reason. No further v4 derivation or
 probe is allowed for this operation.
+
+## Amendment 7 (2026-11-24): visible deadline fallback, partial-cell scoring, and multicell v4
+
+This amendment is committed before creating the v4 multicell generator or split. `test-v2`, `val-v5`, and the fresh
+Phase 8b notebooks remain sealed and unread. No v4 multicell outcomes exist.
+
+**(A) Tier 1 hard-deadline fallback.** The observed determinism result is unchanged and remains **FAILED**: 79/84
+contended and 28/84 idle firings. When the cooperative hard deadline fires inside Tier 1 statistics, NEXUS returns
+the same operation's Tier 0 estimate, records `hard_deadline_fired` and the reason, keeps Tier 0's `high` and policy B,
+and computes risk from that Tier 0 estimate. This is a visible safe-default fallback, not a pass or a reclassification
+of criterion T; every firing still counts as not estimated for coverage. A timeout before Tier 1 statistics can run
+remains subject to the interceptor's fail-safe.
+
+**(B) Partial-cell display and scoring.** If `k` of `n` detected operations have estimates and `0 < k < n`, the
+display reports the covered cell-model lower bound as `at least X (covers k of n operations)` and displays no upper
+bound for the full cell. `X` is the cell model's `ram_low` computed from the covered operations only. The risk engine's
+existing behavior is unchanged: a covered estimate that proves risk may still yield WARN or HIGH_RISK; otherwise a
+partial cell is UNKNOWN, never OK.
+
+For multicell v4 and Phase 8b:
+
+* Above-high point/cell and configuration criteria use fully covered cells only. Partial cells are excluded from those
+  denominators and reported separately.
+* At each simulated headroom from 64 MiB through 8 GiB, a partial cell is a safety violation if its risk class is OK
+  while its measured actual peak exceeds that headroom. The bar is zero violations.
+* A partial cell is also a violation if its displayed lower bound `X` exceeds its measured actual peak. The bar is zero
+  violations.
+* A cell with no estimated operation has no partial lower bound; the existing uncovered-operation safety criterion
+  applies unchanged.
+
+The former `excludes <op>` criterion and the secondary v3-style above-high score for partial cells are replaced by
+these rules. Counts for fully covered, partial, and wholly uncovered cells are all reported.
+
+**(C) New multicell v4 group, created before the freeze.** This group contains 16 fixed multi-statement templates covering
+the v4 operation scope, chains, frames created earlier in a cell, and rebinding. Four or more templates deliberately
+combine covered and uncovered operations and must produce partial cells. It uses six newly named frame shapes, seeds
+41-43, and row counts 1.5M and 3M. The two configurations per template with the largest hashes under the new
+`phase8c-multicell-v4:` salt are held out. The design therefore yields 32 held-out configurations and 64 cells,
+including partial cells. The split and its digest may be generated and committed before the tag; this metadata-only
+creation does not generate input data or reveal outcomes. The group is never run or evaluated before the v4 tag.
+
+This amendment supersedes section 0's order only for creating and digest-freezing the multicell v4 generator and split:
+those may be committed before the tag; all measurements and evaluation remain after the tag. No other held-out set or
+Phase 8b collection is authorized before the freeze.
