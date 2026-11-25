@@ -35,7 +35,8 @@ def _est(src: str, tier: int = 1) -> Estimate | None:
 ])  # fmt: skip
 def test_one_str_column_with_a_missing_value(src: str, per_row: int):
     e = _est(src)
-    assert e.tier == 1 and e.ram_expected == per_row * N and e.ram_high == per_row * N
+    assert e.tier == 1 and e.ram_low == e.ram_expected == per_row * N
+    assert e.ram_high >= e.ram_expected
 
 
 def test_columns_kept_then_the_largest_transient():

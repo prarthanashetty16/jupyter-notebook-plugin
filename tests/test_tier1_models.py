@@ -59,10 +59,11 @@ def test_tier1_off_keeps_tier0_estimates(df):
     assert item.estimate.tier == 0 and "tier1" not in item.features
 
 
-def test_tier1_budget_exhausted_falls_back_to_tier0(df):
-    item = run('df["s"].astype("category")', {"df": df}, 1, tier1_budget_s=0.0)
-    assert item.estimate.tier == 0
-    assert item.features["tier1"]["used"] is False and "budget" in item.features["tier1"]["reason"]
+def test_hard_deadline_aborts_instead_of_falling_back_to_tier0(df):
+    from nexus.failsafe import Deadline
+
+    with pytest.raises(TimeoutError):
+        Pipeline(tier=1).run('df["s"].astype("category")', {"df": df}, Deadline(0.0))
 
 
 def test_tier1_never_changes_the_users_frame(df):

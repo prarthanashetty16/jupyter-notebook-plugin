@@ -1,0 +1,31 @@
+{
+ "version": 1,
+ "procedure": "docs/benchmarks/phase8-preregistration.md, item C",
+ "alpha": 0.02,
+ "min_configs": 30,
+ "tree": "content:e2333ee0a0bbe2df",
+ "pooled": {
+  "q": 1.1842075951653446,
+  "n": 239,
+  "at_max": false
+ },
+ "families": {
+  "read_csv": {
+   "q": 1.1745549993152051,
+   "n": 59,
+   "at_max": false
+  },
+  "sort_values": {
+   "q": 1.197483653702222,
+   "n": 37,
+   "at_max": true
+  }
+ },
+ "sources": [
+  "multicell v1",
+  "multicell v2",
+  "multicell v3",
+  "real notebooks (8a)",
+  "single-op"
+ ]
+}

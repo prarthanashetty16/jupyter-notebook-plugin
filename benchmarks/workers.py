@@ -81,15 +81,47 @@ def summarize_result(outcome: Outcome) -> dict[str, Any]:
     return info
 
 
-def predict(state: State, tier: int) -> dict[str, Any]:
+def predict(state: State, tier: int, hard_deadline_s: float | None = None) -> dict[str, Any]:
     """Run NEXUS on the cell source against the live namespace; report estimates and overhead."""
     from nexus.pipeline import Pipeline
 
     pipeline = Pipeline(
         tier=tier, tier2_escalate="always"
     )  # evaluation: escalate every qualifying cell
-    cold = pipeline.run(state.source, state.ns)
-    warm = cold if tier >= 2 else pipeline.run(state.source, state.ns)  # a dry run is not repeated
+    deadline_fired = False
+    if hard_deadline_s is None:
+        cold = pipeline.run(state.source, state.ns)
+        warm = cold if tier >= 2 else pipeline.run(state.source, state.ns)
+    else:
+        from nexus.failsafe import Deadline, run_with_timeout
+
+        deadline = Deadline(hard_deadline_s)
+        try:
+            cold = run_with_timeout(
+                lambda: pipeline.run(state.source, state.ns, deadline),
+                hard_deadline_s + 0.05,
+            )
+        except TimeoutError:
+            return {
+                "overhead_cold_s": None,
+                "overhead_warm_s": None,
+                "ops": [],
+                "skipped": [],
+                "inspected_bytes": 0,
+                "estimates": [],
+                "hard_deadline_fired": True,
+            }
+        if deadline.expired():
+            return {
+                "overhead_cold_s": None,
+                "overhead_warm_s": None,
+                "ops": [],
+                "skipped": [],
+                "inspected_bytes": 0,
+                "estimates": [],
+                "hard_deadline_fired": True,
+            }
+        warm = cold
     return {
         "overhead_cold_s": cold.elapsed_s,
         "overhead_warm_s": warm.elapsed_s,
@@ -101,6 +133,7 @@ def predict(state: State, tier: int) -> dict[str, Any]:
             {
                 "op": item.op.name,
                 "model": item.model,
+                "tier": item.estimate.tier,
                 "ram_low": item.estimate.ram_low,
                 "ram_expected": item.estimate.ram_expected,
                 "ram_high": item.estimate.ram_high,
@@ -113,6 +146,7 @@ def predict(state: State, tier: int) -> dict[str, Any]:
             }
             for item in cold.estimates
         ],
+        "hard_deadline_fired": deadline_fired,
     }
 
 

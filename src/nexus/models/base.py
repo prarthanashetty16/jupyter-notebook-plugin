@@ -53,18 +53,22 @@ class Estimate:
 
 @dataclass
 class Tier1Context:
-    """What a model may read to compute Tier 1 statistics: live objects (read-only), the cell
-    source and the time budget left for this cell. Models must never mutate ``namespace``."""
+    """What a model may read for Tier 1 statistics: live objects, cell source and hard deadline."""
 
     namespace: Mapping[str, Any]
     source: str
-    deadline: Deadline
+    deadline: Deadline | None
 
     def obj(self, name: str | None) -> Any:
         """The live object bound to ``name`` or NoEstimateError."""
         if name is None or name not in self.namespace:
             raise NoEstimateError(f"{name!r} is not in the namespace")
         return self.namespace[name]
+
+    def check_deadline(self) -> None:
+        """Stop analysis only when the interceptor's hard deadline has expired."""
+        if self.deadline is not None:
+            self.deadline.check()
 
 
 class OperationModel(ABC):
@@ -85,8 +89,8 @@ class OperationModel(ABC):
     ) -> dict[str, Any] | None:
         """Extra features from cheap data statistics, or None to stay at Tier 0.
 
-        Called only at tier >= 1. Must be read-only, respect ``ctx.deadline`` (raising
-        TimeoutError is fine) and report its sample sizes and confidence in the returned dict
+        Called only at tier >= 1. Must be read-only, use fixed bounded samples, respect
+        ``ctx.deadline`` (raising TimeoutError is fine), and report sample sizes and confidence
         under ``"tier1"``. Raising NoEstimateError / returning None means "Tier 0".
         """
         return None

@@ -43,6 +43,17 @@ def test_sample_does_not_alias_with_a_periodic_column():
     assert d.low > 50
 
 
+def test_fixed_sample_does_not_run_a_timed_pilot(monkeypatch):
+    col = pd.Series(np.arange(10_000))
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("fixed Tier 1 sampling must not time a pilot")
+
+    monkeypatch.setattr(stats, "affordable_rows", forbidden)
+    d = stats.distinct_count(col, rows=1_000, deadline=Deadline(10), adaptive=False)
+    assert d.sample == 1_000
+
+
 # -- distinct counts -----------------------------------------------------------------------------------
 @pytest.mark.parametrize("distinct", [12, 400, 20_000, 150_000])
 def test_distinct_interval_contains_the_truth_for_uniform_columns(rng, distinct):

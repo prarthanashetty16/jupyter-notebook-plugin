@@ -103,15 +103,17 @@ def single_op_points(results_dir: Path) -> pd.DataFrame:
 
 def _predict_detail(paths: dict[str, str], src: str) -> dict[str, Any]:
     """Prediction only (fresh process): the cell estimate and every operation's own estimate."""
-    from benchmarks.multicell.run import load_inputs
+    from benchmarks.multicell.run import _classes, load_inputs
     from nexus.cellpeak import cell_estimate
     from nexus.pipeline import Pipeline
 
     rep = Pipeline(tier=1).run(src, load_inputs(paths, src))
     cell, mode, _ = cell_estimate(src, rep.estimates)
+    classes = _classes(rep, src, cell)
     pick = ("ram_low", "ram_expected", "ram_high", "tier")
     return {
         "cell": None if cell is None else {k: getattr(cell, k) for k in pick},
+        "classes": classes,
         "mode": mode,
         "estimates": [
             {"model": e.model, **{k: getattr(e.estimate, k) for k in pick}} for e in rep.estimates
@@ -133,7 +135,9 @@ def _tree_state() -> str:
 
     h = hashlib.sha256()
     root = Path("src/nexus")
-    for f in sorted(x for x in root.rglob("*") if x.is_file() and "__pycache__" not in x.parts):
+    for f in sorted(
+        x for x in root.rglob("*") if x.is_file() and "__pycache__" not in x.parts and x != ARTIFACT
+    ):
         data = f.read_bytes().replace(
             bytes([13, 10]), bytes([10])
         )  # same digest for CRLF / LF checkouts

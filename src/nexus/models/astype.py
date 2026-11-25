@@ -155,7 +155,7 @@ class AstypeModel(OperationModel):
             return None
         target, source = features["target"], features["source_dtype"]
         if target == "category":
-            d = stats.distinct_count(series, deadline=ctx.deadline)
+            d = stats.distinct_count(series, deadline=ctx.deadline, adaptive=False)
             sc = stats.hash_scatter(series, text=u.is_text(source), deadline=ctx.deadline)
             return {
                 "distinct_fraction": d.value / n,
@@ -168,7 +168,7 @@ class AstypeModel(OperationModel):
         if target == "str" and not u.is_text(source) and kind != "other":
             pos = stats.sample_positions(n, 100_000)
             sample = stats.take(series, pos)
-            ctx.deadline.check()
+            ctx.check_deadline()
             as_str = sample.astype(str)
             present = as_str.notna().to_numpy()  # pandas 3 keeps a null as a null, not as "nan"
             if not present.any():

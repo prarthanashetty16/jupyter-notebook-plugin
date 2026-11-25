@@ -14,3 +14,5 @@
 - 2026-11-24 15:30:54 | READ consumed held-out multicell v1 rows (dev data) | reason: v4 item C: upper-bound calibration residuals (dev)
 - 2026-11-24 15:48:55 | READ consumed held-out multicell v1 rows (dev data) | reason: v4 item C: upper-bound calibration residuals (dev)
 - 2026-11-24 15:53:56 | READ consumed held-out multicell v1 rows (dev data) | reason: v4 item dev evaluation (prediction only)
+- 2026-11-25 13:00:58 | READ consumed held-out multicell v1 rows (dev data) | reason: v4 item C: upper-bound calibration residuals (dev)
+- 2026-11-25 13:05:59 | READ consumed held-out multicell v1 rows (dev data) | reason: v4 item C: upper-bound calibration residuals (dev)

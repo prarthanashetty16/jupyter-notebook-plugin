@@ -51,7 +51,6 @@ class Pipeline:
         inspector: StateInspector | None = None,
         probe: ResourceProbe | None = None,
         tier: int = 0,
-        tier1_budget_s: float = 0.2,
         tier2_budget_s: float = 40.0,
         tier2_escalate: str = "controller",
         controller: Controller | None = None,
@@ -63,7 +62,6 @@ class Pipeline:
         self._inspector = inspector or StateInspector()
         self._probe = probe or ResourceProbe()
         self._tier = tier
-        self._tier1_budget_s = tier1_budget_s
         self._tier2_budget_s = tier2_budget_s
         self._tier2_escalate = (
             tier2_escalate  # "controller" (pre-registered rules) or "always" (Phase 4c evaluation)
@@ -82,6 +80,8 @@ class Pipeline:
         names = [v for op in ops for v in op.variables]
         paths = [p for op in ops for p in candidate_paths(op)]
         inspection = self._inspector.inspect(names, namespace, paths=paths, deadline=deadline)
+        if deadline is not None:
+            deadline.check()
         estimates: list[OpEstimate] = []
         dry: dict[str, Any] = {}  # one dry run per cell, shared by its ops
         cb = cellframes.cell_bindings(source, ops)
@@ -106,14 +106,18 @@ class Pipeline:
                         else None
                     )
                     if alias_ns is not None:  # v4 (1b): a copy of a kernel frame: its statistics
-                        features, used = self._tier1(model, op, features, alias_ns, source, t0)
+                        features, used = self._tier1(
+                            model, op, features, alias_ns, source, deadline
+                        )
                     elif cell_frame:  # statistics would read the stale kernel object: Tier 0 only
                         features = {
                             **features,
                             "tier1": {"used": False, "reason": cellframes.CELL_FRAME_REASON},
                         }
                     elif self._tier >= 1:
-                        features, used = self._tier1(model, op, features, namespace, source, t0)
+                        features, used = self._tier1(
+                            model, op, features, namespace, source, deadline
+                        )
                     estimate = None
                     if used >= 1:
                         tier0 = self._tier0_estimate(model, tier0_features)
@@ -148,6 +152,8 @@ class Pipeline:
                 except NoEstimateError as why:
                     log.debug("nexus: no estimate from %s for %s: %s", model.name, op.name, why)
                     continue
+                except TimeoutError:
+                    raise
                 except Exception:
                     log.debug("nexus: model %s failed on %s", model.name, op.name, exc_info=True)
                     continue
@@ -160,6 +166,8 @@ class Pipeline:
         except Exception:
             log.debug("nexus: resource probe failed", exc_info=True)
             resources = None
+        if deadline is not None:
+            deadline.check()
         return CellReport(
             ops=ops,
             inspection=inspection,
@@ -237,26 +245,23 @@ class Pipeline:
         features: dict[str, Any],
         namespace: Mapping[str, Any],
         source: str,
-        t0: float,
+        deadline: Deadline | None,
     ) -> tuple[dict[str, Any], int]:
         """Add Tier 1 statistics to ``features``; (features, tier actually used).
 
-        Any failure (no statistics for this model, too small a sample, budget exhausted, an
-        unexpected exception) keeps the Tier 0 features: Tier 1 may only refine, never break.
+        No statistics or an unexpected model failure keeps the Tier 0 features. A hard deadline
+        is propagated so the interceptor can remain silent instead of displaying a Tier 0 fallback.
         """
-        left = self._tier1_budget_s - (time.perf_counter() - t0)
         started = time.perf_counter()
         try:
-            if left <= 0:
-                raise TimeoutError("tier 1 budget used up by earlier stages")
-            ctx = Tier1Context(namespace, source, Deadline(left))
+            ctx = Tier1Context(namespace, source, deadline)
             with stats.cell_seed(source):
                 extra = model.tier1_features(op, features, ctx)
         except NoEstimateError as why:
             log.debug("nexus: tier 1 unavailable for %s: %s", model.name, why)
             return {**features, "tier1": {"used": False, "reason": str(why)}}, 0
         except TimeoutError:
-            return {**features, "tier1": {"used": False, "reason": "time budget"}}, 0
+            raise
         except Exception as exc:
             log.debug("nexus: tier 1 failed for %s", model.name, exc_info=True)
             return {**features, "tier1": {"used": False, "reason": type(exc).__name__}}, 0

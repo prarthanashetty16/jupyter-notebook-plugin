@@ -45,6 +45,7 @@ class NexusSession:
         self.last_report: CellReport | None = None
         self.last_risk: RiskReport | None = None
         self.last_source: str | None = None
+        self.deadline_firings = 0
         self.suggestions: list[Any] = []
         self.enabled_rules: set[str] = (
             set()
@@ -86,9 +87,14 @@ class NexusSession:
                 deadline = Deadline(self.budget_s)
                 namespace = self._shell.user_ns
                 pipeline = self.pipeline
-                report = run_with_timeout(
-                    lambda: pipeline.run(source, namespace, deadline), self.budget_s + _GRACE_S
-                )
+                try:
+                    report = run_with_timeout(
+                        lambda: pipeline.run(source, namespace, deadline), self.budget_s + _GRACE_S
+                    )
+                except TimeoutError:
+                    self.deadline_firings += 1
+                    log.debug("nexus: hard analysis deadline fired; cell left unestimated")
+                    return
                 self.last_report = report
                 self.last_risk = assess(report)
                 risk = self.last_risk
@@ -121,6 +127,7 @@ class NexusSession:
             f"verbose {'on' if self.verbose else 'off'}",
             f"models registered: {len(self.pipeline.registry)}",
             f"time budget: {self.budget_s * 1000:.0f} ms",
+            f"hard-deadline firings: {self.deadline_firings}",
         ]
         if self.last_report is not None:
             parts.append(f"last analysis: {self.last_report.elapsed_s * 1000:.1f} ms")

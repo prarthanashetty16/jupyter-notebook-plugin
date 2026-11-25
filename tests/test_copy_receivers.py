@@ -22,7 +22,7 @@ def _ns() -> dict:
 
 def _est(src: str):
     rep = Pipeline(tier=1).run(src, _ns())
-    return rep.estimates[0].estimate if rep.estimates else None
+    return next((e.estimate for e in rep.estimates if e.model == "copy"), None)
 
 
 M = 6 * 8 * N  # four float64, one int64, one str pointer column
@@ -60,6 +60,11 @@ def test_mask_high_takes_every_row(src: str, compare: int):
 ])  # fmt: skip
 def test_unmodelled_receivers_are_refused(src: str):
     assert _est(src) is None
+
+
+def test_dropna_remains_modelled_without_a_chained_copy():
+    rep = Pipeline(tier=1).run("y = df.dropna()", _ns())
+    assert [e.model for e in rep.estimates] == ["dropna"]
 
 
 def test_the_mask_transients_do_not_stay_in_the_cell():

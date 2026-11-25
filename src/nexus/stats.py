@@ -1,11 +1,12 @@
 """Tier 1 data statistics: cheap, bounded, read-only estimators with honest intervals.
 
 Every function reads the user's objects without mutating them (positions are drawn, small slices
-are copied, nothing is written back), polls a ``Deadline`` and a row/byte budget, and returns a
+are copied, nothing is written back), polls a hard ``Deadline`` and fixed row/byte caps, and returns a
 ``Bounded`` estimate: ``value`` with a ``low``/``high`` interval, the sample size it rests on, a
 ``confidence`` in [0, 1] (how tight the interval is relative to what could be known: 1 = exact)
 and the method used. Callers fall back to Tier 0 when the sample is too small
-(``MIN_SAMPLE_ROWS``) or a budget is exhausted (``TimeoutError``).
+(``MIN_SAMPLE_ROWS``); expiry of the interceptor's hard deadline aborts analysis instead of
+selecting a different tier.
 
 Intervals are analytic:
 
@@ -170,7 +171,7 @@ def affordable_rows(rows: int, budget_s: float | None, pilot: Any) -> int:
     shrinking to the live time left) was implemented and NOT adopted: on 2 contended CPUs the hard
     deadline fired after it had admitted the statistics on 12 of 29 dev inputs (41%), far above the
     pre-registered 10% failure bar (docs/benchmarks/phase7b/determinism_cores2.md). This v2 timed gate
-    stays; the cell-seeded sampler (``cell_seed``) is kept.
+    remains available only to callers opting into adaptive sampling; pipeline Tier 1 uses fixed samples.
     """
     if budget_s is None:
         return rows
@@ -193,11 +194,12 @@ def distinct_count(
     deadline: Deadline | None = None,
     seed: int = 0,
     share: float = 0.5,
+    adaptive: bool = True,
 ) -> Bounded:
     """Distinct values of a Series/array/Index (NaN counts as one value).
 
-    ``share`` is the fraction of the time left on ``deadline`` this call may use; the sample is
-    reduced to fit it (a timed pilot), or TimeoutError is raised if it would be too small.
+    ``adaptive=False`` keeps the registered sample size fixed; ``deadline`` then only aborts work
+    when the interceptor's hard limit expires.
     """
     n = len(values)
     if n == 0:
@@ -208,8 +210,10 @@ def distinct_count(
         pd.factorize(take(values, sample_positions(n, m, seed + 1)), use_na_sentinel=False)
         return time.perf_counter() - t0
 
-    rows = affordable_rows(min(rows, n), _budget(deadline, share), pilot)
-    pos = sample_positions(n, rows, seed)
+    sample_rows = min(rows, n)
+    if adaptive:
+        sample_rows = affordable_rows(sample_rows, _budget(deadline, share), pilot)
+    pos = sample_positions(n, sample_rows, seed)
     if deadline is not None:
         deadline.check()
     sample = take(values, pos)
@@ -307,11 +311,12 @@ def distinct_rows(
     deadline: Deadline | None = None,
     seed: int = 0,
     share: float = 0.5,
+    adaptive: bool = True,
 ) -> Bounded:
     """Distinct combinations of several equal-length columns (a null equals a null).
 
-    Row hashing is the expensive step (text and categorical columns cost ~1 us/cell); ``share`` of
-    the time left on ``deadline`` is spent, with the sample reduced to fit (see ``distinct_count``).
+    ``adaptive=False`` keeps the registered sample size fixed; ``deadline`` then only aborts work
+    when the interceptor's hard limit expires.
     """
     n = len(columns[0])
     if n == 0:
@@ -327,10 +332,12 @@ def distinct_rows(
         hashed_sample(m)
         return time.perf_counter() - t0
 
-    rows = affordable_rows(min(rows, n), _budget(deadline, share), pilot)
+    sample_rows = min(rows, n)
+    if adaptive:
+        sample_rows = affordable_rows(sample_rows, _budget(deadline, share), pilot)
     if deadline is not None:
         deadline.check()
-    _, counts = np.unique(hashed_sample(rows), return_counts=True)
+    _, counts = np.unique(hashed_sample(sample_rows), return_counts=True)
     return distinct_from_counts(counts, n)
 
 

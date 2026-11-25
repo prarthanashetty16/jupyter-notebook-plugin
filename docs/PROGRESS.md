@@ -1997,6 +1997,40 @@ changes in response: v3 is not repaired on these data.**
 
 Pre-registration `docs/benchmarks/phase8-preregistration.md` with amendments 1-2. Every number is DEV.
 
+### v4 dev summary
+
+| Pre-registered item | Dev result | Decision / finding |
+|---|---|---|
+| C. Upper-bound calibration | **PASS on LOCO and W(a); W(b) INCONCLUSIVE** | Final factors are recorded below. LOCO is 0.00% above high per point/configuration; W(a) is 1.000. There are 0 eligible W(b) points (below the 30-point minimum). |
+| Regression rule (per operation and tier) | **PASS** | Fresh v4 predictions show 0% above-high for every operation in both tiers across the paired single-op dev points; final LOCO-calibrated results are 0/524 points and 0/239 configurations. See [the paired report](./benchmarks/phase8/final_regression/before_after.md). |
+| 1a. Text `fillna` | **PASS** | String and non-string probes are within ±15%; all six flagged dev cells are below calibrated high. |
+| 1b. Copy then `fillna` | **PASS** | Probe ratios 1.000–1.020; 14 applicable cells have no above-high result under LOCO. |
+| 1c. `value_counts` | **FAILED** | Hash-table residency depends on exact keys; the 1M-unique probe was 1.69x the derivation. Deferred. |
+| 1d. `copy` receivers | **FAILED overall; partial adoption** | Five receiver forms passed and were adopted. `head`/`tail` and unmodelled-operation receivers remain no-estimate. |
+| 2. `duplicated` | **FAILED** | Second derivation still under-predicted a dense integer-key case (1.294x); deferred. |
+| 2. `dropna` | **PASS** | Four fresh OS-peak probes were within the derivation bar; adopted. |
+| 2. `reset_index` | **FAILED** | Attempt was invalid because its formula followed the probe output; reverted to named no-estimate. |
+| 2. `Series.map` | **FAILED** | Dict and NumPy-ufunc variants exceeded the ±15% bar; remains named no-estimate. |
+| 2. `to_numpy` | **FAILED** | Mixed-frame copy passed, but zero-copy cases have no measurable incremental peak under the preregistered bar. |
+| 2. Multi-column / dict `astype` | **FAILED** | Same-dtype target columns are over-counted; these forms remain no-estimate. |
+| 2. `read_csv(parse_dates=...)` | **FAILED** | Date parsing reduced measured peaks by hundreds of MiB, contradicting the additive derived term. |
+| 3. `numpy.zeros` / `numpy.empty` | **FAILED** | Untouched virtual pages produced no measurable incremental peak; no-estimate. |
+| 3. `numpy.array` | **PASS, scoped** | Known numeric ndarray inputs with `copy=True` passed; literal/unknown inputs and `copy=False` remain no-estimate. |
+| 3. `numpy.linspace` | **FAILED** | The float32 variant was 3.0003x the one-allocation derivation. |
+| 3. `sample` | **FAILED** | Random-index workspace made measured peaks 2.064–3.006x the selected-data derivation. |
+| 3. `describe` | **FAILED** | Numeric workspace exceeded the derivation and a two-string case was censored; no-estimate. |
+| 4. Deferred-operation UNKNOWN behavior | **PASS** | `apply`/Python-function `map`, `to_csv`, `join`, `pd.get_dummies`, and `corr` remain named no-estimate because they are not modelled in v4. Messages are tested; the 46 dev multicell cells with uncovered operations had 0 risk/headroom violations. |
+| T. Tier selection and deadline | **FAILED** | Non-firing repeats were identical, but deadline firings were 79/84 (94.05%) contended and 28/84 (33.33%) idle. The requested 28×3 check is also below the preregistered 30×10 minimum. See the [contended](./benchmarks/phase8/tier1_selection_cores2.md) and [idle](./benchmarks/phase8/tier1_selection_idle.md) reports. |
+| Runtime dev coverage | **FAILED** | Final all-cells result is 14/75 = 18.7%, below 55%; earlier provisional 15/74 (20.3%) is superseded by the full run. |
+
+Final item C factors (alpha = 0.02, configuration maxima): pooled **q = 1.184** (239 configurations); `read_csv` **q = 1.175** (59 configurations); `sort_values` **q = 1.197** (37 configurations, at sample maximum). Other families use the pooled factor. The final artifact is [upper-v1.json](../src/nexus/calibration/upper-v1.json), computed from the current v4 models; the full dev report is [calibration_final_v4.md](./benchmarks/phase8/calibration_final_v4.md). W(b) on all points is descriptive only (median width 2.10, p90 7.22); the deciding W(b) group has no points.
+
+Adopted v4 operation forms: text/non-string `fillna`, copy-through-`fillna`, the five passing `copy` receiver forms, `dropna`, and known numeric ndarray `numpy.array(copy=True)`. Failed or deferred forms remain named no-estimate; the item rows above give each reason. The main blockers were key-dependent hash-table residency, allocation/workspace terms contradicted by probes, and unmeasurable zero-copy/lazy-page peaks.
+
+The determinism check found no Tier 1/Tier 0 selection flips among non-firing repeats (0/28 in each condition); estimate signatures matched for the comparable non-firing inputs (0/1 contended, 0/19 idle). There were also three contended `memory_limit` worker failures, separately counted as not estimated and not as deadline firings.
+
+**v5 direction:** investigate Tier 2 sandboxed extrapolation as a general fallback for operations without a derived model, with the primary goal of improving operation coverage. Keep the existing safety gate: unknown or side-effecting code must not be executed in the sandbox.
+
 - [x] Item C, upper-bound calibration: procedure and runtime hook (`b954a19`, `777dad2`). Preview on the v3 models:
   LOCO 0% above high per point and per configuration; W(a) 1.000. The frozen factors are computed once on the final v4
   models.

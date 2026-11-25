@@ -89,11 +89,12 @@ def test_unknown_objects_and_missing_names_ignored():
     assert result.variables == {} and result.skipped == ()
 
 
-def test_zero_budget_skips_everything():
+def test_expired_hard_deadline_aborts_inspection():
+    from nexus.failsafe import Deadline
+
     ns = {"a": np.zeros(3), "b": np.zeros(3)}
-    result = StateInspector(time_budget_s=0.0).inspect(["a", "b"], ns, paths=["p"])
-    assert result.variables == {}
-    assert result.skipped == ("a", "b", "p")
+    with pytest.raises(TimeoutError):
+        StateInspector().inspect(["a", "b"], ns, paths=["p"], deadline=Deadline(0.0))
 
 
 def test_description_failure_is_skipped_not_raised():

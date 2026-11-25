@@ -68,7 +68,7 @@ class DropnaModel(OperationModel):
             return None
         pos = stats.sample_positions(n, 100_000)
         sample = stats.take(df[cols], pos)
-        ctx.deadline.check()
+        ctx.check_deadline()
         if features["how"] == "any":
             keep = sample.notna().all(axis=1)
         else:
