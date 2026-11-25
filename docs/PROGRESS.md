@@ -1995,7 +1995,7 @@ changes in response: v3 is not repaired on these data.**
 - [x] Re-run the 28-input prediction-only deadline check on mains, as information only; all four raw reports are linked below.
 - [x] Ruff checks and full pytest suite: 902 passed, 2 tag-dependent freeze tests skipped because `models-frozen-v4`
   is intentionally not created before review.
-- [ ] Commit and push to `v4-dev`. Do not create the v4 tag before review.
+- [x] Commit and push to `v4-dev` (`03c0b33`); no v4 tag created, pending review.
 
 ## Phase 8 (v4) dev progress (`v4-dev` branch; not frozen)
 
