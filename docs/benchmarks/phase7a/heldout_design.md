@@ -74,14 +74,6 @@ every row (they already are: `cpu_count`) and must be > 1. A VM with 1 vCPU is n
 5. Keep everything OUTSIDE the repository (for example `C:\dev\nexus-data\phase8b\`). Notebooks, data and outputs are never
    committed. The records hold cell hashes, operation names, shapes and numbers only, as in Phase 8a.
 
-**How Phase 8b runs, once:**
-
-1. `docs/benchmarks/phase8b-preregistration.md` is written and committed **before any notebook is opened**. It covers the
-   sample as collected (from the manifest only), the criteria of the Phase 7 pre-registration section 4, the environment
-   (pandas 3.1.1, numpy 2.5.5, no pyarrow unless you decide otherwise before the commit), the watchdog cap and the exclusions.
-2. `git checkout models-frozen-v3 && python -m benchmarks.frozen check` (0 problems), mains power, the reference machine profile.
-3. Static coverage first (`python -m benchmarks.realworld.coverage <folder> --out docs/benchmarks/phase8b/coverage`):
-   the coverage criterion is computed for v3 AND for `models-frozen-v2` on the same cells (static analysis, no execution).
-4. Then `python -m benchmarks.realworld.run_notebook <copy> --out benchmarks/results/realworld/phase8b/<name> --tier 1` per
-   notebook (no `--dev`), and `python -m benchmarks.realworld.evaluate_real ...` once.
-5. The result is reported as it comes out; nothing is tuned on it; the set is dev afterwards.
+**Historical Phase 8b draft; superseded.** Use `../phase8b-preregistration.md` for the current paired v3/v4 protocol,
+collection checklist, run order, and evaluation criteria. Do not use the single-stack or static-first sequence from this
+older design note.

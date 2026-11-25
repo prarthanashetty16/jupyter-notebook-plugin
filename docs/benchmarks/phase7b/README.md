@@ -169,13 +169,10 @@ val-v5 (Mode B) on the Linux VM (>= 32 GB, > 1 vCPU; `docs/benchmarks/val-v5-lin
 **Tooling gap to close before that run (outside the freeze):** `evaluate --val` does not yet replay the risk engine. The
 pre-registered R1-R3 on val-v5 need the `risk_eval` replay inside `evaluate --val` (logged, values printed only by that call).
 
-The fresh real-notebook run (Phase 8b): first collect the notebooks (`../phase7a/heldout_design.md` (d)), then commit
-`docs/benchmarks/phase8b-preregistration.md` before opening any of them, then:
-
-    git checkout models-frozen-v3 && python -m benchmarks.frozen check
-    python -m benchmarks.realworld.coverage <folder> --out docs/benchmarks/phase8b/coverage
-    python -m benchmarks.realworld.run_notebook <copy> --out benchmarks/results/realworld/phase8b/<name> --tier 1
-    python -m benchmarks.realworld.evaluate_real benchmarks/results/realworld/phase8b/* --out docs/benchmarks/phase8b/report.md
+**Current Phase 8b protocol:** use `../phase8b-preregistration.md`. It supersedes the earlier single-stack,
+static-first commands: complete and commit the owner fields and digest manifest before opening any notebook, run v3 then
+v4 once in separate checkouts/results roots, and evaluate the paired roots. Static name matching is secondary,
+OVERSTATING, and is run only after both runtime runs.
 
 The held-out above_high results will be reported as "consistent with <= x%" using the one-sided 95% upper bound (decision 6).
 For example, 0 of 30 cells is consistent with a true rate up to 9.5%.

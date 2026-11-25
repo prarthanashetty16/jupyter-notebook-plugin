@@ -1916,15 +1916,12 @@ val-v5, test-v2 and the multicell v2 / v3 held-out groups are sealed and unread.
    operations. The runbook's plan counts are historical estimates, not pass criteria. Runbook:
    `docs/benchmarks/val-v5-linux-runbook.md`.
 
-3. Phase 8b, only after `docs/benchmarks/phase8b-preregistration.md` is filled in and committed (no notebook opened before):
-
-       git checkout models-frozen-v3 && python -m benchmarks.frozen check
-       python -m benchmarks.realworld.coverage <folder> --out docs/benchmarks/phase8b/coverage
-       python -m benchmarks.realworld.run_notebook <copy> --out benchmarks/results/realworld/phase8b/<name> --tier 1
-       python -m benchmarks.realworld.evaluate_real benchmarks/results/realworld/phase8b/* --out docs/benchmarks/phase8b/report.md
-
-   The v2 comparison run for the run-time coverage share follows the 8b pre-registration. It needs the per-cell `covered`
-   field in `run_notebook` first (outside the freeze).
+3. Phase 8b is protocol work only until the owner completes the marked fields in
+   `docs/benchmarks/phase8b-preregistration.md`. Commit the completed protocol and SHA-256 manifest before opening any
+   notebook. Then follow its paired sequence exactly: v3 tag first, v4 tag second, separate checkouts/results roots,
+   mains power and a per-run profile pin. The evaluator takes both roots and reports only paired run-time coverage;
+   static name matching is secondary, labelled OVERSTATING, and runs only after both runtime runs. Do not run the old
+   static census-first or single-root commands shown in earlier phase notes.
 
 Push: `git push origin main models-frozen-v3` (the local branch is `main`).
 

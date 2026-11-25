@@ -18,9 +18,10 @@ exceeds the cap (default 70% of the free RAM at start); per-cell timeout (defaul
 per-notebook budget (default 60 min); stop after N consecutive failing cells (default 5). A kill is a
 RAM lower bound. Shell / package cells are never executed. Failing cells: error TYPE only.
 
-Records (JSONL, ``<out>/cells.jsonl``): cell index and hash, operation names, input shapes / dtype
-counts, numbers. Never cell code, outputs or data values. Refuses to run unless the freeze guard
-passes and the machine is on mains power. ``--allow-battery`` is accepted only with ``--dev`` (a dev run;
+Records (JSONL, ``<out>/cells.jsonl``): model version, cell index and hash, operation names, input
+shapes / dtype counts, numbers. Never cell code, outputs or data values. Refuses mixed model versions
+in an existing output folder, and refuses to run unless the freeze guard passes and the machine is on
+mains power. ``--allow-battery`` is accepted only with ``--dev`` (a dev run;
 ``benchmarks.powerguard``): rows record ``battery (user-accepted)``, the summary holds the raw readings, and
 the timing figures are battery-throttled (not usable for calibration or timing claims).
 
@@ -68,6 +69,7 @@ class Limits:
 @dataclass
 class RunSummary:
     notebook: str
+    model_version: str = ""
     outcome: str = "completed"
     cells: int = 0
     executed: int = 0
@@ -87,6 +89,33 @@ class RunSummary:
 
 def cell_hash(src: str) -> str:
     return hashlib.sha256(src.encode("utf-8")).hexdigest()[:12]
+
+
+def _assert_output_model_version(out: Path, model_version: str) -> None:
+    """Prevent appending or replacing result metadata with a different model version."""
+    summary_path = out / "summary.json"
+    if summary_path.exists():
+        existing = json.loads(summary_path.read_text(encoding="utf-8")).get("model_version")
+        if existing != model_version:
+            raise ValueError(
+                f"{summary_path} has model_version {existing!r}, expected {model_version!r}; "
+                "use a fresh output folder"
+            )
+
+    cells_path = out / "cells.jsonl"
+    if not cells_path.exists():
+        return
+    with cells_path.open(encoding="utf-8") as cells:
+        for line_number, line in enumerate(cells, start=1):
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            existing = row.get("model_version")
+            if existing != model_version:
+                raise ValueError(
+                    f"{cells_path}:{line_number} has model_version {existing!r}, "
+                    f"expected {model_version!r}; use a fresh output folder"
+                )
 
 
 def read_cells(path: Path) -> list[str]:
@@ -280,7 +309,11 @@ def run(  # noqa: C901
     else:  # aborts (NotFrozenError) on any frozen-file difference
         from benchmarks.heldout_env import require_profile
 
-        summary.frozen = {**frozen.require_frozen(), "heldout_environment": require_profile(out)}
+        summary.frozen = frozen.require_frozen()
+    summary.model_version = str(summary.frozen.get("frozen_tag") or f"dev:{summary.frozen['head']}")
+    _assert_output_model_version(out, summary.model_version)
+    if not dev:
+        summary.frozen["heldout_environment"] = require_profile(out)
     from benchmarks.powerguard import BATTERY_NOTE, power_record, recorded
 
     if allow_battery and not dev:
@@ -310,7 +343,12 @@ def run(  # noqa: C901
     consecutive = 0
     try:
         for i, src in enumerate(cells):
-            base = {"notebook": notebook.stem, "index": i, "hash": cell_hash(src)}
+            base = {
+                "notebook": notebook.stem,
+                "index": i,
+                "hash": cell_hash(src),
+                "model_version": summary.model_version,
+            }
             if time.monotonic() - t_nb > limits.notebook_budget_s:
                 summary.outcome, summary.stop_reason = "stopped", "notebook budget exhausted"
                 break
