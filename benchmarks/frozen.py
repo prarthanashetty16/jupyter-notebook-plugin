@@ -1,14 +1,14 @@
 """The frozen model stack: manifest, and the guard that held-out runs must pass.
 
-The current target freeze is ``FROZEN_TAG`` (``models-frozen-v4``, Phase 8; the tag name lives ONLY here: the guard and
-every held-out entry point use this constant). ``models-frozen-v3`` (Phase 7d), v2 (Phase 6c) and v1 (Phase 6) are
-previous freezes. A held-out run calls ``require_frozen()``. Since Phase 6b the check is MANIFEST-BASED:
+The current target freeze is ``FROZEN_TAG`` (Phase 8; every current held-out entry point uses this constant).
+``models-frozen-v3`` (Phase 7d), v2 (Phase 6c) and v1 (Phase 6) are previous freezes. A held-out run calls
+``require_frozen()``. Since Phase 6b the check is MANIFEST-BASED:
 it compares the SHA-256 (LF line endings) of every file that defines the predictions
 (``FROZEN_PATTERNS``, resolved against the tag's tree) with the tag's own copy, and aborts if one
 differs, is missing, or if a new file matching a frozen pattern exists. Everything else (docs,
 benchmark and evaluation scripts, CI, ``.gitignore``, tests, the Phase 8a harness) is outside the
 freeze. The scope was narrowed AFTER the tag; the tagged commit is unchanged and no frozen file
-changed (``docs/benchmarks/frozen-manifest.md``). Any change to a frozen file invalidates the
+changed (``docs/benchmarks/frozen-manifest-v1.md``). Any change to a frozen file invalidates the
 held-out status of the runs: a new freeze (new tag, new manifest) and a new held-out group are needed.
 
     python -m benchmarks.frozen check            # what a held-out run will check
@@ -159,30 +159,42 @@ HISTORY = (
      "Tier 1 as the extension default (manifest: `docs/benchmarks/frozen-manifest-v2.md`)"),
     ("models-frozen-v3", "Phase 7d", "read_csv reader paths and arguments, merge output term, consolidation check, "
      "conservative rebinding release, frames created in the cell, apply(np.<ufunc>), set_index, cell-seeded sampler, "
-     "risk v2 (C3) and named UNKNOWN (`docs/benchmarks/phase7b/README.md`)"),
-    ("models-frozen-v4", "Phase 8", "derived operation additions and explicit no-estimate cases, calibrated RAM high "
+     "risk v2 (C3) and named UNKNOWN (manifest: `docs/benchmarks/frozen-manifest-v3.md`; "
+     "`docs/benchmarks/phase7b/README.md`)"),
+    (FROZEN_TAG, "Phase 8", "derived operation additions and explicit no-estimate cases, calibrated RAM high "
      "(`calibration/upper-v1.json`), cell-seeded sampler, Tier 0 fallback on cooperative Tier 1 deadlines, and partial "
      "cell lower-bound display (`docs/benchmarks/phase8-preregistration.md`)"),
 )  # fmt: skip
 LIMITATIONS = (
-    "**Tier-selection deadline criterion FAILED**: firings were 79/84 on 2 contended cores and 28/84 on the idle machine. "
-    "A cooperative Tier 1 timeout now returns the visible Tier 0 estimate, but still counts as not estimated for coverage.",
+    "**T. Tier 1/Tier 0 selection independent of wall-clock time: FAILED.** The preregistered check recorded 79/84 "
+    "firings on 2 contended cores and 28/84 idle. The later information-only repeats recorded 48/84, 31/84 and 30/84 "
+    "contended (109/252 pooled), and 44/84 idle; all exceed the <=5% contended and 0% idle bars. Cooperative deadline "
+    "firings visibly fall back to Tier 0, retain its high under policy B, and count as not estimated.",
     "**Runtime coverage criterion FAILED**: 14/75 operation-bearing cells (18.7%) had every operation estimated, "
     "below the preregistered 55% target; the earlier 15/74 figure was superseded by the full run.",
-    "**Deferred operations**: value_counts, duplicated, reset_index, Series.map, to_numpy zero-copy forms, dict/multi-column "
-    "astype, read_csv(parse_dates), numpy.zeros/empty/linspace, sample, and describe remain no-estimate where their "
-    "probe derivations failed or were not measurable. Python-function apply/map, to_csv, join, get_dummies, and corr "
-    "remain explicitly named unknowns.",
     "**Coverage remains narrow**: adopted v4 additions include text fillna, copy-through-fillna, five copy receiver forms, "
     "dropna, and known numeric ndarray numpy.array(copy=True); unsupported receiver forms and unknown operations remain "
     "unestimated rather than guessed.",
-    "**One developer machine**: derivations and dev evaluation use a Windows laptop and synthetic data; val-v5 and the "
-    "new v4 held-out groups have not been run.",
-    "**Supported environment**: pandas >= 3.1 (Python >= 3.11) on Windows and Linux. Models and the instrument's "
-    "validation assume pandas 3 copy-on-write (Python 3.10 resolves pandas 2.x: unsupported, report-only in CI); on "
-    "macOS the instrument cannot isolate an operation's peak (report-only in CI). Derived from pandas 3.1.1 only.",
-    "**Tier 2 is not a general fallback**: it remains an opt-in sandboxed estimator for qualifying, safe operations; "
-    "coverage gaps still produce no estimate.",
+    "**Partial cells**: the display is a lower bound for covered operations only (`at least X`, covers k of n); it has "
+    "no upper bound for the whole cell. Partial risk remains UNKNOWN/HIGH_RISK and is not an OK or above-high claim.",
+    "**Tier 1 hard-deadline fallback share**: in the stored idle prediction-only rerun, firings were 11/39 (28.2%) at "
+    "1M rows, 9/21 (42.9%) at 3M, and 24/24 (100%) at 10M. These are one laptop's dev inputs, not a population rate.",
+    "**CPU-dependent `read_csv` path**: pandas may select serial or parallel parsing based on the input and available "
+    "CPU/worker count; the same call can follow different model paths on different machines.",
+    "**Deferred operations and reasons**: `value_counts` and `duplicated` depend on key-specific hash-table page "
+    "residency; `reset_index`'s derivation was invalid because its formula followed the probe; `Series.map` exceeded "
+    "the derivation bar due to mapper workspace; zero-copy `to_numpy` has no measurable incremental peak; dict/multi-column "
+    "`astype` over-counts same-dtype targets; `read_csv(parse_dates=...)` reduced peak memory, contradicting the additive "
+    "term; `numpy.zeros`/`empty` expose lazy pages with no measurable incremental peak; `linspace`'s float32 case used "
+    "three live arrays; `sample` needs random-index workspace; `describe` has unmodelled numeric workspace and a censored "
+    "string case. Python-function `apply`/`map`, `to_csv`, `join`, `get_dummies`, and `corr` remain explicitly named "
+    "unknowns because no model was derived.",
+    "**One developer machine and synthetic data**: derivations and dev evaluation use one Windows laptop; val-v5, "
+    "test-v2, multicell v4, and the fresh Phase 8b held-out notebooks remain sealed and unrun.",
+    "**Supported environment**: derived and validated with pandas 3.1.1 on Windows and Linux only. Python 3.10 resolves "
+    "pandas 2.x and is unsupported; macOS is unvalidated/report-only for peak measurement.",
+    "**Tier 2 is not a general fallback**: it remains opt-in for qualifying safe operations; coverage gaps still produce "
+    "no estimate. General sandboxed extrapolation is a v5 direction, not part of this freeze.",
 )  # fmt: skip
 
 
@@ -210,8 +222,9 @@ def manifest_lines(ref: str = FROZEN_TAG) -> list[str]:  # noqa: C901
         f"# Frozen model stack `{FROZEN_TAG}`",
         "",
         f"Written by `python -m benchmarks.frozen manifest` from `{ref}` (commit `{_git('rev-parse', ref)[:12]}`); the "
-        f"annotated tag `{FROZEN_TAG}` is created on the commit that adds this file, whose frozen files are byte-identical "
-        "to these. Held-out runs (multicell v2 / v3, val-v5, test-v2, Phase 8b) call `benchmarks.frozen.require_frozen()`, "
+        f"annotated tag `{FROZEN_TAG}` is on the commit containing this manifest, whose frozen files are byte-identical "
+        "to these. Held-out runs (multicell v2 / v3 / v4, val-v5, test-v2, Phase 8b) call "
+        "`benchmarks.frozen.require_frozen()`, "
         "which compares the SHA-256 (LF line endings) of every frozen file with the tag's own copy and **aborts if any "
         f"differs, is missing, or a new file matches a frozen pattern**. **Any change to a frozen file after `{FROZEN_TAG}` "
         "invalidates the held-out status of those runs** (a new freeze, tag and held-out groups would be needed).",
@@ -229,13 +242,13 @@ def manifest_lines(ref: str = FROZEN_TAG) -> list[str]:  # noqa: C901
     for group, status in ((changed, "changed"), (added, "added"), (unchanged, "unchanged")):
         for path in group:
             lines.append(
-                f"| `{path}` | {status} | {roles[path]} | `{previous.get(path, '-')[:16]}` | `{hashes[path][:16]}` |"
+                f"| `{path}` | {status} | {roles[path]} | `{previous.get(path, '-')}` | `{hashes[path]}` |"
             )
     for path in removed:
-        lines.append(f"| `{path}` | removed | - | `{previous[path][:16]}` | - |")
+        lines.append(f"| `{path}` | removed | - | `{previous[path]}` | - |")
     lines += [
         "",
-        "The table shows the first 16 hex digits; the guard recomputes full hashes from the tag on every check.",
+        "The table shows full SHA-256 hashes after normalizing line endings to LF; the guard recomputes them from the tag on every check.",
         "",
         "## Deliberately outside the freeze",
         "",

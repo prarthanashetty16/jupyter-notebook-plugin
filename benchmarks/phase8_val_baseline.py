@@ -98,7 +98,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--reason", required=True)
     args = parser.parse_args(argv)
 
-    require_frozen("models-frozen-v4")
+    require_frozen()
     power_record(False, "heldout")
     results = args.results
     actuals = results / "validation" / "actuals.csv"

@@ -142,7 +142,7 @@ exceeded their own Tier 1 high are still flagged HIGH_RISK at every positive lim
 
 1. Switch the guard to `models-frozen-v3` (`FROZEN_TAG`, `PREVIOUS_TAG = models-frozen-v2`, add `src/nexus/cellframes.py`
    to `FROZEN_PATTERNS`; the new models are under `models/*.py`).
-2. Write `docs/benchmarks/frozen-manifest.md` for v3, with v2 moved to `frozen-manifest-v2.md` and v1 kept: changed /
+2. Write `docs/benchmarks/frozen-manifest-v3.md` for v3, with v2 kept at `frozen-manifest-v2.md` and v1 kept: changed /
    added / unchanged files with hashes, and what is outside the freeze.
 3. Clone the repository with tags into a temporary directory and run `python -m benchmarks.frozen check` there. It must
    show 0 problems.

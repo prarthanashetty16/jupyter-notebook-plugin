@@ -1392,7 +1392,7 @@ full tables `docs/benchmarks/phase6/phase6_dev.md`, probes `docs/benchmarks/phas
   only on pandas 3.1.1 (9 / 9 pass); no result is claimed for the other versions.**
 - [x] 7. Dev evaluation (`python -m benchmarks.phase6_eval --frozen benchmarks/results/tier2-dev-b --derived
   benchmarks/results/phase6-dev-mains --frozen-mains docs/benchmarks/phase6/f_mains.csv --out docs/benchmarks/phase6`).
-- [x] 8. Freeze: tag `models-frozen-v1`, `docs/benchmarks/frozen-manifest.md`; held-out paths call `benchmarks.frozen.require_frozen`.
+- [x] 8. Freeze: tag `models-frozen-v1`, `docs/benchmarks/frozen-manifest-v1.md`; held-out paths call `benchmarks.frozen.require_frozen`.
 
 ### Pre-registered targets on dev (LOCO; F = frozen models recomputed on a mains profile)
 * **(a) time estimates: MET** by the selected D+m. Tier 1: median rel. error 52% -> 25%, p90 146% -> 89%, median log error 0.64 ->
@@ -1482,7 +1482,7 @@ policy or threshold changed; test-v2, val-v5 and real notebooks untouched.**
   and measurement, the calibration artifact and reference profile, the suggestion thresholds (38 files at the tag). **Added on
   2026-11-21 at the user's request:** `src/nexus/measure.py` and `tests/test_measure_validation.py` (40 files). Outside:
   docs, benchmarks and evaluation scripts, CI, `.gitignore`, other tests, `pyproject.toml`, UX modules, the Phase 8a harness.
-  `docs/benchmarks/frozen-manifest.md` lists the files and hashes and records that the scope changed after the tag;
+  `docs/benchmarks/frozen-manifest-v1.md` lists the files and hashes and records that the scope changed after the tag;
   `git diff models-frozen-v1` on all 40 files is empty. **A new evaluation harness (Phase 8a) no longer needs a new freeze.**
 - [x] 2. `.gitignore`: notebooks ignored except `examples/**/*.ipynb` (commit `c438517`); the guard passes.
 - [x] 3. `nexus-calibrate-machine` now runs `nexus/calibrate_cli.py` (the frozen `calibrate.py` is unchanged): refuses only on
@@ -1589,7 +1589,7 @@ Pre-registration `docs/benchmarks/phase6c-preregistration.md` (commit `91581ac`,
 - [x] D. **Real notebooks on 22% subsamples (DEV, information only)** (`docs/benchmarks/phase6c/realworld_dev.md`): 74 / 30 cells
   executed (Phase 8a: 9 / 4); 8 valid RAM points (bias 0.94, median error 22.5%, 1 above high), 9 time points (within-one
   88.9%); 49 of 56 cells with a detected operation UNKNOWN; multi-load cells 0.73x / 0.91x (Phase 8a: 0.56x).
-- [x] 7. Freeze `models-frozen-v2`; manifest `docs/benchmarks/frozen-manifest.md` (v1 kept in `frozen-manifest-v1.md`); the guard
+- [x] 7. Freeze `models-frozen-v2`; manifest `docs/benchmarks/frozen-manifest-v2.md` (v1 kept in `frozen-manifest-v1.md`); the guard
   checks against v2 (`nexus/cellpeak.py` added to the patterns; the new models are under `models/*.py`).
 
 ### Bug found and fixed (Phase 6b test)
@@ -1865,7 +1865,7 @@ below). val-v5, test-v2 and the multicell v2 / v3 held-out parts sealed and unre
 
 ## Phase 7d: freeze `models-frozen-v3`
 
-**Status: frozen.** The annotated tag `models-frozen-v3` is on the commit that adds `docs/benchmarks/frozen-manifest.md`.
+**Status: frozen.** The annotated tag `models-frozen-v3` is on the commit that adds `docs/benchmarks/frozen-manifest-v3.md`.
 No model, threshold or calibration artifact changed in Phase 7d. The frozen set against v2 is 9 changed and 3 added files
 (`models/explode_apply.py` with the ufunc-apply model only, `models/set_index.py`, `cellframes.py`); 46 files are frozen.
 val-v5, test-v2 and the multicell v2 / v3 held-out groups are sealed and unread.
@@ -2038,6 +2038,8 @@ The post-fallback rerun found no Tier 1/Tier 0 selection flips among non-firing 
 
 Information-only rerun reports: [contended 1](./benchmarks/phase8/tier1_selection_recheck_cores2_1.md), [contended 2](./benchmarks/phase8/tier1_selection_recheck_cores2_2.md), [contended 3](./benchmarks/phase8/tier1_selection_recheck_cores2_3.md), and [idle](./benchmarks/phase8/tier1_selection_recheck_idle.md). Each uses 28 dev inputs × 3 repeats on mains; all deadline firings count as not estimated.
 
+The stored idle rerun's hard-deadline firing share rises with input size: 11/39 (28.2%) at 1M rows, 9/21 (42.9%) at 3M, and 24/24 (100%) at 10M. These are one laptop's dev inputs, not a population rate; no additional prediction run was made for Phase 8d.
+
 **v5 direction:** investigate Tier 2 sandboxed extrapolation as a general fallback for operations without a derived model, with the primary goal of improving operation coverage. Keep the existing safety gate: unknown or side-effecting code must not be executed in the sandbox.
 
 - [x] Item C, upper-bound calibration: procedure and runtime hook (`b954a19`, `777dad2`). Preview on the v3 models:
@@ -2189,3 +2191,17 @@ Timeouts outside the cooperative Tier 1 path retain the interceptor's fail-safe 
 itself proves WARN or HIGH_RISK. The new multicell split is metadata-only: 32 held-out configurations / 64 cells across
 16 templates, including seven templates designed to produce partial cells; no inputs have been generated and it has
 not been run.
+
+### Phase 8d freeze verification
+
+- [x] Preserve v1-v3 manifests and generate the v4 manifest with full SHA-256 hashes for all 50 frozen files: 15 changed,
+  4 added, 31 unchanged from v3. Document the frozen scope, v4 dev limitations, deferred-operation reasons, and the
+  stored idle fallback shares (1M: 11/39; 3M: 9/21; 10M: 24/24).
+- [x] Centralize the current freeze target in `benchmarks.frozen.FROZEN_TAG`; update current held-out entry points to use
+  that target while retaining explicit historical tags for old multicell groups.
+- [x] Add per-operation Tier 1 hard-deadline fallback shares to the val-v5 validation report and update the runbook:
+  pilot first, same output folder for full/resume, no recalibration between.
+- [x] `ruff check .` passed; changed Python files passed `ruff format --check`.
+- [x] Full pytest on mains: 903 passed, 2 tag-dependent freeze tests skipped before the v4 tag exists.
+- [ ] Fresh-clone guard and freeze-guard tests (not skipped): pending.
+- [ ] Annotated v4 tag, guard-from-tag, branch/tag push: pending.

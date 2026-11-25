@@ -7,6 +7,8 @@ from typing import Any
 
 import pandas as pd
 
+from benchmarks.frozen import FROZEN_TAG
+
 RAM_BAR = 0.03
 TIME_BAR = 0.95
 MIN_POINTS = 30
@@ -194,7 +196,7 @@ def overall(
     }
     failed = [name for name, verdict in whole.items() if verdict == "FAILED"]
     if failed:
-        return "`models-frozen-v4` FAILED its Phase 8 held-out check: " + ", ".join(failed)
+        return f"`{FROZEN_TAG}` FAILED its Phase 8 held-out check: " + ", ".join(failed)
     if any(verdict == "INCONCLUSIVE" for verdict in whole.values()):
         return "INCONCLUSIVE (one or more Phase 8 whole-v4 criteria lack the required evidence); not a pass"
     return "the whole-v4 criteria on val-v5 are MET"
@@ -220,7 +222,7 @@ def section(
         return "n/a" if math.isnan(value) else f"{value:.2f}x"
 
     lines = [
-        "## Phase 8 acceptance verdict (`models-frozen-v4`; authoritative)",
+        f"## Phase 8 acceptance verdict (`{FROZEN_TAG}`; authoritative)",
         "",
         "Source: `docs/benchmarks/phase8-preregistration.md`, section 2 and amendments 1-7. "
         "Legacy Phase 4d controller criteria S1-S5 are not the v4 acceptance verdict.",

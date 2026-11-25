@@ -8,7 +8,7 @@
 ``--version 2`` selects the Phase 7 group (``cases_v2``, ``split_v2.json``; results in
 ``benchmarks/results/multicell_v2``, access log ``docs/benchmarks/phase7-heldout-access-log.md``), the
 held-out check of freeze v3. ``--version 4`` selects the Phase 8c group (``cases_v4``,
-``split_v4.json``; held-out execution requires ``models-frozen-v4``). v1 (the default) is the
+``split_v4.json``; held-out execution requires the current frozen tag). v1 (the default) is the
 Phase 6c group, all dev since 2026-11-22.
 
 Each cell: the prediction (``Pipeline(tier=1)`` on the cell with its inputs loaded; the cell-level
@@ -49,6 +49,16 @@ SUITES = {
     4: (cases_v4, Path("benchmarks/results/multicell_v4"), Path("benchmarks/.cache/multicell_v4"),
         Path("docs/benchmarks/phase8-heldout-access-log.md")),
 }  # fmt: skip
+
+
+def _freeze_tag_for_version(version: int) -> str:
+    from benchmarks.frozen import FROZEN_TAG
+
+    return {1: "models-frozen-v2", 2: "models-frozen-v3", 3: "models-frozen-v3"}.get(
+        version, FROZEN_TAG
+    )
+
+
 # simulated headrooms (MiB) at which the prediction child records the risk class (the uncovered-operation rule)
 HEADROOMS_MIB = (64, 128, 256, 512, 1024, 2048, 4096, 8192)
 MIB = 2**20
@@ -160,7 +170,7 @@ def run(
             raise SystemExit("--heldout needs --reason")
         from benchmarks.frozen import require_frozen
 
-        frozen = require_frozen("models-frozen-v4") if version == 4 else require_frozen()
+        frozen = require_frozen(_freeze_tag_for_version(version))
         from benchmarks.heldout_env import require_profile
 
     keys = set(sp.heldout if heldout else sp.dev)
@@ -434,10 +444,7 @@ def evaluate(
             raise SystemExit("--heldout needs --reason")
         from benchmarks.frozen import require_frozen
 
-        if version == 4:
-            require_frozen("models-frozen-v4")
-        else:
-            require_frozen()
+        require_frozen(_freeze_tag_for_version(version))
         tag = "" if version == 1 else f" v{version}"
         _log_access(f"EVALUATE held-out multicell{tag} | reason: {reason}", log)
     path = results / part / "results.jsonl"

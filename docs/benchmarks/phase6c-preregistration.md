@@ -87,7 +87,7 @@ Failures are reported as they come out; nothing is repaired and re-claimed on th
 
 ## 5. Freeze
 
-After the evaluation: tag `models-frozen-v2`, extend `docs/benchmarks/frozen-manifest.md` (v1 stays documented; changed, added
+After the evaluation: tag `models-frozen-v2`, extend `docs/benchmarks/frozen-manifest-v2.md` (v1 stays documented; changed, added
 and unchanged frozen files with hashes; what is outside the freeze) and point the guard at v2. Any model change after v2
 invalidates the held-out status of the runs that use it (val-v5, the multi-statement held-out cells, a future fresh
 real-notebook test).

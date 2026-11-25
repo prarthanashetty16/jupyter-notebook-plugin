@@ -59,7 +59,7 @@ The runner records the profile in `benchmarks/results/val-v5/meta.json` (`machin
 `--require-calibrated`, refuses to start without one. Every result row also records the OS (`os`, `kernel`,
 `os_release`), CPU model, CPU count, RAM, swap, and the Python / pandas / numpy versions.
 
-## Plan, run, evaluate
+## Plan, pilot, full run, evaluate
 
 ```bash
 CAP=24                                                              # GiB; 24 on 32 GB, 48 on 64 GB
@@ -67,6 +67,12 @@ python -m benchmarks plan --suite full --splits val-v5 --mem-limit-gb $CAP --max
 #   historical estimate (computed with the v1 models, Phase 4d): at 24 GiB, 141 points, 140 would run, 1 skipped
 #   (the 28 GiB merge at 30M rows). NOT a pass criterion: the v4 planner may differ; record the counts it prints.
 
+# Pilot FIRST; this is a real held-out measurement and pins the profile in this same output folder.
+python -m benchmarks full --splits val-v5 --tiers 0,1,2 --out benchmarks/results/val-v5 \
+      --mem-limit-gb $CAP --max-size 400000000 --require-calibrated --no-report --pilot 12
+cat benchmarks/results/val-v5/pilot.json
+
+# Then resume the SAME run in the SAME output folder. Do not recalibrate between these commands.
 nohup python -m benchmarks full --splits val-v5 --tiers 0,1,2 --out benchmarks/results/val-v5 \
       --mem-limit-gb $CAP --max-size 400000000 --require-calibrated --no-report > val-v5.log 2>&1 &
 python -m benchmarks status benchmarks/results/val-v5               # from a second shell: counts only
@@ -74,7 +80,9 @@ python -m benchmarks status benchmarks/results/val-v5               # from a sec
 Resumable (re-run the same `full` command). `--tiers 0,1,2` stores Tier 0 and Tier 1 predictions and a Tier 2 dry
 run for every qualifying point; the controller is replayed from those at evaluation time (its decisions depend
 only on the stored estimates, the free RAM recorded at each point's start and the stored dry run). The planner
-predicts first and skips points whose baseline + `high` cannot fit the cap.
+predicts first and skips points whose baseline + `high` cannot fit the cap. The val-v5 report includes the share of
+successful Tier 1 predictions that fired the hard deadline, broken down by operation; non-`ok` prediction worker results
+are listed separately and excluded from that denominator.
 
 ```bash
 python -m benchmarks.phase8_val_baseline benchmarks/results/val-v5 --reason "Phase 8 W(a) baseline"
@@ -86,20 +94,11 @@ python -m benchmarks evaluate benchmarks/results/val-v5 --val --reason "held-out
 #    authoritative "Phase 8 acceptance verdict" section (benchmarks/phase8_verdict.py)
 ```
 
-## One-hour pilot BEFORE the full run (recommended)
-
-The run order is priority order (Amendment 1 of the pre-registration): P1 merge, groupby, astype, drop_duplicates,
-read_csv; then P2 concat, sort_values; then P3 np.sort, matmul (skippable). The first N points are whole cases at
-3M / 10M / 30M rows, so a pilot of 12 also times the largest sizes.
-
-```bash
-python -m benchmarks full --splits val-v5 --tiers 0,1,2 --out benchmarks/results/val-v5 \
-      --mem-limit-gb $CAP --max-size 400000000 --require-calibrated --no-report --pilot 12
-cat benchmarks/results/val-v5/pilot.json     # seconds per pilot point + the estimate for the remaining points
-```
-`--pilot N` runs only the first N points, writes `pilot.json` (per-point seconds, their mean, and the extrapolated hours
-for the rest: the mean of the pilot points of the same size, scaled linearly in rows for sizes the pilot did not reach and
-quadratically in the dimension for matmul; low / high from the fastest / slowest point) and logs a one-line summary.
+The priority order is P1 merge, groupby, astype, drop_duplicates, read_csv; then P2 concat, sort_values; then P3 np.sort,
+matmul (skippable). The first N points are whole cases at 3M / 10M / 30M rows, so a pilot of 12 also times the largest
+sizes. `--pilot N` runs only the first N points, writes `pilot.json` (per-point seconds, their mean, and extrapolated
+hours for the rest: the mean of pilot points of the same size, scaled linearly in rows for sizes the pilot did not reach
+and quadratically in the dimension for matmul; low / high from the fastest / slowest point) and logs a one-line summary.
 Pilot points are REAL val-v5 measurements: the full run resumes and does not repeat them. Nothing is read until
 `evaluate --val`. If the budget runs short, stop after P1 or P2: the report lists which groups completed and judges only
 those; if P1 is incomplete it says "val-v5 NOT EVALUATED".
