@@ -4,6 +4,7 @@ from benchmarks.realworld.evaluate_real import (
     MIB,
     PARTIAL_HEADROOMS_MIB,
     partial_safety,
+    report,
     risk_eval,
 )
 
@@ -43,6 +44,25 @@ def test_partial_cell_without_a_covered_lower_bound_is_reported():
     assert scored["n"] == 1
     assert scored["missing_lower_bounds"] == ["partial-cell"]
     assert not scored["risk_violations"]
+
+
+def test_missing_partial_lower_bound_makes_reported_score_inconclusive():
+    row = {
+        "hash": "partial-cell",
+        "ops": ["sort_values", "value_counts"],
+        "uncovered": 1,
+        "status": "ok",
+        "ram_class": "valid",
+        "ram_value": MIB,
+        "cell": None,
+        "simulated_risk_classes": {str(h): "UNKNOWN" for h in PARTIAL_HEADROOMS_MIB},
+        "suggestions": [],
+    }
+
+    text = report(pd.DataFrame([row]), eligible_count=150)
+
+    assert "1 partial cells lack a covered lower bound" in text
+    assert "-> INCONCLUSIVE" in text
 
 
 def test_partial_risk_replay_uses_the_cell_estimate():

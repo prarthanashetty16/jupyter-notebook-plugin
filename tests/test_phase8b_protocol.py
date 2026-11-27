@@ -85,6 +85,18 @@ def test_loader_refuses_mixed_versions_in_one_result_root(tmp_path):
         load_versioned(root, V4_MODEL_VERSION)
 
 
+def test_loader_refuses_a_summary_with_conflicting_version_tags(tmp_path):
+    root = tmp_path / "v4"
+    _write_run(root, "sample", V4_MODEL_VERSION, [])
+    summary_path = root / "sample" / "summary.json"
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    summary["frozen"]["frozen_tag"] = V3_MODEL_VERSION
+    summary_path.write_text(json.dumps(summary), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="conflicts with frozen tag"):
+        load_versioned(root, V4_MODEL_VERSION)
+
+
 def test_paired_coverage_counts_deadlines_and_unpaired_cells_correctly():
     v3_rows = [_row(i, covered=i < 15) for i in range(30)]
     v4_rows = [
@@ -111,6 +123,18 @@ def test_paired_coverage_counts_deadlines_and_unpaired_cells_correctly():
     assert result["v3_only_operation_cells"] == 1
     assert result["v4_only_cells"] == 1
     assert result["v4_only_operation_cells"] == 1
+
+
+def test_missing_uncovered_count_is_not_treated_as_covered():
+    v3_row = _row(0, covered=True)
+    del v3_row["uncovered"]
+    v4_row = _row(0, covered=True, version=V4_MODEL_VERSION)
+
+    result = paired_coverage(pd.DataFrame([v3_row]), pd.DataFrame([v4_row]))
+
+    assert result["n"] == 1
+    assert result["v3_covered"] == 0
+    assert result["v4_covered"] == 1
 
 
 def test_paired_loader_requires_the_same_notebook_set(tmp_path):

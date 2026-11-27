@@ -40,7 +40,14 @@ PARTIAL_HEADROOMS_MIB = (64, 128, 256, 512, 1024, 2048, 4096, 8192)
 
 def _read_run_metadata(summary_path: Path, expected_version: str) -> tuple[str, Path]:
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
-    version = summary.get("model_version") or summary.get("frozen", {}).get("frozen_tag")
+    model_version = summary.get("model_version")
+    frozen = summary.get("frozen")
+    frozen_tag = frozen.get("frozen_tag") if isinstance(frozen, dict) else None
+    if model_version and frozen_tag and model_version != frozen_tag:
+        raise ValueError(
+            f"{summary_path} model_version {model_version!r} conflicts with frozen tag {frozen_tag!r}"
+        )
+    version = model_version or frozen_tag
     if version != expected_version:
         raise ValueError(
             f"{summary_path} records model_version {version!r}, expected {expected_version!r}"
@@ -136,6 +143,8 @@ def _has_operations(row: dict[str, Any]) -> bool:
 
 def _is_covered(row: dict[str, Any]) -> bool:
     if not _has_operations(row) or row.get("hard_deadline_fired") is True:
+        return False
+    if "uncovered" not in row:
         return False
     try:
         if int(row.get("uncovered", 0) or 0) != 0:
@@ -288,9 +297,9 @@ def phase_verdict(n: int, ok: bool, eligible_count: int) -> str:
     return verdict(n, ok)
 
 
-def safety_verdict(n: int, violations: int, missing_classes: int = 0) -> str:
-    if missing_classes:
-        return f"INCONCLUSIVE ({missing_classes} rows lack simulated risk classes)"
+def safety_verdict(n: int, violations: int, missing_evidence: str = "") -> str:
+    if missing_evidence:
+        return f"INCONCLUSIVE ({missing_evidence})"
     if n == 0:
         return "INCONCLUSIVE (no measured cells)"
     return "MET" if violations == 0 else "FAILED"
@@ -543,11 +552,26 @@ def report(df: pd.DataFrame, *, eligible_count: int) -> str:  # noqa: C901
     safety = partial_safety(df)
     partial_result, uncovered_result = safety["partial"], safety["uncovered"]
 
-    def safety_decision(n: int, violations: int, missing: int = 0) -> str:
+    def safety_decision(n: int, violations: int, missing_evidence: str = "") -> str:
         if eligible_count < MIN_ELIGIBLE_CELLS:
             return f"INCONCLUSIVE ({eligible_count} v4 eligible cells < {MIN_ELIGIBLE_CELLS})"
-        return safety_verdict(n, violations, missing)
+        return safety_verdict(n, violations, missing_evidence)
 
+    partial_lower_missing = (
+        f"{len(partial_result['missing_lower_bounds'])} partial cells lack a covered lower bound"
+        if partial_result["missing_lower_bounds"]
+        else ""
+    )
+    partial_risk_missing = (
+        f"{len(partial_result['missing_classes'])} rows lack simulated risk classes"
+        if partial_result["missing_classes"]
+        else ""
+    )
+    uncovered_risk_missing = (
+        f"{len(uncovered_result['missing_classes'])} rows lack simulated risk classes"
+        if uncovered_result["missing_classes"]
+        else ""
+    )
     lines += [
         "",
         "## Partial-cell scoring (Phase 8 preregistration Amendment 7)",
@@ -555,13 +579,13 @@ def report(df: pd.DataFrame, *, eligible_count: int) -> str:  # noqa: C901
         f"Partial cells with valid measured RAM: {partial_result['n']}; lower-bound violations "
         f"(displayed low > actual): {len(partial_result['lower_violations'])}; missing covered lower bounds: "
         f"{len(partial_result['missing_lower_bounds'])} -> "
-        f"{safety_decision(partial_result['n'], len(partial_result['lower_violations']) + len(partial_result['missing_lower_bounds']))}.",
+        f"{safety_decision(partial_result['n'], len(partial_result['lower_violations']), partial_lower_missing)}.",
         f"Partial risk violations (OK while actual > simulated headroom): "
         f"{len(partial_result['risk_violations'])} -> "
-        f"{safety_decision(partial_result['n'], len(partial_result['risk_violations']), len(partial_result['missing_classes']))}.",
+        f"{safety_decision(partial_result['n'], len(partial_result['risk_violations']), partial_risk_missing)}.",
         f"Wholly uncovered cells with valid measured RAM: {uncovered_result['n']}; risk violations "
         f"(OK while actual > simulated headroom): {len(uncovered_result['risk_violations'])} -> "
-        f"{safety_decision(uncovered_result['n'], len(uncovered_result['risk_violations']), len(uncovered_result['missing_classes']))}.",
+        f"{safety_decision(uncovered_result['n'], len(uncovered_result['risk_violations']), uncovered_risk_missing)}.",
     ]
     if partial_result["missing_classes"] or uncovered_result["missing_classes"]:
         lines.append(

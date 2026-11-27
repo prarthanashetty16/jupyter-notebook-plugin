@@ -41,10 +41,11 @@ Collection must satisfy every item:
 - [ ] Complete `manifest.csv` from public metadata and copied-file hashes. Required columns:
   `notebook, author, source_url, notebook_licence, dataset, dataset_url, dataset_licence, dataset_bytes,
   sha256_notebook, sha256_dataset, needs_gpu, needs_internet`.
+  The `notebook` value is a unique copied `.ipynb` filename, and each `dataset_bytes` value is the total required
+  dataset size for that notebook; the total must be at most 1 GiB.
 - [ ] Commit the final pre-registration and the manifest containing SHA-256 digests **before opening any notebook file**.
-  Hashing file bytes is allowed; parsing or previewing notebook cells is not.
-- [ ] Do not take a static census, inspect notebook cells, or run any notebook before the final pre-registration and
-  digest manifest are committed.
+  Until then, hashing file bytes is allowed, but do not read cell contents, conduct a static operation census, or run a
+  notebook.
 - [ ] Keep every selected notebook in the batch even if it errors, times out, or cannot complete. No substitution after
   collection starts. A top-up requires a dated amendment committed before collecting the added batch.
 
@@ -85,8 +86,9 @@ none, that side is not covered. Cells with no detected operation on either side 
 
 The evaluator reports v3 and v4 covered shares on this same paired denominator and their percentage-point difference.
 Cells recorded by only one version are reported separately (including operation-bearing counts) and excluded from the
-paired denominator; they are never counted as covered. At least 30 paired operation-bearing cells are required, else
-coverage is INCONCLUSIVE. **Decision bar: v4 minus v3 is at least 10 percentage points.**
+paired denominator; they are never counted as covered. Within a shared cell, if only one version detects operations,
+the cell stays in the denominator and the version detecting none is not covered. At least 30 paired operation-bearing
+cells are required, else coverage is INCONCLUSIVE. **Decision bar: v4 minus v3 is at least 10 percentage points.**
 
 **Secondary, static name matching (OVERSTATING; not deciding).** After both runtime runs, execute
 `tools/static_ops.py` once with each tag's registry against the same notebook folder. It counts a cell covered when
@@ -128,9 +130,12 @@ the whole-v4 failure conditions remain those in section 4 of the Phase 8 pre-reg
 
 ## 5. Run sequence (each notebook once per version)
 
-Set `$root` to the external directory containing the committed manifest, notebooks, datasets, and results. The notebooks
-and data remain outside both checkouts. Use one output subdirectory per manifest notebook so each run has its own profile
-pin. Do not resume or rerun a notebook.
+Set `$root` to the external directory containing the committed manifest, notebooks, datasets, and results. The `notebook`
+manifest field is each unique copied `.ipynb` filename; CSV row order is the fixed run order. The notebooks and data
+remain outside both checkouts. Run v3 first, once per manifest row, in its separate checkout and results folder; only after that
+batch finishes, run v4 once per same manifest row in its separate checkout and results folder. Do not resume or rerun a
+notebook, including after an error or interruption. Use one output subdirectory per notebook so each run has its own
+profile pin.
 
 1. **Prepare the outside-freeze tools checkout** used for the v4 harness metadata, evaluator, and static tool:
 
@@ -147,12 +152,16 @@ pin. Do not resume or rerun a notebook.
        python -m benchmarks.frozen check
        $root = 'C:\dev\nexus-data\phase8b'
        $notebooks = Join-Path $root 'notebooks'
-       Get-ChildItem $notebooks -Filter '*.ipynb' | Sort-Object Name | ForEach-Object {
-           python -m benchmarks.realworld.run_notebook $_.FullName --out (Join-Path (Join-Path $root 'results\v3') $_.BaseName) --tier 1
+       $manifestRows = Import-Csv (Join-Path $root 'manifest.csv')
+       foreach ($entry in $manifestRows) {
+           $notebook = Join-Path $notebooks $entry.notebook
+           $out = Join-Path (Join-Path $root 'results\v3') ([IO.Path]::GetFileNameWithoutExtension($entry.notebook))
+           python -m benchmarks.realworld.run_notebook $notebook --out $out --tier 1
+           if ($LASTEXITCODE -ne 0) { throw "V3 run failed for $($entry.notebook); do not rerun or substitute it." }
        }
 
-3. **Then v4, in a separate checkout and result root.** Copy the outside-freeze v4 harness change so each v4 JSONL row
-   records `model_version`, then re-check the frozen model files before running:
+3. **Then v4, in a separate checkout and result root, after the v3 batch is complete.** Copy the outside-freeze v4
+   harness change so each v4 JSONL row records `model_version`, then re-check the frozen model files before running:
 
        git clone https://github.com/prarthanashetty16/jupyter-notebook-plugin.git C:\dev\nexus-v4
        git -C C:\dev\nexus-v4 checkout --detach models-frozen-v4
@@ -161,8 +170,12 @@ pin. Do not resume or rerun a notebook.
        python -m benchmarks.frozen check
        $root = 'C:\dev\nexus-data\phase8b'
        $notebooks = Join-Path $root 'notebooks'
-       Get-ChildItem $notebooks -Filter '*.ipynb' | Sort-Object Name | ForEach-Object {
-           python -m benchmarks.realworld.run_notebook $_.FullName --out (Join-Path (Join-Path $root 'results\v4') $_.BaseName) --tier 1
+       $manifestRows = Import-Csv (Join-Path $root 'manifest.csv')
+       foreach ($entry in $manifestRows) {
+           $notebook = Join-Path $notebooks $entry.notebook
+           $out = Join-Path (Join-Path $root 'results\v4') ([IO.Path]::GetFileNameWithoutExtension($entry.notebook))
+           python -m benchmarks.realworld.run_notebook $notebook --out $out --tier 1
+           if ($LASTEXITCODE -ne 0) { throw "V4 run failed for $($entry.notebook); do not rerun or substitute it." }
        }
 
 4. **Evaluate the paired result roots once, from the tools checkout:**
@@ -183,6 +196,8 @@ pin. Do not resume or rerun a notebook.
        python -m benchmarks.frozen check
        python tools\static_ops.py C:\dev\nexus-data\phase8b\notebooks --model-version models-frozen-v4 | Set-Content C:\dev\nexus-data\phase8b\static-v4.md
 
-The freeze guard and mains-power refusal apply to both runtime runs. Each run's profile pin is separate and recorded in
-that notebook's output folder. After the one evaluation, the batch is no longer held out. Any model change after v4
-invalidates the held-out status; new model version and new held-out notebooks are required.
+The freeze guard and mains-power refusal apply separately to both runtime batches: check the guard before each batch and
+the harness refuses battery power on every notebook invocation (do not pass `--allow-battery`). Each notebook run gets
+its own profile pin in its output folder; record the pinned profile for both versions and use the same reference machine.
+After the one evaluation, the batch is no longer held out. Any model change after v4 invalidates the held-out status;
+new model version and new held-out notebooks are required.
