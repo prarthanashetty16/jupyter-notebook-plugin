@@ -1,0 +1,5 @@
+{"pandas": "3.1.1", "numpy": "2.5.5", "bar": 0.15}
+{"statement": "y = df.loc[df['f0'] > 0.9].copy()", "censored": false, "bound_mib": 0.0, "measured_mib": 201.6171875, "derived_mask_mib": 201.39537048339844, "ratio_mask": 1.001101400772367, "within_bar_mask": true}
+{"statement": "y = df.tail(4_000_000).copy()", "censored": false, "bound_mib": 0.0, "measured_mib": 976.6171875, "derived_view_mib": 488.28125, "ratio_view": 2.000112, "within_bar_view": false, "derived_copying_receiver_mib": 976.5625, "ratio_copying_receiver": 1.000056, "within_bar_copying_receiver": true}
+{"statement": "y = df[df['s0'] == 'x00001'].copy()", "censored": false, "bound_mib": 0.0, "measured_mib": 120.98046875, "derived_mask_mib": 137.3291015625, "ratio_mask": 0.8809528888888889, "within_bar_mask": true}
+{"statement": "y = df.sort_values('f0').copy()", "measured_mib": 1038.1, "source": "p8_copy_receivers.out", "estimates": [{"model": "sort_values", "tier": 0, "low_mib": 598.14453125, "expected_mib": 610.3515625, "high_mib": 930.7861328125}], "uncovered": ["copy"], "cell_high_mib": 930.7861328125, "cell_expected_mib": 610.3515625}

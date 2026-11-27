@@ -18,9 +18,10 @@ exceeds the cap (default 70% of the free RAM at start); per-cell timeout (defaul
 per-notebook budget (default 60 min); stop after N consecutive failing cells (default 5). A kill is a
 RAM lower bound. Shell / package cells are never executed. Failing cells: error TYPE only.
 
-Records (JSONL, ``<out>/cells.jsonl``): cell index and hash, operation names, input shapes / dtype
-counts, numbers. Never cell code, outputs or data values. Refuses to run unless the freeze guard
-passes and the machine is on mains power. ``--allow-battery`` is accepted only with ``--dev`` (a dev run;
+Records (JSONL, ``<out>/cells.jsonl``): model version, cell index and hash, operation names, input
+shapes / dtype counts, numbers. Never cell code, outputs or data values. Refuses mixed model versions
+in an existing output folder, and refuses to run unless the freeze guard passes and the machine is on
+mains power. ``--allow-battery`` is accepted only with ``--dev`` (a dev run;
 ``benchmarks.powerguard``): rows record ``battery (user-accepted)``, the summary holds the raw readings, and
 the timing figures are battery-throttled (not usable for calibration or timing claims).
 
@@ -51,6 +52,7 @@ MIB = 2**20
 RAM_FLOOR = 32 * MIB
 TIME_FLOOR_S = 0.100
 SAMPLE_S = 0.002
+RISK_HEADROOMS_MIB = (64, 128, 256, 512, 1024, 2048, 4096, 8192)
 SHELL_CELL = re.compile(
     r"^\s*(!|%pip|%conda|%%bash|%%sh|%system|%%script|%%cmd|%%powershell|%sx|%%sx)", re.M
 )
@@ -67,6 +69,7 @@ class Limits:
 @dataclass
 class RunSummary:
     notebook: str
+    model_version: str = ""
     outcome: str = "completed"
     cells: int = 0
     executed: int = 0
@@ -86,6 +89,33 @@ class RunSummary:
 
 def cell_hash(src: str) -> str:
     return hashlib.sha256(src.encode("utf-8")).hexdigest()[:12]
+
+
+def _assert_output_model_version(out: Path, model_version: str) -> None:
+    """Prevent appending or replacing result metadata with a different model version."""
+    summary_path = out / "summary.json"
+    if summary_path.exists():
+        existing = json.loads(summary_path.read_text(encoding="utf-8")).get("model_version")
+        if existing != model_version:
+            raise ValueError(
+                f"{summary_path} has model_version {existing!r}, expected {model_version!r}; "
+                "use a fresh output folder"
+            )
+
+    cells_path = out / "cells.jsonl"
+    if not cells_path.exists():
+        return
+    with cells_path.open(encoding="utf-8") as cells:
+        for line_number, line in enumerate(cells, start=1):
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            existing = row.get("model_version")
+            if existing != model_version:
+                raise ValueError(
+                    f"{cells_path}:{line_number} has model_version {existing!r}, "
+                    f"expected {model_version!r}; use a fresh output folder"
+                )
 
 
 def read_cells(path: Path) -> list[str]:
@@ -119,9 +149,11 @@ def _estimate_dict(e: Any) -> dict[str, Any]:
 
 
 def _analyse(src: str, ns: dict[str, Any], primary: Any, secondary: Any) -> dict[str, Any]:
+    from dataclasses import replace
+
     from nexus.cellpeak import cell_estimate
     from nexus.failsafe import Deadline
-    from nexus.risk import assess
+    from nexus.risk import assess, classify, warn_high_estimate
     from nexus.session import DEFAULT_BUDGET_S
     from nexus.suggestions import suggest
 
@@ -136,8 +168,32 @@ def _analyse(src: str, ns: dict[str, Any], primary: Any, secondary: Any) -> dict
         cell, mode, _flags = cell_estimate(src, rep.estimates)  # the cell-level model (Phase 6c)
         rec["cell_mode"] = mode
         rec["cell"] = _estimate_dict(cell) if cell else None
-        rec["uncovered"] = len({id(o) for o in rep.ops} - {id(e.op) for e in rep.estimates})
+        covered = {id(e.op) for e in rep.estimates}
+        missing = [o for o in rep.ops if id(o) not in covered]
+        rec["uncovered"] = len(missing)
+        rec["hard_deadline_fired"] = any(
+            (e.features.get("tier1") or {}).get("hard_deadline_fired") for e in rep.estimates
+        )
+        rec["covered"] = bool(rep.ops) and not missing and not rec["hard_deadline_fired"]
         rec["inputs"] = _describe_inputs(rep)
+        warn, _warn_mode, _warn_flags = (
+            cell_estimate(src, [replace(e, estimate=warn_high_estimate(e)) for e in rep.estimates])
+            if rep.estimates
+            else (None, None, None)
+        )
+        rec["cell_warn"] = _estimate_dict(warn) if warn else None
+        rec["simulated_risk_classes"] = {
+            str(headroom): classify(
+                [e.estimate for e in rep.estimates],
+                headroom=headroom * MIB,
+                uncovered=len(missing),
+                cell=cell,
+                warn_high=None if warn is None else warn.ram_high,
+                covered_operations=len(covered),
+                total_operations=len(rep.ops),
+            ).risk.value
+            for headroom in RISK_HEADROOMS_MIB
+        }
         risk = assess(rep)
         rec["risk"] = (
             {"class": risk.risk.value, "reason_kind": risk.reason.split(":")[0][:60], "headroom": risk.headroom}
@@ -151,6 +207,9 @@ def _analyse(src: str, ns: dict[str, Any], primary: Any, secondary: Any) -> dict
         rec["cell_tier0"] = _estimate_dict(c0) if c0 else None
     except Exception as exc:
         rec["analysis_error"] = type(exc).__name__
+        if isinstance(exc, TimeoutError):
+            rec["hard_deadline_fired"] = True
+            rec["covered"] = False
     rec["analysis_s"] = time.perf_counter() - t0
     return rec
 
@@ -250,7 +309,11 @@ def run(  # noqa: C901
     else:  # aborts (NotFrozenError) on any frozen-file difference
         from benchmarks.heldout_env import require_profile
 
-        summary.frozen = {**frozen.require_frozen(), "heldout_environment": require_profile(out)}
+        summary.frozen = frozen.require_frozen()
+    summary.model_version = str(summary.frozen.get("frozen_tag") or f"dev:{summary.frozen['head']}")
+    _assert_output_model_version(out, summary.model_version)
+    if not dev:
+        summary.frozen["heldout_environment"] = require_profile(out)
     from benchmarks.powerguard import BATTERY_NOTE, power_record, recorded
 
     if allow_battery and not dev:
@@ -280,7 +343,12 @@ def run(  # noqa: C901
     consecutive = 0
     try:
         for i, src in enumerate(cells):
-            base = {"notebook": notebook.stem, "index": i, "hash": cell_hash(src)}
+            base = {
+                "notebook": notebook.stem,
+                "index": i,
+                "hash": cell_hash(src),
+                "model_version": summary.model_version,
+            }
             if time.monotonic() - t_nb > limits.notebook_budget_s:
                 summary.outcome, summary.stop_reason = "stopped", "notebook budget exhausted"
                 break

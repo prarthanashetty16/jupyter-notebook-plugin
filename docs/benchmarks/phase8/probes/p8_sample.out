@@ -1,0 +1,4 @@
+{"pandas": "3.1.1", "numpy": "2.5.5", "rows": 15000000, "bar": 0.15}
+{"variant": "10% without replacement", "measured_mib": 68.80078125, "bound_mib": 0.0, "derived_mib": 22.88818359375, "ratio": 3.005952, "within_bar": false, "censored": false}
+{"variant": "50% without replacement", "measured_mib": 236.328125, "bound_mib": 0.0, "derived_mib": 114.44091796875, "ratio": 2.0650666666666666, "within_bar": false, "censored": false}
+{"variant": "all rows with replacement", "measured_mib": 472.34375, "bound_mib": 0.0, "derived_mib": 228.8818359375, "ratio": 2.0637013333333334, "within_bar": false, "censored": false}

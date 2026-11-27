@@ -1,0 +1,4 @@
+{"pandas": "3.1.1", "numpy": "2.5.5", "rows": 12000000, "bar": 0.15}
+{"variant": "dict converts two of three columns", "statement": "df.astype({'a': 'float32', 'b': 'float32'})", "measured_mib": 91.94921875, "bound_mib": 0.0, "derived_mib": 91.552734375, "ratio": 1.0043306666666667, "within_bar": true, "censored": false}
+{"variant": "multi-column selection then astype", "statement": "df[['a', 'b']].astype('float32')", "measured_mib": 92.046875, "bound_mib": 0.0, "derived_mib": 91.552734375, "ratio": 1.0053973333333333, "within_bar": true, "censored": false}
+{"variant": "dict mixed targets", "statement": "df.astype({'a': 'int32', 'b': 'float64'})", "measured_mib": 46.18359375, "bound_mib": 0.0, "derived_mib": 137.3291015625, "ratio": 0.3362986666666667, "within_bar": false, "censored": false}

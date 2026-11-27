@@ -1,0 +1,4 @@
+{"pandas": "3.1.1", "numpy": "2.5.5", "rows": 25000000, "bar": 0.15}
+{"variant": "dict mapper", "statement": "s.map(mapper)", "measured_mib": 405.6328125, "bound_mib": 0.0, "derived_mib": 190.73486328125, "ratio": 2.12668416, "within_bar": false, "censored": false}
+{"variant": "Series mapper", "statement": "s.map(mapper)", "measured_mib": 405.54296875, "bound_mib": 0.0, "derived_mib": 381.4697265625, "ratio": 1.06310656, "within_bar": true, "censored": false}
+{"variant": "NumPy ufunc mapper", "statement": "s.map(np.negative)", "measured_mib": 2478.109375, "bound_mib": 0.0, "derived_mib": 190.73486328125, "ratio": 12.99243008, "within_bar": false, "censored": false}

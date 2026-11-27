@@ -96,7 +96,7 @@ class ConcatModel(OperationModel):
         cat_cols = [c for c in first.columns if str(first[c].dtype) == "category"]
         mismatch, cat_distinct, codes = 0, [], 0
         for c in cat_cols:
-            ctx.deadline.check()
+            ctx.check_deadline()
             dtypes = [f[c].dtype if c in f.columns else None for f in frames]
             if any(d != dtypes[0] for d in dtypes[1:]):
                 mismatch += 1
@@ -105,10 +105,10 @@ class ConcatModel(OperationModel):
         text_cols = [c for c in first.columns if u.is_text(str(first[c].dtype))]
         obj_distinct = []
         for c in text_cols[:4]:  # the incref working set: distinct objects (sum over inputs)
-            ctx.deadline.check()
+            ctx.check_deadline()
             obj_distinct.append(
                 sum(
-                    stats.distinct_count(f[c], deadline=ctx.deadline).value
+                    stats.distinct_count(f[c], deadline=ctx.deadline, adaptive=False).value
                     for f in frames
                     if c in f.columns
                 )

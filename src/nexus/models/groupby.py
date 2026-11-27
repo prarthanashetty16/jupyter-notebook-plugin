@@ -102,10 +102,15 @@ class GroupByModel(OperationModel):
             return None
         df = ctx.obj(op.receiver)
         per_key = [
-            stats.distinct_count(df[k], deadline=ctx.deadline, share=0.5 / len(keys)) for k in keys
+            stats.distinct_count(
+                df[k], deadline=ctx.deadline, share=0.5 / len(keys), adaptive=False
+            )
+            for k in keys
         ]
         if len(keys) > 1:
-            combined = stats.distinct_rows([df[k] for k in keys], deadline=ctx.deadline, share=0.8)
+            combined = stats.distinct_rows(
+                [df[k] for k in keys], deadline=ctx.deadline, share=0.8, adaptive=False
+            )
         else:
             combined = per_key[0]
         agg = _aggregated_columns(ctx.source, op, df, keys)

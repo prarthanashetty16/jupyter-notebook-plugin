@@ -1,0 +1,18 @@
+pandas 3.1.1
+| shape@rows | step | measured MiB | model (name, tier, low / expected / high MiB) |
+|---|---|---|---|
+| num@5000000 | 1 copy alone | 305.2 | copy T0 305.2 / 305.2 / 305.2 |
+| num@5000000 | 2 fillna alone | 286.2 | fillna T1 286.1 / 286.1 / 286.1 |
+| num@5000000 | 3 cell | 591.4 | copy T0 305.2 / 305.2 / 305.2; fillna T1 286.1 / 286.1 / 286.1; CELL T1 591.3 / 591.3 / 591.3 |
+| narrow@5000000 | 1 copy alone | 105.0 | copy T0 104.9 / 104.9 / 104.9 |
+| narrow@5000000 | 2 fillna alone | 143.2 | fillna T1 138.3 / 138.3 / 138.3 |
+| narrow@5000000 | 3 cell | 248.1 | copy T0 104.9 / 104.9 / 104.9; fillna T1 138.3 / 138.3 / 138.3; CELL T1 243.2 / 243.2 / 243.2 |
+| text@5000000 | 1 copy alone | 228.9 | copy T0 228.9 / 228.9 / 228.9 |
+| text@5000000 | 2 fillna alone | 219.5 | fillna T1 214.6 / 214.6 / 214.6 |
+| text@5000000 | 3 cell | 448.4 | copy T0 228.9 / 228.9 / 228.9; fillna T1 214.6 / 214.6 / 214.6; CELL T1 443.5 / 443.5 / 443.5 |
+| textwide@5000000 | 1 copy alone | 267.1 | copy T0 267.0 / 267.0 / 267.0 |
+| textwide@5000000 | 2 fillna alone | 295.8 | fillna T1 290.9 / 290.9 / 290.9 |
+| textwide@5000000 | 3 cell | 562.9 | copy T0 267.0 / 267.0 / 267.0; fillna T1 290.9 / 290.9 / 290.9; CELL T1 557.9 / 557.9 / 557.9 |
+| mixed@5000000 | 1 copy alone | 267.1 | copy T0 267.0 / 267.0 / 267.0 |
+| mixed@5000000 | 2 fillna alone | 171.8 | fillna T1 171.7 / 171.7 / 252.7 |
+| mixed@5000000 | 3 cell | 438.8 | copy T0 267.0 / 267.0 / 267.0; fillna T1 171.7 / 171.7 / 252.7; CELL T1 438.7 / 438.7 / 519.8 |

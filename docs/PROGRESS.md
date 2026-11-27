@@ -1392,7 +1392,7 @@ full tables `docs/benchmarks/phase6/phase6_dev.md`, probes `docs/benchmarks/phas
   only on pandas 3.1.1 (9 / 9 pass); no result is claimed for the other versions.**
 - [x] 7. Dev evaluation (`python -m benchmarks.phase6_eval --frozen benchmarks/results/tier2-dev-b --derived
   benchmarks/results/phase6-dev-mains --frozen-mains docs/benchmarks/phase6/f_mains.csv --out docs/benchmarks/phase6`).
-- [x] 8. Freeze: tag `models-frozen-v1`, `docs/benchmarks/frozen-manifest.md`; held-out paths call `benchmarks.frozen.require_frozen`.
+- [x] 8. Freeze: tag `models-frozen-v1`, `docs/benchmarks/frozen-manifest-v1.md`; held-out paths call `benchmarks.frozen.require_frozen`.
 
 ### Pre-registered targets on dev (LOCO; F = frozen models recomputed on a mains profile)
 * **(a) time estimates: MET** by the selected D+m. Tier 1: median rel. error 52% -> 25%, p90 146% -> 89%, median log error 0.64 ->
@@ -1482,7 +1482,7 @@ policy or threshold changed; test-v2, val-v5 and real notebooks untouched.**
   and measurement, the calibration artifact and reference profile, the suggestion thresholds (38 files at the tag). **Added on
   2026-11-21 at the user's request:** `src/nexus/measure.py` and `tests/test_measure_validation.py` (40 files). Outside:
   docs, benchmarks and evaluation scripts, CI, `.gitignore`, other tests, `pyproject.toml`, UX modules, the Phase 8a harness.
-  `docs/benchmarks/frozen-manifest.md` lists the files and hashes and records that the scope changed after the tag;
+  `docs/benchmarks/frozen-manifest-v1.md` lists the files and hashes and records that the scope changed after the tag;
   `git diff models-frozen-v1` on all 40 files is empty. **A new evaluation harness (Phase 8a) no longer needs a new freeze.**
 - [x] 2. `.gitignore`: notebooks ignored except `examples/**/*.ipynb` (commit `c438517`); the guard passes.
 - [x] 3. `nexus-calibrate-machine` now runs `nexus/calibrate_cli.py` (the frozen `calibrate.py` is unchanged): refuses only on
@@ -1589,7 +1589,7 @@ Pre-registration `docs/benchmarks/phase6c-preregistration.md` (commit `91581ac`,
 - [x] D. **Real notebooks on 22% subsamples (DEV, information only)** (`docs/benchmarks/phase6c/realworld_dev.md`): 74 / 30 cells
   executed (Phase 8a: 9 / 4); 8 valid RAM points (bias 0.94, median error 22.5%, 1 above high), 9 time points (within-one
   88.9%); 49 of 56 cells with a detected operation UNKNOWN; multi-load cells 0.73x / 0.91x (Phase 8a: 0.56x).
-- [x] 7. Freeze `models-frozen-v2`; manifest `docs/benchmarks/frozen-manifest.md` (v1 kept in `frozen-manifest-v1.md`); the guard
+- [x] 7. Freeze `models-frozen-v2`; manifest `docs/benchmarks/frozen-manifest-v2.md` (v1 kept in `frozen-manifest-v1.md`); the guard
   checks against v2 (`nexus/cellpeak.py` added to the patterns; the new models are under `models/*.py`).
 
 ### Bug found and fixed (Phase 6b test)
@@ -1865,7 +1865,7 @@ below). val-v5, test-v2 and the multicell v2 / v3 held-out parts sealed and unre
 
 ## Phase 7d: freeze `models-frozen-v3`
 
-**Status: frozen.** The annotated tag `models-frozen-v3` is on the commit that adds `docs/benchmarks/frozen-manifest.md`.
+**Status: frozen.** The annotated tag `models-frozen-v3` is on the commit that adds `docs/benchmarks/frozen-manifest-v3.md`.
 No model, threshold or calibration artifact changed in Phase 7d. The frozen set against v2 is 9 changed and 3 added files
 (`models/explode_apply.py` with the ufunc-apply model only, `models/set_index.py`, `cellframes.py`); 46 files are frozen.
 val-v5, test-v2 and the multicell v2 / v3 held-out groups are sealed and unread.
@@ -1916,15 +1916,12 @@ val-v5, test-v2 and the multicell v2 / v3 held-out groups are sealed and unread.
    operations. The runbook's plan counts are historical estimates, not pass criteria. Runbook:
    `docs/benchmarks/val-v5-linux-runbook.md`.
 
-3. Phase 8b, only after `docs/benchmarks/phase8b-preregistration.md` is filled in and committed (no notebook opened before):
-
-       git checkout models-frozen-v3 && python -m benchmarks.frozen check
-       python -m benchmarks.realworld.coverage <folder> --out docs/benchmarks/phase8b/coverage
-       python -m benchmarks.realworld.run_notebook <copy> --out benchmarks/results/realworld/phase8b/<name> --tier 1
-       python -m benchmarks.realworld.evaluate_real benchmarks/results/realworld/phase8b/* --out docs/benchmarks/phase8b/report.md
-
-   The v2 comparison run for the run-time coverage share follows the 8b pre-registration. It needs the per-cell `covered`
-   field in `run_notebook` first (outside the freeze).
+3. Phase 8b is protocol work only until the owner completes the marked fields in
+   `docs/benchmarks/phase8b-preregistration.md`. Commit the completed protocol and SHA-256 manifest before opening any
+   notebook. Then follow its paired sequence exactly: v3 tag first, v4 tag second, separate checkouts/results roots,
+   mains power and a per-run profile pin. The evaluator takes both roots and reports only paired run-time coverage;
+   static name matching is secondary, labelled OVERSTATING, and runs only after both runtime runs. Do not run the old
+   static census-first or single-root commands shown in earlier phase notes.
 
 Push: `git push origin main models-frozen-v3` (the local branch is `main`).
 
@@ -1984,3 +1981,264 @@ changes in response: v3 is not repaired on these data.**
 * **Phase 8b held-out set:** a fresh batch of notebooks, sealed separately (digests committed before anything else is
   done with it). It gets no census, no static analysis and no reading of its cells before the v4 freeze. Its first
   use is the pre-registered held-out run, logged in the Test-split access log.
+
+## Phase 8c closeout checklist
+
+- [x] Relabel the val-v5 runbook for `models-frozen-v4` and Phase 8 criteria.
+- [x] Add the v4 Phase 8 verdict to `evaluate --val`, including W(a)/W(b) scoring and a prediction-only v3 baseline
+  command. Multicell partial-cell criteria remain in the separate v4 multicell report.
+- [x] Commit Amendment 7 before creating the v4 multicell group; create its digest-frozen metadata only (no inputs or
+  outcomes).
+- [x] Re-run the 28-input prediction-only deadline check on mains, as information only; all four raw reports are linked below.
+- [x] Ruff checks and full pytest suite: 902 passed, 2 tag-dependent freeze tests skipped because `models-frozen-v4`
+  is intentionally not created before review.
+- [x] Commit and push to `v4-dev` (`03c0b33`); no v4 tag created, pending review.
+
+## Phase 8 (v4) dev progress (`v4-dev` branch; not frozen)
+
+Pre-registration `docs/benchmarks/phase8-preregistration.md` with amendments 1-7. Every number is DEV; no protected
+held-out values have been read.
+
+### v4 dev summary
+
+| Pre-registered item | Dev result | Decision / finding |
+|---|---|---|
+| C. Upper-bound calibration | **PASS on LOCO and W(a); W(b) INCONCLUSIVE** | Final factors are recorded below. LOCO is 0.00% above high per point/configuration; W(a) is 1.000. There are 0 eligible W(b) points (below the 30-point minimum). |
+| Regression rule (per operation and tier) | **PASS** | Fresh v4 predictions show 0% above-high for every operation in both tiers across the paired single-op dev points; final LOCO-calibrated results are 0/524 points and 0/239 configurations. See [the paired report](./benchmarks/phase8/final_regression/before_after.md). |
+| 1a. Text `fillna` | **PASS** | String and non-string probes are within ±15%; all six flagged dev cells are below calibrated high. |
+| 1b. Copy then `fillna` | **PASS** | Probe ratios 1.000–1.020; 14 applicable cells have no above-high result under LOCO. |
+| 1c. `value_counts` | **FAILED** | Hash-table residency depends on exact keys; the 1M-unique probe was 1.69x the derivation. Deferred. |
+| 1d. `copy` receivers | **FAILED overall; partial adoption** | Five receiver forms passed and were adopted. `head`/`tail` and unmodelled-operation receivers remain no-estimate. |
+| 2. `duplicated` | **FAILED** | Second derivation still under-predicted a dense integer-key case (1.294x); deferred. |
+| 2. `dropna` | **PASS** | Four fresh OS-peak probes were within the derivation bar; adopted. |
+| 2. `reset_index` | **FAILED** | Attempt was invalid because its formula followed the probe output; reverted to named no-estimate. |
+| 2. `Series.map` | **FAILED** | Dict and NumPy-ufunc variants exceeded the ±15% bar; remains named no-estimate. |
+| 2. `to_numpy` | **FAILED** | Mixed-frame copy passed, but zero-copy cases have no measurable incremental peak under the preregistered bar. |
+| 2. Multi-column / dict `astype` | **FAILED** | Same-dtype target columns are over-counted; these forms remain no-estimate. |
+| 2. `read_csv(parse_dates=...)` | **FAILED** | Date parsing reduced measured peaks by hundreds of MiB, contradicting the additive derived term. |
+| 3. `numpy.zeros` / `numpy.empty` | **FAILED** | Untouched virtual pages produced no measurable incremental peak; no-estimate. |
+| 3. `numpy.array` | **PASS, scoped** | Known numeric ndarray inputs with `copy=True` passed; literal/unknown inputs and `copy=False` remain no-estimate. |
+| 3. `numpy.linspace` | **FAILED** | The float32 variant was 3.0003x the one-allocation derivation. |
+| 3. `sample` | **FAILED** | Random-index workspace made measured peaks 2.064–3.006x the selected-data derivation. |
+| 3. `describe` | **FAILED** | Numeric workspace exceeded the derivation and a two-string case was censored; no-estimate. |
+| 4. Deferred-operation UNKNOWN behavior | **PASS** | `apply`/Python-function `map`, `to_csv`, `join`, `pd.get_dummies`, and `corr` remain named no-estimate because they are not modelled in v4. Messages are tested; the 46 dev multicell cells with uncovered operations had 0 risk/headroom violations. |
+| T. Tier selection and deadline | **FAILED** | The original result was 79/84 (94.05%) contended and 28/84 (33.33%) idle. The post-fallback information-only rerun fired 48/84, 31/84, and 30/84 under 2-core contention (57.14%, 36.90%, 35.71%; pooled 109/252 = 43.25%) versus <=5%, and 44/84 idle (52.38%) versus 0%. Non-firing selection was stable, but the firing bars failed. The 28-input × 3-repeats design is also below the preregistered 30 × 10 minimum. |
+| Runtime dev coverage | **FAILED** | Final all-cells result is 14/75 = 18.7%, below 55%; earlier provisional 15/74 (20.3%) is superseded by the full run. |
+| Amendment 7 partial-cell display and safety scoring | **NOT EVALUATED ON HELD-OUT DATA** | The output/scoring path and focused tests are included; the v4 multicell group and Phase 8b batch remain sealed and have no outcomes. |
+| Section 2 held-out criteria (RAM, time, W, R1-R3, uncovered/partial safety, paired coverage) | **NOT RUN** | val-v5, test-v2, and the fresh Phase 8b notebooks remain unread; the v4 multicell split is metadata-only and unrun. |
+
+Final item C factors (alpha = 0.02, configuration maxima): pooled **q = 1.184** (239 configurations); `read_csv` **q = 1.175** (59 configurations); `sort_values` **q = 1.197** (37 configurations, at sample maximum). Other families use the pooled factor. The final artifact is [upper-v1.json](../src/nexus/calibration/upper-v1.json), computed from the current v4 models; the full dev report is [calibration_final_v4.md](./benchmarks/phase8/calibration_final_v4.md). W(b) on all points is descriptive only (median width 2.10, p90 7.22); the deciding W(b) group has no points.
+
+Adopted v4 operation forms: text/non-string `fillna`, copy-through-`fillna`, the five passing `copy` receiver forms, `dropna`, and known numeric ndarray `numpy.array(copy=True)`. Failed or deferred forms remain named no-estimate; the item rows above give each reason. The main blockers were key-dependent hash-table residency, allocation/workspace terms contradicted by probes, and unmeasurable zero-copy/lazy-page peaks.
+
+The post-fallback rerun found no Tier 1/Tier 0 selection flips among non-firing repeats (0/28 in each of the three contended runs and the idle run); estimate signatures matched for 4, 10, 10, and 13 comparable inputs, respectively. Contended runs also had 24 `memory_limit` worker failures each (72 total), separately counted as not estimated and not as deadline firings; the idle run had none. The 250 ms hard deadline still fires frequently, so the safe default is to show the same operation's Tier 0 estimate with Tier 0 high/policy B and assess risk from it, while recording the firing and excluding it from coverage claims. This is safer than silently showing no estimate for a cooperative Tier 1 timeout, without disguising the failed T criterion; timeouts outside this cooperative path retain the interceptor fail-safe behavior.
+
+Information-only rerun reports: [contended 1](./benchmarks/phase8/tier1_selection_recheck_cores2_1.md), [contended 2](./benchmarks/phase8/tier1_selection_recheck_cores2_2.md), [contended 3](./benchmarks/phase8/tier1_selection_recheck_cores2_3.md), and [idle](./benchmarks/phase8/tier1_selection_recheck_idle.md). Each uses 28 dev inputs × 3 repeats on mains; all deadline firings count as not estimated.
+
+The stored idle rerun's hard-deadline firing share rises with input size: 11/39 (28.2%) at 1M rows, 9/21 (42.9%) at 3M, and 24/24 (100%) at 10M. These are one laptop's dev inputs, not a population rate; no additional prediction run was made for Phase 8d.
+
+**v5 direction:** investigate Tier 2 sandboxed extrapolation as a general fallback for operations without a derived model, with the primary goal of improving operation coverage. Keep the existing safety gate: unknown or side-effecting code must not be executed in the sandbox.
+
+- [x] Item C, upper-bound calibration: procedure and runtime hook (`b954a19`, `777dad2`). Preview on the v3 models:
+  LOCO 0% above high per point and per configuration; W(a) 1.000. The frozen factors are computed once on the final v4
+  models.
+- [x] Item (1a), fillna on `str` columns: **PASSED**. String value 1.000-1.001; the labelled second derivation for
+  non-string values passed fresh variants at 1.023-1.048 (`2a730c9`, `9448763`). Its six flagged dev cells are 0 above
+  the displayed high under amendment 2 (`docs/benchmarks/phase8/rescore_amendment2.md`). Known: the non-string term
+  under-counts by about 1 B/row (22 measured vs 21 adopted, within the bar; not refitted).
+- [x] Item (1b), statistics through a copy of a kernel frame: **PASSED** (`06a9eea`). Cell probe 1.000-1.020; the 14
+  copy -> fillna dev cells, and all 52 cells new in v4 so far, are 0 above the displayed high (LOCO factor) under
+  amendment 2.
+- [x] Item (1c) value_counts: **DEFERRED** (third and last attempt failed; no fourth attempt in v4). The
+  step-decomposition probe (`p8_value_counts_diag.out`, int64, n = 12M) shows the sort never sets the peak
+  (`value_counts()` equals the hash-table step at every cardinality), so the cost is the khash table. The table
+  derivation from the pandas 3.1.1 source (presized to roundup32(n) buckets, memset flag array n_buckets / 8 bytes, key
+  and value arrays resident only on touched 4 KiB pages, int64 hash `(k >> 33) ^ k ^ (k << 11)`, zero-filled x4 key
+  vector) matches u = 50k (1.046) and u = 6M (1.001) but misses **u = 1M by 1.69**. Back-computed from 151 MiB, the
+  1M keys touch about 16,384 pages per array; the source's hash gives exactly 8,192 for keys 0..1M. The resident
+  memory therefore depends on the exact key values in a way neither the source nor Tier 1 statistics predict. The
+  UNKNOWN message names the reason: "memory depends on the exact key values, through the hash table's pages"
+  (`nexus.deferred`).
+- [x] Item (1d) copy on receivers v3 cannot size: **adopted for the five passing forms** (boolean mask with
+  comparisons, `&` / `|` combinations, contiguous column list, reordered column list, `iloc` row slice; probe
+  `p8_copy_receivers.out` 1.000-1.002). `head` / `tail` stay NO ESTIMATE: pandas 3.1.1 `head(n)` is
+  `self.iloc[:n].copy()`, so the receiver already copies (measured 2.0x the view derivation). Noted for v5; the
+  UNKNOWN message names it (`nexus.deferred`). Measurement fixes (`p8_copy_receivers_fix.out`): 10% `loc[mask]`
+  1.001, `str`-comparison mask 0.881 (the 12 B/row comparison term slightly over-counts), `tail` 2.0 against the view
+  derivation and 1.000 against "the receiver already copies", so `tail` is no-estimate like `head`. The chain
+  `df.sort_values(c).copy()` (1038 MiB) is above the sort model's own high (931 MiB); its copy has no estimate, so
+  the cell shows no cell range (Rule 1). Model in `copy_fillna.py` (the receiver's cost is the copy's; mask expected =
+  high, the selected fraction being unknown); no multicell dev template uses these forms (0 cells changed).
+
+- **Known, deferred to v5:** the v3 `drop_duplicates` hash term likely OVER-predicts at 8M rows (safe side). The
+  `duplicated` probe, which reuses it without the take, measured 0.58-0.68 of it (`p8_duplicated.out`). Not changed in
+  v4; the `duplicated` diagnostic (amendment 3) locates the term.
+- **`tail` copies like `head`** (pandas 3.1.1 `tail(n)` is `iloc[-n:].copy()`; measured 1.000 against "the receiver
+  already copies"): `X.tail(n).copy()` has no estimate, and its message names the reason.
+- [x] Should `duplicated`: **NOT ADOPTED, no estimate in v4.** First derivation 0.676 / 0.912 / 0.582. Step diagnostic
+  (`p8_duplicated_diag.out`): a grown table was charged 1.5x its final size (khash's realloc growth peaks at 1.25x,
+  1.5x for a key-only set); the zero-filled x4 uniques vector and a `str` key's object conversion were missing; group
+  ids and hashing are separate phases. The one allowed second derivation was committed as `b7217ae`; its retry probe
+  and output were committed as `38c9545` and run exactly once (three repeats per variant within that run):
+  (`p8_duplicated_b2.out`, fresh variants):
+  0.865, 1.127, 1.128, a `str` Series censored, and **1.294 on one dense id-like int key** (under-predicted). As
+  with value_counts, the int64 hash clusters, so table residency depends on the key values. The message names it.
+  Static coverage ceiling without it: 49.3% (amendment 3 (b): the criterion is recorded FAILED if run-time coverage
+  ends below 55%).
+
+- [x] Should `dropna`: **ADOPTED**. The committed derivation used the isna frame, row reduction, and surviving-row take.
+  Fresh OS-peak probes passed at 1.001, 1.002, 1.002 and 1.001. Updated static ceiling after the item: 49.3% without
+  `duplicated` (60.0% if every remaining item including `duplicated` lands).
+- [x] Should `reset_index`: **INVALID ATTEMPT; reverted to named no-estimate.** The committed pre-run probe had no
+  derivation, and the model formula was added only after the output. For 8M rows, the RangeIndex `drop=False` output
+  was 122.293 MiB while `moved_bytes + 8*n` implies about 183.1 MiB; `drop=True` measured 0.027 MiB while the model's
+  1% of moved bytes implies about 1.22 MiB. The probe-file diff added only the main guard, but it does not establish
+  that the post-output formula was preregistered. The attempt is invalid under amendment 6; `reset_index` is no-estimate
+  in v4 with the reason recorded in `nexus.deferred`. The previously reported 38.7% (29/75) static ceiling included
+  this now-invalid model; the corrected adopted-model static upper bound is **28.0% (21/75)**.
+- [x] Should `map`: **NOT ADOPTED, no estimate in v4.** The committed first derivation failed: dict mapper 2.127x,
+  Series mapper 1.063x, NumPy ufunc mapper 12.992x (OS peaks vs derived; `p8_map.out`). Dict and ufunc variants exceeded
+  ±15%, so `map` remains no-estimate with a named mapper-workspace reason. Updated static ceiling: **52.0% (39/75)**,
+  below 55% even if every remaining item lands. The final runtime result is recorded below; the target is unchanged.
+- [x] Should `to_numpy`: **NOT ADOPTED, no estimate in v4.** The mixed-frame conversion measured 229.004 MiB against
+  228.882 MiB derived (1.001x, within the bar). The Series and homogeneous-frame zero-copy peaks were 0.027 MiB and
+  0.035 MiB against a zero-byte derivation; a relative ±15% criterion is undefined, so the operation is not
+  measurable under the preregistered bar and remains no-estimate with a named reason. Updated static ceiling:
+  **50.7% (38/75)**, below 55% even if every remaining item lands. The final runtime result is recorded below.
+- [x] Should dict/multi-column `astype`: **NOT ADOPTED, no estimate for these forms in v4.** Ratios were 1.004
+  (two converted dict columns), 1.005 (two-column selection), and 0.336 (dict with a same-dtype target column).
+  The formula over-counts a target that does not allocate, so the item failed; single-column `df['c'].astype(...)`
+  remains unchanged. Updated static ceiling: **50.7% (38/75)**; the removed forms were not the limiting cells in the
+  census. It remains below 55% even if all later items land.
+- [x] Should `read_csv(parse_dates=...)`: **NOT ADOPTED, no estimate for this form in v4.** Paired actual peaks
+  fell from 994.734 to 587.207 MiB with one parsed date column (-407.527 MiB vs +38.147 MiB derived; -10.683x),
+  and from 994.621 to 405.336 MiB with two (-589.285 MiB vs +76.294 MiB derived; -7.724x). Parsing dates removes
+  the much larger text result; the additive positive term is contradicted. The then-current static ceiling was
+  50.7% (38/75); see the corrected final upper bound below.
+- [x] Easy win `numpy.zeros`: **NOT ADOPTED, no estimate in v4.** Three OS peaks were 0.031 MiB versus derived
+  expected peaks of 152.588 / 114.441 / 114.441 MiB (ratios 0.00020 / 0.00027 / 0.00027). The array remains virtual
+  until written; the cell alone has no measurable incremental peak, so the estimate failed. Updated static ceiling:
+  **49.3% (37/75)**, below the unchanged 55% target.
+- [x] Easy win `numpy.empty`: **NOT ADOPTED, no estimate in v4.** Three OS peaks were 0.031 MiB against derived
+  allocations of 244.141 / 244.141 / 183.105 MiB (ratios 0.00013 / 0.00013 / 0.00017); the pages remain virtual until
+  written. Named no-estimate. Updated static ceiling: **49.3% (37/75)**.
+- [x] Easy win `numpy.linspace`: **NOT ADOPTED, no estimate in v4.** Ratios were 1.0002 (40M float64), 3.0003
+  (60M float32), and 1.0003 (30M float64). The float32 variant exceeded ±15%; it has three live arrays rather than
+  the derived single output allocation. Updated static ceiling: **48.0% (36/75)**, below the unchanged 55% target.
+- [x] Easy win `numpy.array`: **ADOPTED for known numeric ndarray inputs with `copy=True`** under amendment 5.
+  Three fresh copy variants measured/derived at 1.00009 (float64), 1.00012 (float32 conversion), and 1.00019
+  (int32 conversion), all within ±15%. Literal/unknown iterables and `copy=False` stay no-estimate. Static ceiling
+  remains **48.0% (36/75)** because the notebook census's one `numpy.array` call is not a known-array copy form.
+- [x] Easy win `sample`: **NOT ADOPTED, no estimate in v4.** Fresh 15M-row variants measured/derived at 3.006
+  (10% without replacement), 2.065 (50% without replacement), and 2.064 (all rows with replacement). Random index
+  selection adds workspace not represented by selected data bytes. Updated static ceiling: **46.7% (35/75)**.
+- [x] Easy win `describe`: **NOT ADOPTED, no estimate in v4.** Two numeric columns measured 358.164 MiB against
+  228.882 MiB derived (1.565x, outside ±15%); one numeric plus one str measured 358.109 / 343.323 MiB (1.043x);
+  the two-str variant was censored at a 229.965 MiB bound against 457.764 MiB derived. Both a bar miss and a
+  dtype-specific unmeasurable variant fail the item. The corrected final adopted-model static upper bound is
+  **28.0% (21/75)**, below the unchanged 55% target (`phase8/coverage_ceiling.md`).
+
+- [x] Runtime dev coverage (five `real_notebooks/` notebooks, Tier 2 harness, local dev datasets): **14/75 = 18.7%**
+  of cells with at least one detected operation had every operation estimated; there were no analysis errors. All 75
+  operation-bearing cells were analyzed. Notebook1 and notebook4 used `--max-failures 20` to reach later cells after
+  consecutive execution errors (7 and 15 cell errors respectively); notebook1's import cell raised
+  `ModuleNotFoundError`, and notebook4 contains the source syntax error `df15.head()m`. The other notebooks had 1, 1,
+  and 0 cell errors. The dev coverage criterion is **FAILED** under amendment 3(b); the 55% target is unchanged.
+  The adopted-model static upper bound is **21/75 = 28.0%**. For headless/local inputs, notebook4's inline display
+  magic was disabled, Colab uploads were mapped to the pinned local CSVs, and notebook5's KaggleHub loader call was
+  preserved while its adapter read the pinned local CSV; no network access was used. Runtime logs are in ignored
+  `benchmarks/results/phase8-dev-runtime/`.
+
+### Information-only probe ratios (no generic bound adopted)
+
+For each failed/deferred frame-referencing form below, the ratio is stored measured peak divided by the referenced
+frame/Series payload bytes, using the probe's known row counts and dtypes; no probe was rerun for this calculation.
+String probes whose exact `memory_usage(deep=True)` was not stored are not used to increase a numeric-frame maximum.
+Censored measurements are bounds, not point ratios.
+
+| Failed/deferred form | Worst measured peak / input bytes | Stored evidence |
+|---|---:|---|
+| `value_counts` | **3.95x** (362.0 / 91.55 MiB; 12M int64 Series) | [value_counts probe](./benchmarks/phase8/probes/p8_value_counts_diag.out) |
+| `duplicated` | **4.02x** (429.82 / 106.81 MiB; 7M-row, two-int64 frame); dense-int variant 1.76x | [second derivation probe](./benchmarks/phase8/probes/p8_duplicated_b2.out) |
+| `copy` on `head` / `tail` receivers | **up to 1.25x** using the stored 8-byte/column payload denominator; `tail` on a numeric frame was 1.00x | [copy receiver probes](./benchmarks/phase8/probes/p8_copy_receivers.out), [measurement fixes](./benchmarks/phase8/probes/p8_copy_receivers_fix.out) |
+| `reset_index` | **1.002x** (122.293 / 122.070 MiB; RangeIndex, `drop=False`) | [reset-index probe](./benchmarks/phase8/probes/p8_reset_index.out) |
+| `Series.map` | **12.99x** (2,478.11 / 190.74 MiB; 25M int64 Series, NumPy ufunc); dict mapper 2.13x | [map probe](./benchmarks/phase8/probes/p8_map.out) |
+| `to_numpy` | **1.001x** (229.004 / 228.882 MiB; mixed numeric frame); zero-copy variants were about 0.0002x | [to_numpy probe](./benchmarks/phase8/probes/p8_to_numpy.out) |
+| dict / multi-column `astype` | **0.335x** (92.047 / 274.658 MiB; 12M-row, three-numeric-column frame) | [astype probe](./benchmarks/phase8/probes/p8_astype_multi.out) |
+| `sample` | **2.064x** (472.344 / 228.882 MiB; 15M-row, two-numeric-column frame) | [sample probe](./benchmarks/phase8/probes/p8_sample.out) |
+| `describe` | **1.565x** (358.164 / 228.882 MiB; 15M-row, two-numeric-column frame) | [describe probe](./benchmarks/phase8/probes/p8_describe.out) |
+| `read_csv(parse_dates=...)` | N/A: the operation reads a file, not a referenced frame | [parse-dates probe](./benchmarks/phase8/probes/p8_read_csv_dates.out) |
+| `numpy.zeros`, `numpy.empty`, `numpy.linspace` | N/A: no referenced input frame; observed allocations do not establish an input-frame multiplier | [zeros](./benchmarks/phase8/probes/p8_numpy_zeros.out), [empty](./benchmarks/phase8/probes/p8_numpy_empty.out), [linspace](./benchmarks/phase8/probes/p8_numpy_linspace.out) |
+| Python-function `apply` / `map`, `to_csv`, `join`, `get_dummies`, `corr`; `copy` on an unmodelled receiver | N/A: deliberately deferred or no stored isolated peak/input pair | Deferred-operation policy and `copy` receiver findings above |
+
+**Worst across the measured frame-referencing variants: 12.99x (`Series.map` with a NumPy ufunc).** This is information
+only, not a safe bound: observed ratios range from near zero for zero-copy conversions to nearly 13x for one
+data-dependent mapper, with hash-table operations also varying by key distribution. A generic `k × input bytes`
+fallback does not look stable or defensible and is **not adopted**. The measured `sort_values(...).copy()` peak is for
+the whole chain, and the unmodelled `dropna().copy()` regression has no stored isolated input/peak pair; neither is
+misreported as an operation-specific ratio.
+
+### Phase 8c status
+
+The amendment-7 fallback is intentionally visible and conservative: a cooperative Tier 1 statistics deadline records
+the flag and reason, returns the same operation's Tier 0 estimate (including Tier 0 high under policy B), and computes
+risk from that estimate. The firing remains a failure of item T and counts as not estimated in all coverage metrics.
+Timeouts outside the cooperative Tier 1 path retain the interceptor's fail-safe behavior. Partial cells display only
+`at least X (covers k of n operations)`, without a full-cell upper bound; risk remains UNKNOWN unless the covered part
+itself proves WARN or HIGH_RISK. The new multicell split is metadata-only: 32 held-out configurations / 64 cells across
+16 templates, including seven templates designed to produce partial cells; no inputs have been generated and it has
+not been run.
+
+### Phase 8d freeze verification
+
+- [x] Preserve v1-v3 manifests and generate the v4 manifest with full SHA-256 hashes for all 50 frozen files: 15 changed,
+  4 added, 31 unchanged from v3. Document the frozen scope, v4 dev limitations, deferred-operation reasons, and the
+  stored idle fallback shares (1M: 11/39; 3M: 9/21; 10M: 24/24).
+- [x] Centralize the current freeze target in `benchmarks.frozen.FROZEN_TAG`; update current held-out entry points to use
+  that target while retaining explicit historical tags for old multicell groups.
+- [x] Add per-operation Tier 1 hard-deadline fallback shares to the val-v5 validation report and update the runbook:
+  pilot first, same output folder for full/resume, no recalibration between.
+- [x] `ruff check .` passed; changed Python files passed `ruff format --check`.
+- [x] Full pytest on mains: 903 passed, 2 tag-dependent freeze tests skipped before the v4 tag exists.
+- [x] Fresh GitHub clone checked out `models-frozen-v4` with v1-v4 tags present: guard reported 50 frozen files and
+  `problems: []`; `tests/test_timecal.py` and `tests/test_realworld_harness.py` passed (27 passed, 0 skipped).
+- [x] Annotated `models-frozen-v4` on commit `dceab6d1a545f7fc2c3e98e87b2cdbd2a1c40f0b`; the guard from the tag
+  reported 50 files and `problems: []`. The tag was not moved.
+- [x] Push `v4-dev` and `models-frozen-v4` to `origin`. This final PROGRESS-only record is outside the frozen file set.
+
+## Phase 9 — Documentation and release preparation
+
+- [x] Write the release README, architecture guide, model-writing tutorial, evidence-first evaluation, project summary,
+  changelog, and contribution guide. Mark DEV, HELD-OUT, FAILED, and INCONCLUSIVE outcomes and link evaluation claims
+  to benchmark reports.
+- [x] Add a synthetic headless notebook demonstrating safe and risky cells, drivers, an opt-in re-estimated
+  suggestion, a partial-cell lower bound, and predicted-versus-measured results. Run it from a clean environment
+  against the built wheel; notebook outputs remain cleared.
+- [x] Set package metadata and runtime version to 0.4.0, include calibration JSON resources in distributions, and
+  build both sdist and wheel. Install the wheel into a clean virtual environment and verify the demo end to end.
+- [x] Validation: `pytest -q` passed (915 tests); `ruff check .` passed; changed-file formatting checks passed.
+  Repository-wide `ruff format --check .` still reports eight untouched legacy files, including frozen model files.
+- [x] Run `python -m benchmarks.frozen check`: 50 files checked, `problems: []`.
+
+### Decisions and remaining work
+
+- The Phase 8 v4 report explicitly lists six censored cells and four `deletes_v4` cells killed before measurement.
+  It does not label those kills as execution errors; the evaluation documentation preserves this distinction.
+- No TestPyPI/PyPI upload was made. TestPyPI installation commands are in the changelog.
+- The fresh Phase 8b notebook set, `val-v5`, and `test-v2` remain unopened and unrun. The Phase 8b collection-owner
+  fields still need completion before that future evaluation.
+
+### Phase 9 follow-up: cwd-independent demo and Tier 1 hook check
+
+- [x] Move the synthetic fixtures into the installed `nexus.demo_support` module and keep
+  `examples/demo_support.py` as a compatibility import. The notebook no longer changes or depends on its working
+  directory; run it from the repository root, `examples/`, and an external temporary directory.
+- [x] Make the `select_columns` opt-in explicit in the notebook and README, including the Phase 5b held-out
+  over-prediction (46-59% predicted versus 13-19% measured). State that the risk headroom is simulated and the
+  predicted-versus-measured comparison is one example, not validation.
+- [x] Document the limitation for same-cell intermediate frames. No frozen model file was changed.
+- [x] Investigate a 5M-row DataFrame already bound in the kernel: the live hook detected `drop_duplicates` and
+  produced a Tier 1 estimate for synthetic numeric frames with 1, 4, and 8 columns. The exact user-reported frame
+  could not be reproduced from row count alone; shape and dtype may affect the 250 ms budget.
+- [x] Validation: `pytest -q` passed (915 tests), `ruff check .` passed, changed demo files passed formatting, and
+  the headless notebook passed from all three working directories. Final freeze guard is run after this update.

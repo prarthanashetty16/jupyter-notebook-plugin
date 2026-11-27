@@ -1,0 +1,13 @@
+pandas 3.1.1, numpy 2.5.5; bar +-15%
+| variant | rows | measured MiB | derived MiB | ratio | within bar |
+|---|---|---|---|---|---|
+| A scalar 'x', 1 col, NA 10% | 20000000 | 229 | 229 | 1.000 | yes |
+| A scalar 'x', 1 col, NA 90% | 20000000 | 229 | 229 | 1.000 | yes |
+| A scalar 'x', 1 col, NA 0% | 20000000 | censored | 0 | - | no |
+| A scalar 'x', 1 col, long strings | 20000000 | 229 | 229 | 1.000 | yes |
+| A scalar 'x', 3 cols | 8000000 | 214 | 214 | 1.001 | yes |
+| A dict {'s0': 'x'}, 3 cols | 20000000 | censored | 229 | - | no |
+| A Series df['s0'].fillna('x') | 20000000 | 229 | 229 | 1.001 | yes |
+| B scalar 0, 1 col, NA 10% | 10000000 | 210 | 277 | 0.759 | NO |
+| B scalar 0, 1 col, long strings | 10000000 | 210 | 277 | 0.759 | NO |
+| B scalar 0, 3 cols | 6000000 | 218 | 257 | 0.845 | NO |

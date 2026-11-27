@@ -117,7 +117,9 @@ def test_copy_and_fillna_follow_the_copy_semantics():
     assert full.ram_expected == 2 * 8 * n + 4 * 2 * n  # + 4 bool masks (Block.fillna -> where)
     one = est("df.fillna({'a': 0})")
     assert one.ram_expected == 8 * n + 4 * n
-    assert est("df_str.fillna(0)") is None  # extension (str) column: not derived, refused
+    # v4 item (1a): the str column (no missing value) only enters the high, at its 21 B/row coercion path
+    s_est = est("df_str.fillna(0)")
+    assert s_est.ram_expected == full.ram_expected and s_est.ram_high == 2 * 8 * n + 8 * n + 13 * n
     assert est("df['i'].fillna(0)") is None or est("df['i'].fillna(0)").ram_high == 0  # int: no NA
     for refused in ("df.fillna(0, inplace=True)", "df.fillna(method='ffill')", "df.fillna(x)",
                     "df.loc[:5].copy()"):  # fmt: skip

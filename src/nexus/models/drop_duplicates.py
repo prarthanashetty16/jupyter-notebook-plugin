@@ -156,11 +156,15 @@ class DropDuplicatesModel(OperationModel):
         cols = [c for c in cols if c in df.columns]
         rows = min(stats.DEFAULT_SAMPLE_ROWS, max(30_000, 1_500_000 // len(cols)))
         survivors = stats.distinct_rows(
-            [df[c] for c in cols], rows=rows, deadline=ctx.deadline, share=0.45
+            [df[c] for c in cols], rows=rows, deadline=ctx.deadline, share=0.45, adaptive=False
         )
         per_key = [
             stats.distinct_count(
-                df[c], rows=min(rows, 50_000), deadline=ctx.deadline, share=1.0 / (len(cols) + 1)
+                df[c],
+                rows=min(rows, 50_000),
+                deadline=ctx.deadline,
+                share=1.0 / (len(cols) + 1),
+                adaptive=False,
             )
             for c in cols
         ]

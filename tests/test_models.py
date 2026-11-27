@@ -100,6 +100,38 @@ def test_ram_grows_with_input_size(pipeline):
     assert large.estimate.time_expected > 5 * small.estimate.time_expected
 
 
+def test_dropna_estimate(pipeline):
+    df = frame(10_000)
+    df["f0"] = np.linspace(0.0, 1.0, len(df))
+    df.loc[df.index[:1000], "f0"] = np.nan
+    estimate = estimates(pipeline, "df.dropna(subset=['f0'])", {"df": df})["dropna"]
+    assert estimate.estimate.ram_low > 0
+    assert estimate.estimate.ram_low <= estimate.estimate.ram_expected
+    assert estimate.estimate.ram_expected <= estimate.estimate.ram_high
+
+
+def test_v4_output_and_easy_estimates(pipeline):
+    df = frame(10_000)
+    assert "map" not in estimates(pipeline, "df['s0'].map({'v0': 1})", {"df": df})
+    assert "to_numpy" not in estimates(pipeline, "df.to_numpy()", {"df": df})
+    assert "sample" not in estimates(pipeline, "df.sample(n=100)", {"df": df})
+    assert "describe" not in estimates(pipeline, "df.describe()", {"df": df})
+    assert "numpy.zeros" not in estimates(pipeline, "np.zeros((100, 100))", {"np": np})
+    assert "numpy.empty" not in estimates(pipeline, "np.empty((100, 100))", {"np": np})
+    assert "numpy.linspace" not in estimates(pipeline, "np.linspace(0, 1, 100)", {"np": np})
+
+
+def test_numpy_array_estimates_known_array_copy(pipeline):
+    source = np.arange(1000, dtype=np.float64)
+    estimated = estimates(pipeline, "np.array(source, copy=True, dtype='float32')", {"np": np, "source": source})
+    assert "numpy.array" in estimated
+    assert estimated["numpy.array"].estimate.ram_expected == 4 * len(source)
+
+
+def test_dict_astype_remains_unestimated(pipeline):
+    assert estimates(pipeline, "df.astype({'a': 'float32'})", {"df": frame()}) == {}
+
+
 @pytest.mark.parametrize(
     ("source", "ns"),
     [

@@ -4,33 +4,22 @@ Never executes cell code, never reads data, records nothing: it prints Markdown 
 on a dev notebook set without turning it into measured data; it must still NOT be run on a held-out batch before the
 models are frozen (the census itself reveals which operations the batch exercises).
 
-Per operation: covered (a v3 model matches and has no argument limits), partial (a model exists but only for some
-arguments / dtypes, which a static pass cannot always decide), not covered (no model).
+Per operation: name-covered (at least one registry model matches the operation name) or not covered. This intentionally
+ignores arguments, receiver forms and live state, so its cell share is an OVERSTATING ceiling on run-time coverage.
 
-Usage: ``python tools/static_ops.py <folder of .ipynb>`` (e.g. ``real_notebooks``).
+Usage: ``python tools/static_ops.py <folder of .ipynb> --model-version <tag>``.
 """
 
 from __future__ import annotations
 
+import argparse
 import ast
 import json
-import sys
 from collections import Counter
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-
-# v3 models whose coverage depends on arguments or dtypes (docs/benchmarks/phase7b/README.md)
-PARTIAL = {
-    "apply": "only Series.apply(np.<ufunc>)",
-    "set_index": "only one numeric column key",
-    "fillna": "not on text columns; scalar or dict value",
-    "pandas.read_csv": "not parse_dates / text dtype / chunksize / low_memory=False",
-    "astype": "single column df['c'].astype(...)",
-    "merge": "two known frames",
-    "copy": "known frame",
-}
 
 
 def notebook_alias_namespace(cells: list[str]) -> dict[str, object]:
@@ -51,22 +40,17 @@ def notebook_alias_namespace(cells: list[str]) -> dict[str, object]:
 
 
 def classify(op, registry) -> str:  # noqa: ANN001
-    """Coverage status of one analysed operation under the loaded registry."""
-    models = registry.find(op)
-    if not models:
-        return "not covered"
-    if op.name == "apply":
-        arg = op.args[0] if op.args else op.kwargs.get("func")
-        return (
-            "covered"
-            if isinstance(arg, str) and str(arg).startswith(("np.", "numpy."))
-            else "not covered"
-        )
-    return "partial" if op.name in PARTIAL else "covered"
+    """Whether an operation name has a registered model, ignoring its arguments."""
+    return "covered" if registry.find(op) else "not covered"
 
 
-def main() -> None:
-    """Print one table per notebook and a totals table."""
+def main(argv: list[str] | None = None) -> None:
+    """Print the name-only, overstating coverage ceiling for a notebook folder."""
+    ap = argparse.ArgumentParser()
+    ap.add_argument("folder", type=Path)
+    ap.add_argument("--model-version", required=True)
+    args = ap.parse_args(argv)
+
     from nexus.analyzer import analyze_cell, strip_magics
     from nexus.pipeline import load_builtin_models
     from nexus.registry import default_registry
@@ -74,7 +58,7 @@ def main() -> None:
     load_builtin_models()
     totals = {"code": 0, "with_op": 0, "fully": 0}
     all_ops: Counter = Counter()
-    for path in sorted(Path(sys.argv[1]).glob("*.ipynb")):
+    for path in sorted(args.folder.glob("*.ipynb")):
         nb = json.loads(path.read_text(encoding="utf-8"))
         cells = [
             "".join(c.get("source", []))
@@ -101,18 +85,21 @@ def main() -> None:
         totals["code"] += len(cells)
         totals["with_op"] += with_op
         totals["fully"] += fully
-        print(f"\n### {path.name}: {len(cells)} code cells, {with_op} with a pandas/NumPy operation, "
-              f"{fully} with every operation at least partially modelled")  # fmt: skip
-        print("| operation | cells' calls | NEXUS v3 |\n|---|---|---|")
+        print(f"\n### {path.name}: {len(cells)} code cells, {with_op} with an operation, "
+              f"{fully} name-covered (OVERSTATING)")  # fmt: skip
+        print("| operation | calls | name match |\n|---|---|---|")
         for (name, st), n in sorted(ops_count.items(), key=lambda x: (-x[1], x[0])):
             all_ops[(name, st)] += n
-            note = f" ({PARTIAL[name]})" if st == "partial" else ""
-            print(f"| `{name}` | {n} | {'**NOT COVERED**' if st == 'not covered' else st + note} |")
-    print(f"\n### Totals: {totals['code']} code cells, {totals['with_op']} with an operation, {totals['fully']} with every "
-          "operation at least partially modelled")  # fmt: skip
-    print("| operation | calls | NEXUS v3 |\n|---|---|---|")
+            print(f"| `{name}` | {n} | {'yes' if st == 'covered' else '**NO**'} |")
+    share = totals["fully"] / totals["with_op"] if totals["with_op"] else 0.0
+    print(f"\nModel version: `{args.model_version}`.")
+    print(f"Static name-match share (OVERSTATING): {totals['fully']}/{totals['with_op']} "
+          f"({share:.1%}); it ignores arguments, receivers, runtime state and deadlines.")  # fmt: skip
+    print(f"\n### Totals: {totals['code']} code cells, {totals['with_op']} with an operation, "
+          f"{totals['fully']} name-covered (OVERSTATING)")  # fmt: skip
+    print("| operation | calls | name match |\n|---|---|---|")
     for (name, st), n in sorted(all_ops.items(), key=lambda x: (-x[1], x[0])):
-        print(f"| `{name}` | {n} | {'**NOT COVERED**' if st == 'not covered' else st} |")
+        print(f"| `{name}` | {n} | {'yes' if st == 'covered' else '**NO**'} |")
 
 
 if __name__ == "__main__":

@@ -172,6 +172,7 @@ def test_slow_analysis_times_out_silently(shell, capsys):
     assert result.success
     assert elapsed < 0.8
     assert session.last_report is None
+    assert session.deadline_firings == 1
     assert "[nexus]" not in capsys.readouterr().out
     assert session._active == 0 and session._in_hook is False
 

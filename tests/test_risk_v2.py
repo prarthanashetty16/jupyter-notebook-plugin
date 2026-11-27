@@ -55,3 +55,30 @@ def test_unknown_names_the_uncovered_operation():
     full = assess(rep)
     assert full is not None
     assert full.risk is not RiskClass.UNKNOWN or "df['a'].value_counts()" in full.reason
+
+
+def test_partial_cell_displays_only_covered_lower_bound():
+    estimate = _item("sort_values", False, tier=0).estimate
+    r = classify(
+        [estimate],
+        headroom=10**12,
+        uncovered=1,
+        uncovered_ops="`df['a'].value_counts()`",
+        covered_operations=1,
+        total_operations=2,
+    )
+
+    text = r.format()
+    assert r.risk is RiskClass.UNKNOWN
+    assert "covered part: at least" in text
+    assert "covers 1 of 2 operations" in text
+    assert "no upper bound for the full cell" in text
+    assert "predicted peak" not in text
+    assert "time: about" not in text
+
+
+def test_partial_cell_can_still_be_high_risk():
+    estimate = _item("sort_values", False, tier=0).estimate
+    r = classify([estimate], headroom=0, uncovered=1, covered_operations=1, total_operations=2)
+    assert r.risk is RiskClass.HIGH_RISK
+    assert "covered part: at least" in r.format()

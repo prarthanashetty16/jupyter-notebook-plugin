@@ -120,6 +120,11 @@ class AstypeModel(OperationModel):
         df = u.frame(state, op.receiver)
         column = _column_name(op)
         target = op.args[0] if op.args else op.kwargs.get("dtype")
+        recv = getattr(getattr(op.node, "func", None), "value", None)
+        if isinstance(target, dict) or (
+            isinstance(recv, ast.Subscript) and isinstance(recv.slice, (ast.List, ast.Tuple))
+        ):
+            raise NoEstimateError("multi-column/dict astype derivation failed its probe")
         if column is None or column not in df.dtypes or not isinstance(target, str):
             raise NoEstimateError("column or target dtype not statically known")
         if target not in ("str", "object", "category"):
@@ -150,7 +155,7 @@ class AstypeModel(OperationModel):
             return None
         target, source = features["target"], features["source_dtype"]
         if target == "category":
-            d = stats.distinct_count(series, deadline=ctx.deadline)
+            d = stats.distinct_count(series, deadline=ctx.deadline, adaptive=False)
             sc = stats.hash_scatter(series, text=u.is_text(source), deadline=ctx.deadline)
             return {
                 "distinct_fraction": d.value / n,
@@ -163,7 +168,7 @@ class AstypeModel(OperationModel):
         if target == "str" and not u.is_text(source) and kind != "other":
             pos = stats.sample_positions(n, 100_000)
             sample = stats.take(series, pos)
-            ctx.deadline.check()
+            ctx.check_deadline()
             as_str = sample.astype(str)
             present = as_str.notna().to_numpy()  # pandas 3 keeps a null as a null, not as "nan"
             if not present.any():

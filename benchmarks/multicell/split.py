@@ -15,7 +15,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
-from benchmarks.multicell import cases, cases_v2, cases_v3
+from benchmarks.multicell import cases, cases_v2, cases_v3, cases_v4
 
 SALT = "phase6c-multicell-v1:"
 SPLIT_FILE = Path(__file__).with_name("split_v1.json")
@@ -25,12 +25,16 @@ SPLIT_FILE_V2 = Path(__file__).with_name("split_v2.json")
 # v3 (Phase 7c, amendment 1 of the Phase 7 pre-registration): the ENLARGED group, TWO held out per template
 SALT_V3 = "phase7c-multicell-v3:"
 SPLIT_FILE_V3 = Path(__file__).with_name("split_v3.json")
+# v4 (Phase 8c Amendment 7): new pre-registered group with two held-out configurations per template
+SALT_V4 = "phase8c-multicell-v4:"
+SPLIT_FILE_V4 = Path(__file__).with_name("split_v4.json")
 _VERSIONS = {
     1: (SALT, SPLIT_FILE, cases),
     2: (SALT_V2, SPLIT_FILE_V2, cases_v2),
     3: (SALT_V3, SPLIT_FILE_V3, cases_v3),
+    4: (SALT_V4, SPLIT_FILE_V4, cases_v4),
 }
-HELD_PER_TEMPLATE = {1: 1, 2: 1, 3: 2}
+HELD_PER_TEMPLATE = {1: 1, 2: 1, 3: 2, 4: 2}
 
 
 def all_configs(version: int = 1) -> list:
@@ -95,3 +99,24 @@ def load(path: Path | None = None, version: int = 1) -> MulticellSplit:
     if set(dev) | set(held) != current or set(dev) & set(held):
         raise ValueError("multicell split no longer matches the configurations")
     return MulticellSplit(int(data["version"]), tuple(dev), tuple(held), data["digest"])
+
+
+# Held-out parts whose one evaluation is done and that are dev data since (PROGRESS, Test-split access log):
+# v1 since 2026-11-22, v2 and v3 since 2026-11-24. A future group is NOT listed here until its evaluation is done.
+CONSUMED = (1, 2, 3)
+
+
+def consumed_heldout_results(version: int, reason: str) -> Path:
+    """Path of a CONSUMED held-out part's results, for dev tooling; every call is logged in the group's access log.
+
+    Refuses a group that is not consumed, so dev tools never read a protected held-out part.
+    """
+    if version not in CONSUMED:
+        raise PermissionError(f"multicell v{version} held-out part is not consumed: protected")
+    from benchmarks.multicell.run import SUITES, _log_access
+
+    _mod, results, _cache, log = SUITES[version]
+    _log_access(
+        f"READ consumed held-out multicell v{version} rows (dev data) | reason: {reason}", log
+    )
+    return results / "heldout" / "results.jsonl"

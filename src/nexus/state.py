@@ -60,6 +60,9 @@ class FrameDescriptor(Descriptor):
     # text, the 8-byte pointers only. Excludes the string objects (shared, never copied) and the
     # index. None for descriptors built without it; ``moved_bytes`` then falls back to ``nbytes``.
     shallow_bytes: int | None = None
+    # v4 item (1b): a frame made in the cell by a deep ``copy()`` of a kernel frame holds that frame's values, so
+    # Tier 1 statistics may read the kernel object of this name (None: no such object, statistics are skipped)
+    stats_alias: str | None = None
 
     @property
     def moved_bytes(self) -> int:
@@ -159,10 +162,9 @@ def frame_block_info(df: Any) -> tuple[int | None, bool | None]:
 
 
 class StateInspector:
-    """Describe variables from a namespace within a hard time budget."""
+    """Describe variables within deterministic row and column caps."""
 
-    def __init__(self, *, time_budget_s: float = 0.1, sample_rows: int = 10_000) -> None:
-        self._budget_s = time_budget_s
+    def __init__(self, *, sample_rows: int = 10_000) -> None:
         self._sample_rows = sample_rows
         self._max_listed_columns = 1000
 
@@ -176,14 +178,12 @@ class StateInspector:
     ) -> Inspection:
         """Describe ``names`` (DataFrame/Series/ndarray only) and ``paths`` (files on disk).
 
-        Unknown names and other object types are ignored. Names that could not be described
-        within the budget, or whose description failed, are listed in ``skipped``.
+        Unknown names and other object types are ignored. Names whose description failed are
+        listed in ``skipped``; an expired hard deadline is propagated to the interceptor.
         """
         t0 = time.perf_counter()
-        own = Deadline(self._budget_s)
 
         def check() -> None:
-            own.check()
             if deadline is not None:
                 deadline.check()
 
@@ -196,8 +196,7 @@ class StateInspector:
                 obj = namespace.get(name, _MISSING)
                 desc = None if obj is _MISSING else self._describe(name, obj, check)
             except TimeoutError:
-                skipped.append(name)
-                continue
+                raise
             except Exception:
                 log.debug("nexus: could not describe %r", name, exc_info=True)
                 skipped.append(name)
@@ -208,8 +207,7 @@ class StateInspector:
             try:
                 check()
             except TimeoutError:
-                skipped.append(path)
-                continue
+                raise
             file_desc = describe_file(path)
             if file_desc is not None:
                 files[path] = file_desc

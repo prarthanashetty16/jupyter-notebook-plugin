@@ -61,7 +61,7 @@ ACTUAL_FIELDS = [
 PREDICTION_FIELDS = [
     "point_id", "tier", "status", "error", "has_estimate", "model", "ram_low", "ram_expected",
     "ram_high", "time_low", "time_expected", "time_high", "confidence", "drivers", "features",
-    "overhead_cold_s", "overhead_warm_s", "analysis_peak_bytes", "inspected_bytes", "skipped",
+    "hard_deadline_fired", "overhead_cold_s", "overhead_warm_s", "analysis_peak_bytes", "inspected_bytes", "skipped",
     "other_ops", "split", *ENV_FIELDS,
 ]  # fmt: skip
 SKIPPED_CAP = "skipped_cap"
@@ -316,10 +316,16 @@ def run_actual(
 
 
 def run_prediction(
-    point: GridPoint, tier: int, source: str, cache_dir: Path, cap: int, env: dict[str, Any]
+    point: GridPoint,
+    tier: int,
+    source: str,
+    cache_dir: Path,
+    cap: int,
+    env: dict[str, Any],
+    hard_deadline_s: float | None = None,
 ) -> dict[str, Any]:
     m = measure_call(
-        functools.partial(workers.predict, tier=tier),
+        functools.partial(workers.predict, tier=tier, hard_deadline_s=hard_deadline_s),
         setup=workers.build_state,
         setup_args=(_payload(point, source, cache_dir),),
         summarize=workers.as_info,
@@ -327,10 +333,12 @@ def run_prediction(
         max_rss_bytes=cap,
     )
     row: dict[str, Any] = {"point_id": point.id, "tier": tier, "status": m.status,
-                           "error": (m.error or "")[:500], "has_estimate": False, "split": point.split, **env}  # fmt: skip
+                           "error": (m.error or "")[:500], "has_estimate": False,
+                           "hard_deadline_fired": False, "split": point.split, **env}  # fmt: skip
     if m.status != OK:
         return row
     info = m.info
+    row["hard_deadline_fired"] = bool(info.get("hard_deadline_fired", False))
     row.update(
         overhead_cold_s=info["overhead_cold_s"], overhead_warm_s=info["overhead_warm_s"],
         analysis_peak_bytes=m.delta_bytes if m.delta_bytes is not None else "",
@@ -340,8 +348,9 @@ def run_prediction(
     row["other_ops"] = json.dumps([o for o in info["ops"] if o != point.op])
     if matching:
         e = matching[0]
-        row.update(has_estimate=True, model=e["model"], drivers=json.dumps(e["drivers"]),
+        row.update(has_estimate=not row["hard_deadline_fired"], model=e["model"], drivers=json.dumps(e["drivers"]),
                    features=json.dumps(e["features"], default=str))  # fmt: skip
+        row["estimate_tier"] = e["tier"]
         for key in ("ram_low", "ram_expected", "ram_high", "time_low", "time_expected",
                     "time_high", "confidence"):  # fmt: skip
             row[key] = e[key]

@@ -150,6 +150,8 @@ class ReadCsvModel(OperationModel):
         return op.name == "pandas.read_csv"
 
     def features(self, op: DetectedOp, state: Inspection) -> dict[str, Any]:
+        if "parse_dates" in op.kwargs:
+            raise NoEstimateError("parse_dates peak was contradicted by the v4 probe")
         paths = [p for p in candidate_paths(op) if p in state.files]
         if not paths:
             raise NoEstimateError("file path unknown or not found on disk")
@@ -197,6 +199,11 @@ class ReadCsvModel(OperationModel):
         ):
             return None
         out: dict[str, Any] = {}
+        if "parse_dates" in kw:
+            parsed = kw["parse_dates"]
+            if not (isinstance(parsed, (bool, list, tuple))):
+                return None
+            out["parse_dates"] = parsed
         sep = kw.get("sep", kw.get("delimiter", ","))
         if not isinstance(sep, str) or len(sep) != 1 or ord(sep) > 127:
             return None  # sniffing (None), regex or multi-character separators: the python engine

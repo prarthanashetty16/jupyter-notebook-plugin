@@ -21,6 +21,7 @@ from benchmarks.evaluate import (
     md_table,
     oom_table,
     overhead_table,
+    tier1_fallback_markdown,
     write_report,
 )
 from benchmarks.runner import ACTUAL_FIELDS, PREDICTION_FIELDS, ResultStore
@@ -194,6 +195,52 @@ def test_md_table_handles_nan_and_percent():
     out = md_table(pd.DataFrame({"a": [0.5, math.nan], "b": ["x", "y"]}), ("a",))
     assert "50%" in out and "–" in out
     assert md_table(pd.DataFrame()) == "_no data_\n"
+
+
+def test_tier1_fallback_report_is_per_operation_and_excludes_worker_failures():
+    df = pd.DataFrame(
+        [
+            {
+                "point_id": "m1",
+                "op": "merge",
+                "tier": 1,
+                "pred_status": "ok",
+                "hard_deadline_fired": "True",
+            },
+            {
+                "point_id": "m2",
+                "op": "merge",
+                "tier": 1,
+                "pred_status": "ok",
+                "hard_deadline_fired": "False",
+            },
+            {
+                "point_id": "m3",
+                "op": "merge",
+                "tier": 1,
+                "pred_status": "memory_limit",
+                "hard_deadline_fired": "False",
+            },
+            {
+                "point_id": "a1",
+                "op": "astype",
+                "tier": 1,
+                "pred_status": "ok",
+                "hard_deadline_fired": "False",
+            },
+            {
+                "point_id": "m1",
+                "op": "merge",
+                "tier": 0,
+                "pred_status": "ok",
+                "hard_deadline_fired": "False",
+            },
+        ]
+    )
+    report = tier1_fallback_markdown(df)
+    assert "| merge | 2 | 1 | 50% |" in report
+    assert "| astype | 1 | 0 | 0% |" in report
+    assert "excluded from the denominator" in report and "`merge` 1" in report
 
 
 def _write(path: Path, fields, rows):

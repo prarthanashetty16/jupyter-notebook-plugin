@@ -380,6 +380,42 @@ def md_table(df: pd.DataFrame, pct: tuple[str, ...] = ()) -> str:
     return head + body
 
 
+def tier1_fallback_markdown(df: pd.DataFrame) -> str:
+    """Report cooperative Tier 1 deadline fallbacks among successful Tier 1 predictions."""
+    lines = ["## Tier 1 hard-deadline fallback share by operation\n"]
+    if df.empty or "hard_deadline_fired" not in df:
+        return "\n".join(lines + ["_no Tier 1 prediction data_\n"])
+
+    tier1 = df[df["tier"] == 1].copy()
+    if tier1.empty:
+        return "\n".join(lines + ["_no Tier 1 prediction data_\n"])
+    tier1["hard_deadline_fired"] = tier1["hard_deadline_fired"].astype(str).str.lower().eq("true")
+    successful = tier1[tier1["pred_status"] == "ok"]
+    if successful.empty:
+        lines.append("_no successful Tier 1 predictions_\n")
+    else:
+        summary = (
+            successful.groupby("op", dropna=False)
+            .agg(
+                points=("point_id", "nunique"),
+                fallbacks=("hard_deadline_fired", "sum"),
+            )
+            .reset_index()
+        )
+        summary["fallback share"] = summary["fallbacks"] / summary["points"]
+        summary = summary.rename(columns={"op": "operation", "points": "Tier 1 points"})
+        lines.append(md_table(summary, ("fallback share",)))
+    failures = tier1[tier1["pred_status"].notna() & (tier1["pred_status"] != "ok")]
+    if not failures.empty:
+        counts = failures.groupby("op").size().to_dict()
+        lines.append(
+            "Non-`ok` Tier 1 prediction results (excluded from the denominator): "
+            + ", ".join(f"`{op}` {count}" for op, count in sorted(counts.items()))
+            + ".\n"
+        )
+    return "\n".join(lines)
+
+
 PCT = ("ram_err_med", "ram_err_p90", "time_err_med", "time_err_p90", "ram_cov", "time_cov",
        "ram_above_high", "ram_below_low", "time_above_high", "time_below_low", "ram_width",
        "time_width", "precision", "recall")  # fmt: skip
@@ -751,6 +787,7 @@ def write_validation_report(
     lines.append(
         f"val-v5 opened {token.timestamp}; reason: {token.reason}; frozen stack {frozen}\n"
     )
+    lines.append(tier1_fallback_markdown(val))
     lines.append(
         "A point killed by the harness memory cap (a cap on TOTAL resident memory) counts as a RAM "
         "actual >= RSS-at-kill minus the baseline extrapolated from the same case (`ram_lower_bound`); "
@@ -782,20 +819,21 @@ def write_validation_report(
         from benchmarks import controller_eval  # the Phase 4d success criteria S1-S5 (LEGACY)
 
         lines.append(
-            "\n## LEGACY: Phase 4d controller criteria S1-S5 (not the Phase 7 acceptance criteria)\n\n"
+            "\n## LEGACY: Phase 4d controller criteria S1-S5 (not the Phase 8 acceptance criteria)\n\n"
             "Kept for continuity with the Phase 4d pre-registration (its S1 allows 5% of configurations "
-            "above high). The authoritative verdict for `models-frozen-v3` is the Phase 7 section at the "
-            "end.\n"
+            "above high). The authoritative Phase 8 verdict is the section at the end.\n"
         )
         lines.append(controller_eval.validation_section(val))
-        from benchmarks import risk_eval  # R1-R3 (Phase 7 pre-registration, section 2)
+        from benchmarks import risk_eval  # R1-R3 (Phase 8 pre-registration, section 2)
 
         lines.append(risk_eval.section(val, "Risk engine on val-v5 (pre-registered R1-R3)"))
-        from benchmarks import phase7_verdict  # the Phase 7 acceptance verdict (authoritative)
+        from benchmarks import phase8_verdict  # the Phase 8 acceptance verdict (authoritative)
 
         comp = controller_eval.completion(set(val["point_id"]))
         planned = sum(n for _, n in comp.values()) or None
-        lines.append(phase7_verdict.section(val, planned=planned))
+        baseline_path = results_dir / VAL_DIR / "v3_predictions.csv"
+        baseline = pd.read_csv(baseline_path) if baseline_path.exists() else None
+        lines.append(phase8_verdict.section(val, planned=planned, v3_predictions=baseline))
     lines.append("\n## Measurement caveats\n")
     lines.append(CAVEATS)
     report = results_dir / "validation_report.md"

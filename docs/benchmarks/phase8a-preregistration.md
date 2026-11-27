@@ -5,7 +5,7 @@ commit are dated amendments at the end. What I knew when writing it: the Phase 4
 notebooks (aggregate counts only: 605 analysable code cells, 190 with a detected operation, 0 accepted by the Tier 2 safety
 analyzer) and every dev result in `docs/PROGRESS.md`; I have not seen any cell code, data or output of the notebooks.
 
-**Frozen stack.** `models-frozen-v1` (40 hash-checked files, `docs/benchmarks/frozen-manifest.md`). The harness calls the
+**Frozen stack.** `models-frozen-v1` (40 hash-checked files, `docs/benchmarks/frozen-manifest-v1.md`). The harness calls the
 freeze guard at start and aborts on any difference. **Evaluation only:** nothing is tuned on these results; any model change
 motivated by them needs a fresh split and a new freeze. test-v2 and val-v5 are not touched.
 

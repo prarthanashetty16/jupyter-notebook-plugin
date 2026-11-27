@@ -133,7 +133,7 @@ run time.
 * The pandas-internals terms the models depend on (hash-table page residency, factorize cost growth, copy / copy-on-write
   semantics, concat of categoricals) are guarded by probe tests that run in a CI matrix over pandas versions. Results are claimed
   only for versions that were actually run.
-* **Freeze.** After the dev evaluation the commit is tagged `models-frozen-v1` and `docs/benchmarks/frozen-manifest.md` records
+* **Freeze.** After the dev evaluation the commit is tagged `models-frozen-v1` and `docs/benchmarks/frozen-manifest-v1.md` records
   hashes of the model files, the calibration artifact and the machine-profile format, the versions and the policy and thresholds
   in force. Held-out runs (val-v5, Phase 8a) record the commit and abort when the working tree differs from the tag. Any model
   change after the freeze invalidates the held-out status of those runs.

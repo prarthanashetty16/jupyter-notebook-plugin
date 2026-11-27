@@ -269,14 +269,14 @@ def test_manifest_guard_scope_and_refusals(monkeypatch, tmp_path):
         and "src/nexus/calibration/calibration-v1.json" in files
     )
     assert "src/nexus/measure.py" in files and "tests/test_measure_validation.py" in files
-    # v3 (Phase 7d): the new prediction-defining files are frozen too
+    # v4 (Phase 8): the prediction-defining files remain in the freeze.
     for f in (
         "src/nexus/cellframes.py",
         "src/nexus/models/set_index.py",
         "src/nexus/models/explode_apply.py",
     ):
         assert f in files, f
-    assert frozen.FROZEN_TAG == "models-frozen-v3" and frozen.PREVIOUS_TAG == "models-frozen-v2"
+    assert frozen.FROZEN_TAG == "models-frozen-v4" and frozen.PREVIOUS_TAG == "models-frozen-v3"
     others = [f for f in files if f != "tests/test_measure_validation.py"]
     assert not any(
         f.startswith(("docs/", "tests/", "benchmarks/")) or f == ".gitignore" for f in others
