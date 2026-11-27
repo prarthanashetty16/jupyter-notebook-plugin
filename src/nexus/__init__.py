@@ -5,7 +5,7 @@ An IPython extension and Python package for research-backed performance predicti
 Load with ``%load_ext nexus``.
 """
 
-__version__ = "0.1.0.dev0"
+__version__ = "0.4.0"
 
 from nexus.extension import load_ipython_extension, unload_ipython_extension
 

@@ -2205,3 +2205,25 @@ not been run.
 - [x] Annotated `models-frozen-v4` on commit `dceab6d1a545f7fc2c3e98e87b2cdbd2a1c40f0b`; the guard from the tag
   reported 50 files and `problems: []`. The tag was not moved.
 - [x] Push `v4-dev` and `models-frozen-v4` to `origin`. This final PROGRESS-only record is outside the frozen file set.
+
+## Phase 9 — Documentation and release preparation
+
+- [x] Write the release README, architecture guide, model-writing tutorial, evidence-first evaluation, project summary,
+  changelog, and contribution guide. Mark DEV, HELD-OUT, FAILED, and INCONCLUSIVE outcomes and link evaluation claims
+  to benchmark reports.
+- [x] Add a synthetic headless notebook demonstrating safe and risky cells, drivers, an opt-in re-estimated
+  suggestion, a partial-cell lower bound, and predicted-versus-measured results. Run it from a clean environment
+  against the built wheel; notebook outputs remain cleared.
+- [x] Set package metadata and runtime version to 0.4.0, include calibration JSON resources in distributions, and
+  build both sdist and wheel. Install the wheel into a clean virtual environment and verify the demo end to end.
+- [x] Validation: `pytest -q` passed (915 tests); `ruff check .` passed; changed-file formatting checks passed.
+  Repository-wide `ruff format --check .` still reports eight untouched legacy files, including frozen model files.
+- [x] Run `python -m benchmarks.frozen check`: 50 files checked, `problems: []`.
+
+### Decisions and remaining work
+
+- The Phase 8 v4 report explicitly lists six censored cells and four `deletes_v4` cells killed before measurement.
+  It does not label those kills as execution errors; the evaluation documentation preserves this distinction.
+- No TestPyPI/PyPI upload was made. TestPyPI installation commands are in the changelog.
+- The fresh Phase 8b notebook set, `val-v5`, and `test-v2` remain unopened and unrun. The Phase 8b collection-owner
+  fields still need completion before that future evaluation.
