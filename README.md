@@ -135,9 +135,14 @@ values.
   target. Static matching is only an optimistic ceiling (21/75 = 28.0%), not runtime coverage.
 - **Determinism FAILED:** Tier 1 hard-deadline firings exceeded the preregistered limits both under contention and idle.
   At 10M rows, the idle information-only rerun fell back on all 24/24 attempts; Tier 1 commonly falls back to Tier 0 on
-  large cells (around and above 3M rows on the reference laptop).
+  large cells (around and above 3M rows on the reference laptop). If the outer 250 ms analysis deadline itself expires,
+  the fail-safe hook leaves that cell unestimated instead of delaying execution; `%nexus status` reports deadline
+  firings.
 - **Partial cells:** the displayed lower bound covers only estimated operations; no upper bound is available for the
   complete cell.
+- **Same-cell intermediates:** frames created earlier within the cell are not live kernel variables at pre-execution
+  time. Their shape or state may be unknown, so operations on those intermediate frames can remain unestimated; this
+  differs from operations on an existing frame already bound in the kernel.
 - **`read_csv` depends on CPU and pandas internals:** a local read can take different serial or parallel paths based on
   the CPU/worker count. `parse_dates` has no estimate.
 - **Narrow empirical base:** one Windows laptop and mostly synthetic benchmark inputs. pandas 3.1.1 is the only pandas
@@ -145,8 +150,10 @@ values.
 - **Risk R2 FAILED:** policy-B ranges exceeded the per-operation false-alarm bar for merge (58.8%) and read_csv (78.0%)
   in the Phase 5 re-evaluation. Risk v2 narrows WARN handling for those operations but does not erase the registered
   failure.
-- **Suggestions:** `select_columns` is off by default after an over-prediction failure. Suggestions are filtered and
-  must be reviewed for semantics; they are not guarantees of savings.
+- **Suggestions:** this rule is disabled by default; its saving estimate was optimistic in held-out testing (predicted
+  46-59%, measured 13-19%). The [demo notebook](examples/demo.ipynb) explicitly opts it in with
+  `suggest(..., enable={"select_columns"})`; that call does not change the default. Suggestions must be reviewed for
+  semantics and are not guarantees of savings. See the [Phase 5b report](docs/benchmarks/phase5-suggestions-heldout/suggestions_heldout.md).
 - **Held-out evidence is mixed:** Phase 7 multicell v2 and v3 groups FAILED; Phase 8a real-notebook accuracy was
   INCONCLUSIVE. The fresh Phase 8b notebook batch, val-v5, and test-v2 have no results in this release documentation.
 

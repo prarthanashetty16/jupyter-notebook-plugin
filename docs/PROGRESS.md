@@ -2227,3 +2227,18 @@ not been run.
 - No TestPyPI/PyPI upload was made. TestPyPI installation commands are in the changelog.
 - The fresh Phase 8b notebook set, `val-v5`, and `test-v2` remain unopened and unrun. The Phase 8b collection-owner
   fields still need completion before that future evaluation.
+
+### Phase 9 follow-up: cwd-independent demo and Tier 1 hook check
+
+- [x] Move the synthetic fixtures into the installed `nexus.demo_support` module and keep
+  `examples/demo_support.py` as a compatibility import. The notebook no longer changes or depends on its working
+  directory; run it from the repository root, `examples/`, and an external temporary directory.
+- [x] Make the `select_columns` opt-in explicit in the notebook and README, including the Phase 5b held-out
+  over-prediction (46-59% predicted versus 13-19% measured). State that the risk headroom is simulated and the
+  predicted-versus-measured comparison is one example, not validation.
+- [x] Document the limitation for same-cell intermediate frames. No frozen model file was changed.
+- [x] Investigate a 5M-row DataFrame already bound in the kernel: the live hook detected `drop_duplicates` and
+  produced a Tier 1 estimate for synthetic numeric frames with 1, 4, and 8 columns. The exact user-reported frame
+  could not be reproduced from row count alone; shape and dtype may affect the 250 ms budget.
+- [x] Validation: `pytest -q` passed (915 tests), `ruff check .` passed, changed demo files passed formatting, and
+  the headless notebook passed from all three working directories. Final freeze guard is run after this update.
